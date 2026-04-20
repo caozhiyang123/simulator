@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>分布式模拟器控制面板</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎰</text></svg>">
+<title>Distributed Simulator Control Panel</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #333; padding: 20px; }
@@ -19,6 +20,9 @@
   input[type="number"]:focus, input[type="text"]:focus, select:focus { outline: none; border-color: #4a90d9; }
   button {
     padding: 7px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; color: #fff; margin: 2px;
+  }
+  button:disabled {
+    opacity: 0.4; cursor: not-allowed;
   }
   .btn-primary { background: #4a90d9; }
   .btn-primary:hover { background: #357abd; }
@@ -54,25 +58,28 @@
 </head>
 <body>
 
-<h1>🎰 分布式模拟器控制面板</h1>
+<h1>🎰 Distributed Simulator Control Panel</h1>
 
 <div class="grid">
 
-  <!-- 批量启动 -->
+  <!-- Batch Start -->
   <div class="card">
-    <h2>📦 批量启动</h2>
-    <label>游戏选择</label>
+    <h2>📦 Batch Start</h2>
+    <label>Game</label>
     <select id="batchGameName" class="game-select"></select>
-    <label>总 Spins 数量</label>
+    <label>Total Spins</label>
     <input type="number" id="totalSpins" value="1000000" min="1">
-    <button class="btn-success" onclick="startBatch()">▶ Start (batch)</button>
+    <label>Select nodes for batch execution</label>
+    <div id="batchNodeCheckboxes" style="margin-bottom:8px;"></div>
+    <button class="btn-success" id="batchStartBtn" onclick="startBatch()">▶ Start (batch)</button>
+    <button class="btn-danger" id="batchStopBtn" onclick="stopBatchSelected()" disabled>⏹ Stop (batch)</button>
     <div id="batchStopButtons" style="margin-top:8px;"></div>
   </div>
 
-  <!-- 单独启动 -->
+  <!-- Single Start -->
   <div class="card">
-    <h2>🚀 单独启动</h2>
-    <label>游戏选择</label>
+    <h2>🚀 Single Start</h2>
+    <label>Game</label>
     <select id="singleGameName" class="game-select"></select>
     <div class="row">
       <div>
@@ -80,72 +87,72 @@
         <input type="number" id="singleSpins" value="100000" min="1">
       </div>
     </div>
-    <button class="btn-primary" onclick="startMaster()">启动 Master</button>
-    <button class="btn-danger btn-sm" onclick="stopMaster()">⏹ Stop Master</button>
+    <button class="btn-primary" id="masterStartBtn" onclick="startMaster()">Start Master</button>
+    <button class="btn-danger btn-sm" id="masterStopBtn" onclick="stopMaster()" disabled>⏹ Stop Master</button>
     <div id="workerButtons" style="margin-top:8px;"></div>
   </div>
 
-  <!-- 配置 -->
+  <!-- Configuration -->
   <div class="card">
-    <h2>⚙️ 配置</h2>
-    <label>轮询间隔 (秒)</label>
+    <h2>⚙️ Configuration</h2>
+    <label>Poll Interval (seconds)</label>
     <div class="row">
       <input type="number" id="pollInterval" value="2" min="0.5" step="0.5">
-      <button class="btn-primary" onclick="setPollInterval()">设置</button>
+      <button class="btn-primary" onclick="setPollInterval()">Set</button>
     </div>
-    <label>任务分配模式</label>
+    <label>Allocation Mode</label>
     <div class="row">
       <select id="allocationMode" onchange="onModeChange()">
-        <option value="vcpu">vCPU 模式</option>
-        <option value="percentage">百分比模式</option>
+        <option value="vcpu">vCPU Mode</option>
+        <option value="percentage">Percentage Mode</option>
       </select>
-      <button class="btn-primary" onclick="setAllocationMode()">切换</button>
+      <button class="btn-primary" onclick="setAllocationMode()">Apply</button>
     </div>
     <div id="percentageSection" class="hidden">
-      <label>各节点百分比 (总和须为 100%)</label>
+      <label>Node Percentages (must sum to 100%)</label>
       <div id="percentageInputs" class="pct-inputs"></div>
-      <button class="btn-warning btn-sm" onclick="savePercentages()" style="margin-top:4px;">保存百分比</button>
+      <button class="btn-warning btn-sm" onclick="savePercentages()" style="margin-top:4px;">Save Percentages</button>
     </div>
   </div>
 
-  <!-- Worker 管理 -->
+  <!-- Worker Management -->
   <div class="card">
-    <h2>👷 Worker 管理</h2>
+    <h2>👷 Worker Management</h2>
     <div class="row">
       <div>
-        <label>新 Worker (IP:PORT)</label>
+        <label>New Worker (IP:PORT)</label>
         <input type="text" id="newWorkerAddr" placeholder="192.168.1.2:5001">
       </div>
       <div>
         <label>vCPU</label>
         <input type="number" id="newWorkerVcpu" value="1" min="1" style="width:70px;">
       </div>
-      <button class="btn-success" onclick="addWorker()">新增</button>
+      <button class="btn-success" onclick="addWorker()">Add</button>
     </div>
     <div id="workerList"></div>
   </div>
 
-  <!-- 状态查询 -->
+  <!-- Status & Results -->
   <div class="card full-width">
-    <h2>📊 状态与结果</h2>
+    <h2>📊 Status & Results</h2>
     <button class="btn-primary" onclick="getStatus()">Get Status</button>
-    <button class="btn-warning btn-sm" onclick="toggleAutoRefresh()" id="autoRefreshBtn">开启自动刷新</button>
+    <button class="btn-warning btn-sm" onclick="toggleAutoRefresh()" id="autoRefreshBtn">Enable Auto Refresh</button>
     <div id="statusArea" style="margin-top:12px;"></div>
   </div>
 
-  <!-- 模拟器输出 -->
+  <!-- Simulator Output -->
   <div class="card full-width">
-    <h2>🖥 模拟器输出</h2>
-    <button class="btn-primary btn-sm" onclick="fetchAllLogs()">刷新全部日志</button>
-    <button class="btn-warning btn-sm" onclick="toggleAutoLogs()" id="autoLogsBtn">开启自动刷新</button>
+    <h2>🖥 Simulator Output</h2>
+    <button class="btn-primary btn-sm" onclick="fetchAllLogs()">Refresh All Logs</button>
+    <button class="btn-warning btn-sm" onclick="toggleAutoLogs()" id="autoLogsBtn">Enable Auto Refresh</button>
     <div id="logTabs" style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;"></div>
     <div id="logPanels" style="margin-top:8px;"></div>
   </div>
 
-  <!-- 操作日志 -->
+  <!-- Operation Log -->
   <div class="card full-width">
-    <h2>📝 操作日志</h2>
-    <div id="log">等待操作...</div>
+    <h2>📝 Operation Log</h2>
+    <div id="log">Waiting for operations...</div>
   </div>
 
 </div>
@@ -171,6 +178,54 @@ function log(msg) {
 }
 
 // ---------------------------------------------------------------------------
+// Alert helper (reusable)
+// ---------------------------------------------------------------------------
+function showAlert(message) {
+  alert(message);
+}
+
+// ---------------------------------------------------------------------------
+// Button state management (start/stop互斥)
+// ---------------------------------------------------------------------------
+let runningNodes = {};  // {nodeAddr: true/false}
+
+function setNodeRunning(addr, running) {
+  runningNodes[addr] = running;
+  updateButtonStates();
+}
+
+function updateButtonStates() {
+  // Batch start/stop: based on selected nodes' running state
+  var batchStartBtn = document.getElementById('batchStartBtn');
+  var batchStopBtn = document.getElementById('batchStopBtn');
+  if (batchStartBtn && batchStopBtn) {
+    var cbs = document.querySelectorAll('.batch-node-cb:checked');
+    var anySelectedRunning = false;
+    cbs.forEach(function(cb) {
+      if (runningNodes[cb.value]) anySelectedRunning = true;
+    });
+    batchStartBtn.disabled = anySelectedRunning;
+    batchStopBtn.disabled = !anySelectedRunning;
+  }
+
+  // Master start/stop
+  var masterStartBtn = document.getElementById('masterStartBtn');
+  var masterStopBtn = document.getElementById('masterStopBtn');
+  if (masterStartBtn) masterStartBtn.disabled = !!runningNodes['master'];
+  if (masterStopBtn) masterStopBtn.disabled = !runningNodes['master'];
+
+  // Worker start/stop buttons
+  nodes.forEach(function(n) {
+    if (n.addr === 'master') return;
+    var safeAddr = n.addr.replace(/[:.]/g, '_');
+    var startBtn = document.getElementById('workerStartBtn_' + safeAddr);
+    var stopBtn = document.getElementById('workerStopBtn_' + safeAddr);
+    if (startBtn) startBtn.disabled = !!runningNodes[n.addr];
+    if (stopBtn) stopBtn.disabled = !runningNodes[n.addr];
+  });
+}
+
+// ---------------------------------------------------------------------------
 // API helpers
 // ---------------------------------------------------------------------------
 async function api(url, method, body) {
@@ -184,7 +239,7 @@ async function api(url, method, body) {
     }
     return { ok: res.ok, status: res.status, data };
   } catch (e) {
-    log('❌ 请求失败: ' + url + ' → ' + e.message);
+    log('❌ Request failed: ' + url + ' → ' + e.message);
     return { ok: false, status: 0, data: { error: e.message } };
   }
 }
@@ -194,16 +249,20 @@ async function api(url, method, body) {
 // ---------------------------------------------------------------------------
 async function startBatch() {
   const spins = parseInt(document.getElementById('totalSpins').value);
-  if (!spins || spins <= 0) { log('⚠️ 请输入有效的 Spins 数量'); return; }
+  if (!spins || spins <= 0) { showAlert('Please enter a valid Spins value'); return; }
   const mode = document.getElementById('allocationMode').value;
   const gameName = document.getElementById('batchGameName').value;
-  if (!gameName) { log('⚠️ 请选择游戏'); return; }
-  log('🚀 批量启动: game=' + gameName + ', spins=' + spins + ', mode=' + mode);
-  const r = await api('/start', 'POST', { total_spins: spins, mode, game_name: gameName });
+  if (!gameName) { showAlert('Please select a game'); return; }
+  const checkboxes = document.querySelectorAll('.batch-node-cb:checked');
+  const selectedNodes = Array.from(checkboxes).map(function(cb) { return cb.value; });
+  if (selectedNodes.length === 0) { showAlert('Please select at least one simulator'); return; }
+  log('🚀 Batch start: game=' + gameName + ', spins=' + spins + ', mode=' + mode + ', nodes=' + selectedNodes.join(','));
+  const r = await api('/start', 'POST', { total_spins: spins, mode, game_name: gameName, selected_nodes: selectedNodes });
   if (r.ok) {
-    log('✅ 批量启动完成: ' + r.data.status);
+    log('✅ Batch start completed: ' + r.data.status);
     if (r.data.results) {
       r.data.results.forEach(function(n) {
+        if (n.success) setNodeRunning(n.node, true);
         log('   ' + n.node + ': ' + (n.success ? '成功' : '失败') +
             (n.retries ? ' (重试' + n.retries + '次)' : '') +
             (n.error ? ' - ' + n.error : ''));
@@ -217,12 +276,12 @@ async function startBatch() {
 // ---------------------------------------------------------------------------
 async function startMaster() {
   const spins = parseInt(document.getElementById('singleSpins').value);
-  if (!spins || spins <= 0) { log('⚠️ 请输入有效的 Spins 数量'); return; }
+  if (!spins || spins <= 0) { showAlert('Please enter a valid Spins value'); return; }
   const gameName = document.getElementById('singleGameName').value;
-  if (!gameName) { log('⚠️ 请选择游戏'); return; }
-  log('🚀 启动 Master: game=' + gameName + ', spins=' + spins);
+  if (!gameName) { showAlert('Please select a game'); return; }
+  log('🚀 Start Master: game=' + gameName + ', spins=' + spins);
   const r = await api('/start-master', 'POST', { spins, game_name: gameName });
-  if (r.ok) log('✅ ' + r.data.message);
+  if (r.ok) { log('✅ ' + r.data.message); setNodeRunning('master', true); }
 }
 
 // ---------------------------------------------------------------------------
@@ -230,12 +289,12 @@ async function startMaster() {
 // ---------------------------------------------------------------------------
 async function startWorker(addr) {
   const spins = parseInt(document.getElementById('singleSpins').value);
-  if (!spins || spins <= 0) { log('⚠️ 请输入有效的 Spins 数量'); return; }
+  if (!spins || spins <= 0) { showAlert('Please enter a valid Spins value'); return; }
   const gameName = document.getElementById('singleGameName').value;
-  if (!gameName) { log('⚠️ 请选择游戏'); return; }
-  log('🚀 启动 Worker ' + addr + ': game=' + gameName + ', spins=' + spins);
+  if (!gameName) { showAlert('Please select a game'); return; }
+  log('🚀 Start Worker ' + addr + ': game=' + gameName + ', spins=' + spins);
   const r = await api('/start-worker', 'POST', { worker_addr: addr, spins, game_name: gameName });
-  if (r.ok) log('✅ Worker ' + addr + ' 启动请求已发送');
+  if (r.ok) { log('✅ Worker ' + addr + ' start request sent'); setNodeRunning(addr, true); }
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +308,7 @@ async function getStatus() {
 
 function renderStatus(data) {
   const area = document.getElementById('statusArea');
-  let html = '<div style="margin-bottom:8px;font-weight:600;">整体状态: <span class="status status-' +
+  let html = '<div style="margin-bottom:8px;font-weight:600;">Overall Status: <span class="status status-' +
     data.overall_status + '">' + data.overall_status + '</span></div>';
 
   // Node cards
@@ -260,7 +319,7 @@ function renderStatus(data) {
       html += '<span class="name">' + n.name + '</span>';
       html += '<span class="status status-' + n.status + '">' + n.status + '</span>';
       if (n.progress !== null && n.progress !== undefined) {
-        html += ' <span style="font-size:12px;color:#666;">进度: ' + n.progress + '</span>';
+        html += ' <span style="font-size:12px;color:#666;">Progress: ' + n.progress + '</span>';
       }
       html += '</div>';
     });
@@ -270,8 +329,8 @@ function renderStatus(data) {
   // Merged result
   if (data.merged_result) {
     const m = data.merged_result;
-    html += '<h3 style="margin-top:12px;font-size:14px;">📈 汇总结果</h3>';
-    html += '<table class="result-table"><tr><th>指标</th><th>值</th></tr>';
+    html += '<h3 style="margin-top:12px;font-size:14px;">📈 Merged Results</h3>';
+    html += '<table class="result-table"><tr><th>Metric</th><th>Value</th></tr>';
     html += '<tr><td>Total Spins</td><td>' + fmt(m.spins) + '</td></tr>';
     html += '<tr><td>Total Spent</td><td>' + fmt(m.total_spent) + '</td></tr>';
     html += '<tr><td>Total Win</td><td>' + fmt(m.total_win) + '</td></tr>';
@@ -294,7 +353,7 @@ function renderStatus(data) {
     }
 
     if (m.missing_nodes && m.missing_nodes.length) {
-      html += '<div style="color:#e74c3c;margin-top:6px;font-size:13px;">⚠️ 缺失节点: ' +
+      html += '<div style="color:#e74c3c;margin-top:6px;font-size:13px;">⚠️ Missing nodes: ' +
         m.missing_nodes.join(', ') + '</div>';
     }
   }
@@ -320,13 +379,13 @@ function toggleAutoRefresh() {
   if (autoRefreshTimer) {
     clearInterval(autoRefreshTimer);
     autoRefreshTimer = null;
-    btn.textContent = '开启自动刷新';
-    log('⏸ 自动刷新已关闭');
+    btn.textContent = 'Enable Auto Refresh';
+    log('⏸ Auto refresh disabled');
   } else {
     const interval = parseFloat(document.getElementById('pollInterval').value) || 2;
     autoRefreshTimer = setInterval(getStatus, interval * 1000);
-    btn.textContent = '关闭自动刷新';
-    log('▶ 自动刷新已开启 (间隔 ' + interval + '秒)');
+    btn.textContent = 'Disable Auto Refresh';
+    log('▶ Auto refresh enabled (interval ' + interval + 's)');
     getStatus();
   }
 }
@@ -336,10 +395,10 @@ function toggleAutoRefresh() {
 // ---------------------------------------------------------------------------
 async function setPollInterval() {
   const val = parseFloat(document.getElementById('pollInterval').value);
-  if (!val || val <= 0) { log('⚠️ 请输入有效的轮询间隔'); return; }
-  log('⚙️ 设置轮询间隔: ' + val + '秒');
+  if (!val || val <= 0) { log('⚠️ Please enter a valid poll interval'); return; }
+  log('⚙️ Set poll interval: ' + val + 's');
   const r = await api('/config/poll-interval', 'POST', { interval: val });
-  if (r.ok) log('✅ 轮询间隔已更新为 ' + r.data.interval + '秒');
+  if (r.ok) log('✅ Poll interval updated to ' + r.data.interval + 's');
 }
 
 // ---------------------------------------------------------------------------
@@ -358,9 +417,9 @@ function onModeChange() {
 
 async function setAllocationMode() {
   const mode = document.getElementById('allocationMode').value;
-  log('⚙️ 切换分配模式: ' + mode);
+  log('⚙️ Switch allocation mode: ' + mode);
   const r = await api('/config/allocation-mode', 'POST', { mode });
-  if (r.ok) log('✅ 分配模式已切换为 ' + r.data.mode);
+  if (r.ok) log('✅ Allocation mode switched to ' + r.data.mode);
 }
 
 function renderPercentageInputs() {
@@ -386,12 +445,12 @@ async function savePercentages() {
   });
   const sum = Object.values(percentages).reduce(function(a, b) { return a + b; }, 0);
   if (Math.abs(sum - 100) > 0.01) {
-    log('⚠️ 百分比之和为 ' + sum.toFixed(2) + '%，须为 100%');
+    log('⚠️ Percentages sum to ' + sum.toFixed(2) + '%, must be 100%');
     return;
   }
-  log('⚙️ 保存百分比配置');
+  log('⚙️ Save percentage config');
   const r = await api('/config/percentages', 'POST', { percentages });
-  if (r.ok) log('✅ 百分比配置已保存');
+  if (r.ok) log('✅ Percentage config saved');
 }
 
 // ---------------------------------------------------------------------------
@@ -400,11 +459,11 @@ async function savePercentages() {
 async function addWorker() {
   const addr = document.getElementById('newWorkerAddr').value.trim();
   const vcpu = parseInt(document.getElementById('newWorkerVcpu').value) || 1;
-  if (!addr) { log('⚠️ 请输入 Worker 地址'); return; }
-  log('➕ 新增 Worker: ' + addr + ' (vCPU=' + vcpu + ')');
+  if (!addr) { log('⚠️ Please enter Worker address'); return; }
+  log('➕ Add Worker: ' + addr + ' (vCPU=' + vcpu + ')');
   const r = await api('/add_worker', 'POST', { addr, vcpu });
   if (r.ok) {
-    log('✅ Worker ' + addr + ' 已添加');
+    log('✅ Worker ' + addr + ' added');
     document.getElementById('newWorkerAddr').value = '';
     nodes = r.data.workers;
     renderWorkers();
@@ -413,11 +472,11 @@ async function addWorker() {
 }
 
 async function delWorker(addr) {
-  if (!confirm('确定删除 Worker ' + addr + '？')) return;
-  log('➖ 删除 Worker: ' + addr);
+  if (!confirm('Delete Worker ' + addr + '?')) return;
+  log('➖ Delete Worker: ' + addr);
   const r = await api('/del_worker', 'POST', { addr });
   if (r.ok) {
-    log('✅ Worker ' + addr + ' 已删除');
+    log('✅ Worker ' + addr + ' deleted');
     nodes = r.data.workers;
     renderWorkers();
     renderPercentageInputs();
@@ -432,22 +491,23 @@ function renderWorkers() {
     if (n.addr === 'master') return;
     listHtml += '<div class="worker-item">';
     listHtml += '<span>🖥 ' + n.addr + ' (vCPU: ' + n.vcpu + ')</span>';
-    listHtml += '<button class="btn-danger btn-sm" onclick="delWorker(\'' + n.addr + '\')">删除</button>';
+    listHtml += '<button class="btn-danger btn-sm" onclick="delWorker(\'' + n.addr + '\')">Delete</button>';
     listHtml += '</div>';
   });
-  listEl.innerHTML = listHtml || '<span style="font-size:13px;color:#999;">暂无 Worker</span>';
+  listEl.innerHTML = listHtml || '<span style="font-size:13px;color:#999;">No Workers</span>';
 
   // Worker start + stop buttons (single start section)
   const btnEl = document.getElementById('workerButtons');
   let btnHtml = '';
   nodes.forEach(function(n) {
     if (n.addr === 'master') return;
+    var safeAddr = n.addr.replace(/[:.]/g, '_');
     btnHtml += '<div style="margin-bottom:4px;">';
-    btnHtml += '<button class="btn-primary btn-sm" onclick="startWorker(\'' + n.addr + '\')">启动 Worker(' + n.addr + ')</button> ';
-    btnHtml += '<button class="btn-danger btn-sm" onclick="stopWorker(\'' + n.addr + '\')">⏹ Stop</button>';
+    btnHtml += '<button class="btn-primary btn-sm" id="workerStartBtn_' + safeAddr + '" onclick="startWorker(\'' + n.addr + '\')">Start Worker(' + n.addr + ')</button> ';
+    btnHtml += '<button class="btn-danger btn-sm" id="workerStopBtn_' + safeAddr + '" onclick="stopWorker(\'' + n.addr + '\')" disabled>⏹ Stop</button>';
     btnHtml += '</div>';
   });
-  btnEl.innerHTML = btnHtml || '<span style="font-size:13px;color:#999;">暂无 Worker</span>';
+  btnEl.innerHTML = btnHtml || '<span style="font-size:13px;color:#999;">No Workers</span>';
 
   // Batch stop buttons
   const batchStopEl = document.getElementById('batchStopButtons');
@@ -458,6 +518,22 @@ function renderWorkers() {
   });
   batchStopEl.innerHTML = batchHtml;
 
+  // Batch node checkboxes
+  const cbEl = document.getElementById('batchNodeCheckboxes');
+  let cbHtml = '';
+  nodes.forEach(function(n) {
+    var label = n.addr === 'master' ? 'Master' : 'Worker(' + n.addr + ')';
+    cbHtml += '<label style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:13px;cursor:pointer;">';
+    cbHtml += '<input type="checkbox" class="batch-node-cb" value="' + n.addr + '">';
+    cbHtml += label + '</label>';
+  });
+  cbEl.innerHTML = cbHtml;
+  // Update button states when checkboxes change
+  cbEl.querySelectorAll('.batch-node-cb').forEach(function(cb) {
+    cb.addEventListener('change', updateButtonStates);
+  });
+  updateButtonStates();
+
   // Refresh log tabs
   renderLogTabs();
 }
@@ -466,17 +542,33 @@ function renderWorkers() {
 // Stop
 // ---------------------------------------------------------------------------
 async function stopMaster() {
-  log('⏹ 停止 Master 模拟器');
+  log('⏹ Stop Master');
   const r = await api('/stop-master', 'POST', {});
-  if (r.ok) log('✅ ' + r.data.message);
+  if (r.ok) { log('✅ ' + r.data.message); setNodeRunning('master', false); }
   else log('❌ ' + (r.data.message || r.data.error || 'Stop failed'));
 }
 
 async function stopWorker(addr) {
-  log('⏹ 停止 Worker ' + addr);
+  log('⏹ Stop Worker ' + addr);
   const r = await api('/stop-worker', 'POST', { worker_addr: addr });
-  if (r.ok) log('✅ Worker ' + addr + ' 已停止');
+  if (r.ok) { log('✅ Worker ' + addr + ' stopped'); setNodeRunning(addr, false); }
   else log('❌ ' + (r.data.message || r.data.error || 'Stop failed'));
+}
+
+async function stopBatchSelected() {
+  const checkboxes = document.querySelectorAll('.batch-node-cb:checked');
+  const selectedNodes = Array.from(checkboxes).map(function(cb) { return cb.value; });
+  if (selectedNodes.length === 0) { showAlert('Please select at least one simulator'); return; }
+  log('⏹ Batch stop: ' + selectedNodes.join(', '));
+  for (var i = 0; i < selectedNodes.length; i++) {
+    var addr = selectedNodes[i];
+    if (addr === 'master') {
+      await stopMaster();
+    } else {
+      await stopWorker(addr);
+    }
+  }
+  log('✅ Batch stop completed');
 }
 
 // ---------------------------------------------------------------------------
@@ -492,23 +584,57 @@ function renderLogTabs() {
   var tabsEl = document.getElementById('logTabs');
   var panelsEl = document.getElementById('logPanels');
   var logNodes = getLogNodes();
+
+  // Only rebuild panels if node list changed
+  var existingPanels = panelsEl.querySelectorAll('[data-log-node]');
+  var existingKeys = Array.from(existingPanels).map(function(el) { return el.dataset.logNode; });
+  var needsRebuild = logNodes.length !== existingKeys.length ||
+    logNodes.some(function(k, i) { return k !== existingKeys[i]; });
+
+  if (needsRebuild) {
+    var panelsHtml = '';
+    logNodes.forEach(function(key) {
+      var display = key === activeLogTab ? 'block' : 'none';
+      panelsHtml += '<div id="' + safeId(key) + '" data-log-node="' + key + '" style="display:' + display +
+        ';background:#1e1e2e;color:#cdd6f4;padding:12px;border-radius:6px;font-family:\'Cascadia Code\',monospace;font-size:12px;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;">Waiting for simulator...</div>';
+    });
+    panelsEl.innerHTML = panelsHtml;
+    logSinceMap = {};
+  } else {
+    // Just toggle visibility
+    logNodes.forEach(function(key) {
+      var el = document.getElementById(safeId(key));
+      if (el) el.style.display = key === activeLogTab ? 'block' : 'none';
+    });
+  }
+
+  // Always rebuild tabs (lightweight)
   var tabsHtml = '';
-  var panelsHtml = '';
   logNodes.forEach(function(key) {
     var label = key === 'master' ? 'Master' : 'Worker(' + key + ')';
-    var active = key === activeLogTab ? 'btn-primary' : 'btn-sm';
-    tabsHtml += '<button class="' + active + ' btn-sm" onclick="switchLogTab(\'' + key + '\')">' + label + '</button>';
-    var display = key === activeLogTab ? 'block' : 'none';
-    panelsHtml += '<div id="logPanel_' + key.replace(/[:.]/g, '_') + '" style="display:' + display +
-      ';background:#1e1e2e;color:#cdd6f4;padding:12px;border-radius:6px;font-family:\'Cascadia Code\',monospace;font-size:12px;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;">等待模拟器启动...</div>';
+    var cls = key === activeLogTab ? 'btn-primary btn-sm' : 'btn-sm';
+    tabsHtml += '<button class="' + cls + '" onclick="switchLogTab(\'' + key + '\')">' + label + '</button>';
   });
   tabsEl.innerHTML = tabsHtml;
-  panelsEl.innerHTML = panelsHtml;
 }
 
 function switchLogTab(key) {
   activeLogTab = key;
-  renderLogTabs();
+  // Just toggle display, don't rebuild panels
+  var logNodes = getLogNodes();
+  logNodes.forEach(function(k) {
+    var el = document.getElementById(safeId(k));
+    if (el) el.style.display = k === key ? 'block' : 'none';
+  });
+  // Rebuild tab buttons for active highlight
+  var tabsEl = document.getElementById('logTabs');
+  var tabsHtml = '';
+  logNodes.forEach(function(k) {
+    var label = k === 'master' ? 'Master' : 'Worker(' + k + ')';
+    var cls = k === key ? 'btn-primary btn-sm' : 'btn-sm';
+    tabsHtml += '<button class="' + cls + '" onclick="switchLogTab(\'' + k + '\')">' + label + '</button>';
+  });
+  tabsEl.innerHTML = tabsHtml;
   fetchNodeLogs(key);
 }
 
@@ -545,10 +671,10 @@ function toggleAutoLogs() {
   if (autoLogsTimer) {
     clearInterval(autoLogsTimer);
     autoLogsTimer = null;
-    btn.textContent = '开启自动刷新';
+    btn.textContent = 'Enable Auto Refresh';
   } else {
     autoLogsTimer = setInterval(fetchAllLogs, 2000);
-    btn.textContent = '关闭自动刷新';
+    btn.textContent = 'Disable Auto Refresh';
     fetchAllLogs();
   }
 }
@@ -557,7 +683,7 @@ function toggleAutoLogs() {
 // Init: load node list from /config/nodes on page load
 // ---------------------------------------------------------------------------
 async function init() {
-  log('🔄 加载节点列表...');
+  log('🔄 Loading node list...');
   const r = await api('/config/nodes', 'GET');
   if (r.ok && r.data.nodes) {
     nodes = r.data.nodes;
@@ -580,15 +706,15 @@ async function init() {
   if (gr.ok && gr.data.games) {
     const selects = document.querySelectorAll('.game-select');
     selects.forEach(function(sel) {
-      sel.innerHTML = '<option value="">-- 选择游戏 --</option>';
+      sel.innerHTML = '<option value="">-- Select Game --</option>';
       gr.data.games.forEach(function(g) {
         sel.innerHTML += '<option value="' + g + '">' + g + '</option>';
       });
     });
-    log('✅ 已加载 ' + gr.data.games.length + ' 个游戏');
+    log('✅ Loaded ' + gr.data.games.length + ' games');
   }
 
-  log('✅ 页面加载完成，共 ' + nodes.length + ' 个节点');
+  log('✅ Page loaded, ' + nodes.length + ' nodes');
 }
 
 init();

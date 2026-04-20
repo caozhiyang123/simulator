@@ -122,17 +122,25 @@ def list_games():
 def start():
     """批量启动分布式模拟。
 
-    请求体: {"total_spins": int, "mode"?: "vcpu"|"percentage", "game_name": str}
+    请求体: {"total_spins": int, "mode"?: "vcpu"|"percentage", "game_name": str, "selected_nodes"?: [str]}
     """
     data = request.get_json(force=True)
     total_spins = data.get("total_spins")
     mode = data.get("mode", config.get_allocation_mode())
     game_name = data.get("game_name", "")
+    selected_nodes = data.get("selected_nodes")  # None means all
 
     if not game_name:
         return jsonify({"status": "error", "error": "game_name is required"}), 400
 
     nodes = config.get_nodes()
+
+    # 如果指定了 selected_nodes，只对选中的节点进行分片和启动
+    if selected_nodes:
+        nodes = [n for n in nodes if n["addr"] in selected_nodes]
+        if not nodes:
+            return jsonify({"status": "error", "error": "No valid nodes selected"}), 400
+
     job_id = str(uuid.uuid4())
 
     # Task splitting
@@ -146,7 +154,7 @@ def start():
 
     results = []
 
-    # Start master local simulator
+    # Start master local simulator (only if selected)
     master_spins = allocation.get("master", 0)
     if master_spins > 0:
         try:
@@ -164,7 +172,7 @@ def start():
                 "error": str(exc),
             })
 
-    # Start workers with retry
+    # Start workers with retry (only selected ones)
     worker_addrs = [n["addr"] for n in nodes if n["addr"] != "master"]
     for addr in worker_addrs:
         spins = allocation.get(addr, 0)

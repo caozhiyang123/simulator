@@ -1,13 +1,13 @@
 {
   "master": {
     "vcpu": 12,
-    "percentage": 40.0
+    "percentage": 100
   },
   "workers": [
     {
-      "addr": "127.0.0.1",
+      "addr": "127.0.0.1:5001",
       "vcpu": 8,
-      "percentage": 0.0,
+      "percentage": 0,
       "shared_dir": "",
       "username": null,
       "password": null

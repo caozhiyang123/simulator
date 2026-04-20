@@ -1,9 +1,10 @@
 """Worker Flask 应用与路由。
 
-提供 POST /start 和 GET /status 两个 HTTP 端点，
-用于接收模拟任务和查询运行状态。
+提供 POST /start、GET /status、POST /stop、GET /logs 端点，
+用于接收模拟任务、查询运行状态、停止任务和获取日志。
 """
 
+import json
 import os
 
 from flask import Flask, jsonify, request
@@ -12,11 +13,15 @@ from simulator_runner import SimulatorRunner
 
 app = Flask(__name__)
 
-# 从环境变量读取配置，提供默认值
-SIMULATOR_DIR = os.environ.get(
-    "SIMULATOR_DIR", os.path.join(os.getcwd(), "simulator")
-)
-PORT = int(os.environ.get("PORT", "5001"))
+# 从 config.json 读取配置，环境变量可覆盖
+_config_path = os.path.join(os.path.dirname(__file__), "config.json")
+_config = {}
+if os.path.exists(_config_path):
+    with open(_config_path, "r", encoding="utf-8") as _f:
+        _config = json.load(_f)
+
+SIMULATOR_DIR = os.environ.get("SIMULATOR_DIR", _config.get("simulator_dir", ""))
+PORT = int(os.environ.get("PORT", _config.get("port", 5001)))
 
 runner = SimulatorRunner(SIMULATOR_DIR)
 

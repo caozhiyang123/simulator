@@ -176,6 +176,7 @@ class SimulatorRunner:
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if platform.system() == "Windows" else 0,
             )
             for line in self._process.stdout:
                 stripped = line.rstrip("\n\r")
@@ -255,27 +256,34 @@ class SimulatorRunner:
 
     def stop(self) -> bool:
         """停止正在运行的模拟器子进程（包括子进程树）。"""
+        # 先在锁内获取 pid，然后释放锁再执行 taskkill
+        # 避免与 _run_simulator 线程的日志写入产生死锁
+        pid = None
         with self._lock:
             if self._status != "running" or self._process is None:
                 return False
-            try:
-                pid = self._process.pid
-                if platform.system() == "Windows":
-                    subprocess.run(
-                        ["taskkill", "/T", "/F", "/PID", str(pid)],
-                        capture_output=True,
-                    )
-                else:
-                    import signal
-                    os.killpg(os.getpgid(pid), signal.SIGTERM)
-                self._append_log("[STOPPED] 模拟器已被手动停止")
-                self._status = "idle"
-                self._error = None
-                self._process = None
-                return True
-            except OSError as exc:
-                logger.error("Failed to stop simulator: %s", exc)
-                return False
+            pid = self._process.pid
+            self._status = "idle"
+            self._error = None
+
+        # 在锁外执行 taskkill，不会阻塞 _run_simulator 线程
+        try:
+            if platform.system() == "Windows":
+                subprocess.run(
+                    ["taskkill", "/T", "/F", "/PID", str(pid)],
+                    capture_output=True,
+                    timeout=10,
+                )
+            else:
+                import signal
+                self._process.send_signal(signal.SIGTERM)
+        except Exception as exc:
+            logger.error("Failed to stop simulator: %s", exc)
+
+        with self._lock:
+            self._process = None
+            self._output_lines.append("[STOPPED] 模拟器已被手动停止")
+        return True
 
     def get_logs(self, since: int = 0) -> dict:
         """获取模拟器输出日志。"""
