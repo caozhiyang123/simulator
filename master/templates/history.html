@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📜</text></svg>">
+<title>Simulation History</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #333; padding: 20px; }
+  h1 { text-align: center; margin-bottom: 20px; color: #1a1a2e; }
+  .filters { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }
+  .filters label { font-size: 13px; color: #666; }
+  .filters input, .filters select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+  button { padding: 7px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; color: #fff; margin: 2px; }
+  .btn-primary { background: #4a90d9; }
+  .btn-primary:hover { background: #357abd; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .run-card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); margin-bottom: 12px; }
+  .run-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+  .run-header h3 { font-size: 14px; color: #333; }
+  .run-header span { font-size: 12px; color: #888; }
+  .run-detail { display: none; margin-top: 12px; }
+  .model-block { border: 1px solid #e0e0e0; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
+  .model-block h4 { font-size: 13px; margin-bottom: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+  th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
+  th { background: #f0f0f0; }
+  .no-data { text-align: center; color: #999; padding: 40px; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<h1>📜 Simulation History</h1>
+
+<div class="filters">
+  <div>
+    <label>Model Name</label><br>
+    <input type="text" id="filterModel" placeholder="e.g. AmericanChampion">
+  </div>
+  <div>
+    <label>Start Date</label><br>
+    <input type="date" id="filterStart">
+  </div>
+  <div>
+    <label>End Date</label><br>
+    <input type="date" id="filterEnd">
+  </div>
+  <button class="btn-primary" onclick="search()">Search</button>
+  <button class="btn-primary" onclick="loadAll()">Show All</button>
+</div>
+
+<div id="results"></div>
+
+<script>
+function fmt(v) {
+  if (v === null || v === undefined) return '-';
+  return typeof v === 'number' ? v.toLocaleString() : v;
+}
+function fmtPct(v) {
+  if (v === null || v === undefined) return '-';
+  return (v * 100).toFixed(4) + '%';
+}
+
+async function loadAll() {
+  var r = await fetch('/history/list');
+  var data = await r.json();
+  renderRuns(data.runs || []);
+}
+
+async function search() {
+  var model = document.getElementById('filterModel').value;
+  var start = document.getElementById('filterStart').value;
+  var end = document.getElementById('filterEnd').value;
+  var params = new URLSearchParams();
+  if (model) params.set('model', model);
+  if (start) params.set('start', start);
+  if (end) params.set('end', end);
+  var r = await fetch('/history/query?' + params.toString());
+  var data = await r.json();
+  renderQueryResults(data.results || []);
+}
+
+function renderRuns(runs) {
+  var el = document.getElementById('results');
+  if (!runs.length) { el.innerHTML = '<div class="no-data">No history data found</div>'; return; }
+  var html = '';
+  runs.forEach(function(run, i) {
+    var ts = run.timestamp ? new Date(run.timestamp).toLocaleString() : run.filename;
+    html += '<div class="run-card">';
+    html += '<div class="run-header" onclick="toggleRun(\'run_' + i + '\', \'' + run.filename + '\')">';
+    html += '<h3>📅 ' + ts + '</h3>';
+    html += '<span>' + run.model_count + ' models | ' + run.filename + '</span>';
+    html += '</div>';
+    html += '<div class="run-detail" id="run_' + i + '"></div>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function renderQueryResults(results) {
+  var el = document.getElementById('results');
+  if (!results.length) { el.innerHTML = '<div class="no-data">No matching results</div>'; return; }
+  var html = '';
+  results.forEach(function(record, i) {
+    var ts = record.timestamp ? new Date(record.timestamp).toLocaleString() : '';
+    html += '<div class="run-card">';
+    html += '<div class="run-header" onclick="toggleRunInline(\'qrun_' + i + '\')">';
+    html += '<h3>📅 ' + ts + '</h3>';
+    html += '<span>' + Object.keys(record.models || {}).length + ' models</span>';
+    html += '</div>';
+    html += '<div class="run-detail" id="qrun_' + i + '" style="display:none;">';
+    html += renderModels(record.models || {});
+    html += '</div></div>';
+  });
+  el.innerHTML = html;
+}
+
+async function toggleRun(divId, filename) {
+  var el = document.getElementById(divId);
+  if (el.style.display === 'block') { el.style.display = 'none'; return; }
+  if (el.dataset.loaded) { el.style.display = 'block'; return; }
+  var r = await fetch('/history/load?filename=' + encodeURIComponent(filename));
+  var data = await r.json();
+  el.innerHTML = renderModels(data.models || {});
+  el.dataset.loaded = '1';
+  el.style.display = 'block';
+}
+
+function toggleRunInline(divId) {
+  var el = document.getElementById(divId);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function renderModels(models) {
+  var html = '';
+  var names = Object.keys(models).sort();
+  names.forEach(function(name) {
+    var m = models[name];
+    var latest = m.latest || m;
+    var history = m.history || [];
+    html += '<div class="model-block">';
+    html += '<h4>' + name + '</h4>';
+    html += '<table><tr><th>Metric</th><th>Value</th></tr>';
+    html += '<tr><td>SPIN COUNT</td><td>' + fmt(latest.spin_count) + '</td></tr>';
+    html += '<tr><td>TOTAL RTP</td><td>' + fmtPct(latest.total_rtp) + '</td></tr>';
+    html += '<tr><td>BASE RTP</td><td>' + fmtPct(latest.base_rtp) + '</td></tr>';
+    html += '<tr><td>EB RTP</td><td>' + fmtPct(latest.eb_rtp) + '</td></tr>';
+    html += '</table>';
+    if (history.length > 0) {
+      html += '<table style="margin-top:6px;"><tr><th>SPIN COUNT</th><th>TOTAL RTP</th><th>BASE RTP</th><th>EB RTP</th></tr>';
+      history.forEach(function(h) {
+        html += '<tr><td>' + fmt(h.spin_count) + '</td><td>' + fmtPct(h.total_rtp) + '</td><td>' + fmtPct(h.base_rtp) + '</td><td>' + fmtPct(h.eb_rtp) + '</td></tr>';
+      });
+      html += '</table>';
+    }
+    html += '</div>';
+  });
+  return html;
+}
+
+loadAll();
+</script>
+</body>
+</html>

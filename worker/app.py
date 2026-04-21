@@ -6,6 +6,15 @@
 
 import json
 import os
+import sys
+
+# PyInstaller 打包后 exe 所在目录，开发时用 __file__ 所在目录
+if getattr(sys, 'frozen', False):
+    _base_dir = os.path.dirname(sys.executable)
+    # 把 PyInstaller 临时解压目录加到 sys.path，以便导入本地模块
+    sys.path.insert(0, sys._MEIPASS)
+else:
+    _base_dir = os.path.dirname(__file__)
 
 from flask import Flask, jsonify, request
 
@@ -13,8 +22,14 @@ from simulator_runner import SimulatorRunner
 
 app = Flask(__name__)
 
-# 从 config.json 读取配置，环境变量可覆盖
-_config_path = os.path.join(os.path.dirname(__file__), "config.json")
+# PyInstaller 打包后 exe 所在目录，开发时用 __file__ 所在目录
+if getattr(sys, 'frozen', False):
+    _base_dir = os.path.dirname(sys.executable)
+else:
+    _base_dir = os.path.dirname(__file__)
+
+# 优先读取 exe 同级目录下的 config.json
+_config_path = os.path.join(_base_dir, "config.json")
 _config = {}
 if os.path.exists(_config_path):
     with open(_config_path, "r", encoding="utf-8") as _f:
@@ -39,9 +54,10 @@ def start():
     spins = data.get("spins")
     job_id = data.get("job_id")
     game_name = data.get("game_name", "")
+    interval_count = data.get("interval_count")
 
     try:
-        started = runner.start(spins, job_id, game_name)
+        started = runner.start(spins, job_id, game_name, interval_count)
     except RuntimeError as exc:
         return jsonify({
             "error": "Failed to start simulator",

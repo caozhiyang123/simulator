@@ -5,6 +5,7 @@ Worker 动态管理、配置修改、文件同步等 HTTP 端点。
 """
 
 import logging
+import math
 import os
 import time
 import uuid
@@ -14,6 +15,7 @@ from flask import Flask, jsonify, render_template, request
 
 from config import ClusterConfig, WorkerExistsError, WorkerNotFoundError
 from file_sync import FileSync
+from history_store import HistoryStore
 from merger import ResultMerger
 from poller import ProgressPoller
 from progress_store import ProgressStore
@@ -37,6 +39,7 @@ config = ClusterConfig(CONFIG_PATH)
 splitter = TaskSplitter()
 merger = ResultMerger()
 progress_store = ProgressStore(config.progress_save_dir)
+history_store = HistoryStore(os.path.join(os.path.dirname(__file__), "data"))
 sim_runner = SimulatorRunner(config.simulator_dir)
 file_sync = FileSync(config.simulator_dir, "")
 poller = ProgressPoller(
@@ -50,9 +53,10 @@ poller = ProgressPoller(
 # ---------------------------------------------------------------------------
 MAX_RETRIES = 3
 RETRY_INTERVAL = 5  # seconds
+_last_saved_status = ""
 
 
-def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name: str = "") -> dict:
+def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name: str = "", interval_count: int | None = None) -> dict:
     """Send POST /start to a worker with retry logic.
 
     Returns dict with keys: node, success, retries, error (optional).
@@ -61,7 +65,7 @@ def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name
         try:
             response = http_requests.post(
                 f"http://{worker_addr}/start",
-                json={"spins": spins, "job_id": job_id, "game_name": game_name},
+                json={"spins": spins, "job_id": job_id, "game_name": game_name, "interval_count": interval_count},
                 timeout=10,
             )
             if response.status_code == 200:
@@ -128,6 +132,7 @@ def start():
     total_spins = data.get("total_spins")
     mode = data.get("mode", config.get_allocation_mode())
     game_name = data.get("game_name", "")
+    interval_count = data.get("interval_count")
     selected_nodes = data.get("selected_nodes")  # None means all
 
     if not game_name:
@@ -152,13 +157,21 @@ def start():
     except ValueError as exc:
         return jsonify({"status": "error", "error": str(exc)}), 400
 
+    # Round up each node's spins to be a multiple of intervalCount
+    # (simulator only runs full intervals)
+    if interval_count and interval_count > 0:
+        for addr in allocation:
+            raw = allocation[addr]
+            if raw > 0:
+                allocation[addr] = math.ceil(raw / interval_count) * interval_count
+
     results = []
 
     # Start master local simulator (only if selected)
     master_spins = allocation.get("master", 0)
     if master_spins > 0:
         try:
-            started = sim_runner.start(master_spins, job_id, game_name)
+            started = sim_runner.start(master_spins, job_id, game_name, interval_count)
             results.append({
                 "node": "master",
                 "success": started,
@@ -177,7 +190,7 @@ def start():
     for addr in worker_addrs:
         spins = allocation.get(addr, 0)
         if spins > 0:
-            result = start_worker_with_retry(addr, spins, job_id, game_name)
+            result = start_worker_with_retry(addr, spins, job_id, game_name, interval_count)
             results.append(result)
 
     # Start poller
@@ -193,39 +206,38 @@ def start():
 
 @app.route("/status", methods=["GET"])
 def status():
-    """获取汇总进度/结果，所有节点完成后执行 merge。"""
+    """获取汇总进度/结果，实时按 model 跨节点汇总，保留历史快照。"""
     snapshot = poller.get_snapshot()
     nodes_data = snapshot.get("nodes", {})
 
-    # Determine overall status and collect results for merge
     statuses = []
-    node_results: dict[str, dict | None] = {}
     nodes_info = []
+    # {model_name: [{"latest": {...}, "history": [...]} from each node]}
+    all_model_results: dict[str, list[dict]] = {}
 
     for name, info in nodes_data.items():
         node_status = info.get("status", "idle")
         statuses.append(node_status)
 
-        # Build addr key for merger (strip wrapper like "master(local)" -> "master")
         if name.startswith("master"):
             addr = "master"
         else:
-            # "worker(ip:port)" -> "ip:port"
             addr = name.replace("worker(", "").rstrip(")")
-
-        if node_status == "completed" and info.get("result"):
-            node_results[addr] = info["result"]
-        elif node_status == "error":
-            node_results[addr] = None
-        else:
-            node_results[addr] = None
 
         nodes_info.append({
             "addr": addr,
             "name": name,
             "status": node_status,
             "progress": info.get("progress"),
+            "models_completed": info.get("models_completed", 0),
+            "models_total": info.get("models_total", 0),
         })
+
+        model_results = info.get("model_results", {})
+        for model_name, model_data in model_results.items():
+            if model_name not in all_model_results:
+                all_model_results[model_name] = []
+            all_model_results[model_name].append(model_data)
 
     # Determine overall status
     if all(s == "completed" for s in statuses) and statuses:
@@ -237,15 +249,105 @@ def status():
     else:
         overall_status = "idle"
 
+    # Aggregate per-model across nodes (latest + cumulative history)
+    aggregated_models = {}
+    for model_name, node_data_list in all_model_results.items():
+        # Aggregate latest values
+        agg_latest = {
+            "spin_count": 0, "total_won": 0, "base_won": 0,
+            "base_spent": 0, "eb_won": 0, "eb_spent": 0, "total_spent": 0,
+            "node_count": len(node_data_list),
+        }
+
+        for nd in node_data_list:
+            latest = nd.get("latest", {}) if isinstance(nd, dict) and "latest" in nd else nd
+            for field in ["spin_count", "total_won", "base_won", "base_spent", "eb_won", "eb_spent", "total_spent"]:
+                agg_latest[field] += latest.get(field, 0)
+
+        # Calculate RTP for latest
+        agg_latest["total_rtp"] = agg_latest["total_won"] / agg_latest["total_spent"] if agg_latest["total_spent"] > 0 else 0
+        agg_latest["base_rtp"] = agg_latest["base_won"] / agg_latest["base_spent"] if agg_latest["base_spent"] > 0 else 0
+        agg_latest["eb_rtp"] = agg_latest["eb_won"] / agg_latest["eb_spent"] if agg_latest["eb_spent"] > 0 else 0
+
+        # Build cumulative history:
+        # Collect all history snapshots from all nodes, tagged with node index
+        # Then replay in order of spin_count, accumulating each node's latest
+        all_events = []  # [(spin_count, node_idx, snapshot)]
+        node_latest_at = []  # per-node: latest snapshot seen so far
+
+        for ni, nd in enumerate(node_data_list):
+            history = nd.get("history", []) if isinstance(nd, dict) and "history" in nd else []
+            node_latest_at.append({})
+            for snap in history:
+                sc = snap.get("spin_count", 0)
+                all_events.append((sc, ni, snap))
+
+        # Sort by spin_count, then by node index for stability
+        all_events.sort(key=lambda x: (x[0], x[1]))
+
+        # Replay: for each event, update that node's latest, then sum all nodes
+        history_list = []
+        seen_totals = set()
+        for sc, ni, snap in all_events:
+            node_latest_at[ni] = snap
+            # Sum all nodes' current latest
+            agg = {
+                "spin_count": 0, "total_won": 0, "base_won": 0,
+                "base_spent": 0, "eb_won": 0, "eb_spent": 0, "total_spent": 0,
+            }
+            for nl in node_latest_at:
+                for field in ["spin_count", "total_won", "base_won", "base_spent", "eb_won", "eb_spent", "total_spent"]:
+                    agg[field] += nl.get(field, 0)
+            # Deduplicate by total spin_count
+            total_sc = agg["spin_count"]
+            if total_sc in seen_totals:
+                # Update the last entry with same total
+                if history_list and history_list[-1]["spin_count"] == total_sc:
+                    history_list[-1] = agg
+                continue
+            seen_totals.add(total_sc)
+            agg["total_rtp"] = agg["total_won"] / agg["total_spent"] if agg["total_spent"] > 0 else 0
+            agg["base_rtp"] = agg["base_won"] / agg["base_spent"] if agg["base_spent"] > 0 else 0
+            agg["eb_rtp"] = agg["eb_won"] / agg["eb_spent"] if agg["eb_spent"] > 0 else 0
+            history_list.append(agg)
+
+        # If latest has newer data than last history entry, append it
+        if history_list:
+            last_hist_sc = history_list[-1].get("spin_count", 0)
+            latest_sc = agg_latest.get("spin_count", 0)
+            if latest_sc > last_hist_sc:
+                history_list.append({
+                    "spin_count": latest_sc,
+                    "total_won": agg_latest["total_won"],
+                    "base_won": agg_latest["base_won"],
+                    "base_spent": agg_latest["base_spent"],
+                    "eb_won": agg_latest["eb_won"],
+                    "eb_spent": agg_latest["eb_spent"],
+                    "total_spent": agg_latest["total_spent"],
+                    "total_rtp": agg_latest["total_rtp"],
+                    "base_rtp": agg_latest["base_rtp"],
+                    "eb_rtp": agg_latest["eb_rtp"],
+                })
+
+        aggregated_models[model_name] = {
+            "latest": agg_latest,
+            "history": history_list,
+        }
+
     response: dict = {
         "overall_status": overall_status,
         "nodes": nodes_info,
+        "model_results": aggregated_models,
     }
 
-    # Merge when all nodes completed
-    if overall_status == "completed":
-        merged = merger.merge(node_results)
-        response["merged_result"] = merged
+    # Persist results when all nodes completed (save once)
+    global _last_saved_status
+    if overall_status == "completed" and _last_saved_status != "completed" and aggregated_models:
+        try:
+            history_store.save_run(aggregated_models)
+        except Exception:
+            pass
+    _last_saved_status = overall_status
 
     return jsonify(response)
 
@@ -259,13 +361,14 @@ def start_master():
     data = request.get_json(force=True)
     spins = data.get("spins")
     game_name = data.get("game_name", "")
+    interval_count = data.get("interval_count")
     job_id = str(uuid.uuid4())
 
     if not game_name:
         return jsonify({"status": "error", "message": "game_name is required"}), 400
 
     try:
-        started = sim_runner.start(spins, job_id, game_name)
+        started = sim_runner.start(spins, job_id, game_name, interval_count)
     except RuntimeError as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
 
@@ -274,6 +377,9 @@ def start_master():
             "status": "error",
             "message": "Master simulator already running",
         }), 409
+
+    # Ensure poller is running to collect status
+    poller.start([w["addr"] for w in config.workers])
 
     return jsonify({
         "status": "started",
@@ -292,6 +398,7 @@ def start_worker():
     worker_addr = data.get("worker_addr")
     spins = data.get("spins")
     game_name = data.get("game_name", "")
+    interval_count = data.get("interval_count")
     job_id = str(uuid.uuid4())
 
     # Check worker exists in config
@@ -302,7 +409,11 @@ def start_worker():
             "addr": worker_addr,
         }), 404
 
-    result = start_worker_with_retry(worker_addr, spins, job_id, game_name)
+    result = start_worker_with_retry(worker_addr, spins, job_id, game_name, interval_count)
+
+    # Ensure poller is running to collect status
+    poller.start([w["addr"] for w in config.workers])
+
     return jsonify({"status": "ok" if result["success"] else "error", "message": result})
 
 
@@ -465,7 +576,6 @@ def sync():
 
     if target_addr:
         # Sync to specific worker
-        worker = None
         for w in workers:
             if w["addr"] == target_addr:
                 worker = w
@@ -497,6 +607,67 @@ def sync():
             "message": "Sync completed",
             "details": result["results"],
         })
+
+
+@app.route("/history/list", methods=["GET"])
+def history_list():
+    """List all saved simulation runs."""
+    return jsonify({"runs": history_store.list_runs()})
+
+
+@app.route("/history/load", methods=["GET"])
+def history_load():
+    """Load a specific run's data.
+
+    Query param: ?filename=20260421_120000.json
+    """
+    filename = request.args.get("filename", "")
+    if not filename:
+        return jsonify({"error": "filename required"}), 400
+    data = history_store.load_run(filename)
+    if data is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(data)
+
+
+@app.route("/history/query", methods=["GET"])
+def history_query():
+    """Query runs by model name and/or date range.
+
+    Query params: ?model=AmericanChampion&start=2026-04-01&end=2026-04-30
+    """
+    model_name = request.args.get("model", "")
+    start_date = request.args.get("start", "")
+    end_date = request.args.get("end", "")
+    results = history_store.query(model_name, start_date, end_date)
+    return jsonify({"results": results})
+
+
+@app.route("/history/save", methods=["POST"])
+def history_save():
+    """Manually save current aggregated results to history."""
+    # Get current status data
+    snapshot = poller.get_snapshot()
+    nodes_data = snapshot.get("nodes", {})
+    all_model_results: dict[str, list[dict]] = {}
+    for name, info in nodes_data.items():
+        model_results = info.get("model_results", {})
+        for model_name, model_data in model_results.items():
+            if model_name not in all_model_results:
+                all_model_results[model_name] = []
+            all_model_results[model_name].append(model_data)
+
+    if not all_model_results:
+        return jsonify({"error": "No data to save"}), 400
+
+    filename = history_store.save_run(all_model_results)
+    return jsonify({"status": "saved", "filename": filename})
+
+
+@app.route("/history/page")
+def history_page():
+    """Render the history replay page."""
+    return render_template("history.html")
 
 
 # ---------------------------------------------------------------------------

@@ -21,13 +21,13 @@ class ResultParser:
 
     # 结果文件中各字段的映射（文件中的 key -> 返回字典的 key）
     _FIELD_MAP = {
-        "SPIN COUNT": "spins",
-        "TOTAL SPEND": "total_spent",
-        "TOTAL WIN": "total_win",
-        "BASE SPEND": "base_spent",
-        "BASE WIN": "base_win",
-        "EB SPEND": "eb_spent",
-        "EB WIN": "eb_win",
+        "SPIN COUNT": "SPIN COUNT",
+        "TOTAL SPEND": "TOTAL SPENT",
+        "TOTAL WIN": "TOTAL WON",
+        "BASE SPEND": "BASE SPENT",
+        "BASE WIN": "BASE WON",
+        "EB SPEND": "TOTAL EB SPENT",
+        "EB WIN": "TOTAL EB WON",
     }
 
     @staticmethod

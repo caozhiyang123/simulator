@@ -68,7 +68,9 @@
     <label>Game</label>
     <select id="batchGameName" class="game-select"></select>
     <label>Total Spins</label>
-    <input type="number" id="totalSpins" value="1000000" min="1">
+    <input type="number" id="totalSpins" value="1000000" min="1" oninput="document.getElementById('batchIntervalCount').value=this.value">
+    <label>Interval Count</label>
+    <input type="number" id="batchIntervalCount" value="1000000" min="1">
     <label>Select nodes for batch execution</label>
     <div id="batchNodeCheckboxes" style="margin-bottom:8px;"></div>
     <button class="btn-success" id="batchStartBtn" onclick="startBatch()">▶ Start (batch)</button>
@@ -84,7 +86,11 @@
     <div class="row">
       <div>
         <label>Spins</label>
-        <input type="number" id="singleSpins" value="100000" min="1">
+        <input type="number" id="singleSpins" value="100000" min="1" oninput="document.getElementById('singleIntervalCount').value=this.value">
+      </div>
+      <div>
+        <label>Interval Count</label>
+        <input type="number" id="singleIntervalCount" value="100000" min="1">
       </div>
     </div>
     <button class="btn-primary" id="masterStartBtn" onclick="startMaster()">Start Master</button>
@@ -137,6 +143,7 @@
     <h2>📊 Status & Results</h2>
     <button class="btn-primary" onclick="getStatus()">Get Status</button>
     <button class="btn-warning btn-sm" onclick="toggleAutoRefresh()" id="autoRefreshBtn">Enable Auto Refresh</button>
+    <button class="btn-primary btn-sm" onclick="window.open('/history/page','_blank')">📜 History</button>
     <div id="statusArea" style="margin-top:12px;"></div>
   </div>
 
@@ -166,6 +173,9 @@ let autoRefreshTimer = null;
 let autoLogsTimer = null;
 let logSinceMap = {};  // {nodeKey: sinceLineNumber}
 let activeLogTab = 'master';
+let expandedModels = {};  // {modelId: true} track expanded state
+let expandedCharts = {};  // {chartId: modelName} track open charts
+let expandedHistory = {}; // {historyId: true} track expanded history
 
 // ---------------------------------------------------------------------------
 // Logging
@@ -256,8 +266,9 @@ async function startBatch() {
   const checkboxes = document.querySelectorAll('.batch-node-cb:checked');
   const selectedNodes = Array.from(checkboxes).map(function(cb) { return cb.value; });
   if (selectedNodes.length === 0) { showAlert('Please select at least one simulator'); return; }
-  log('🚀 Batch start: game=' + gameName + ', spins=' + spins + ', mode=' + mode + ', nodes=' + selectedNodes.join(','));
-  const r = await api('/start', 'POST', { total_spins: spins, mode, game_name: gameName, selected_nodes: selectedNodes });
+  var intervalCount = parseInt(document.getElementById('batchIntervalCount').value) || spins;
+  log('🚀 Batch start: game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount + ', mode=' + mode + ', nodes=' + selectedNodes.join(','));
+  const r = await api('/start', 'POST', { total_spins: spins, interval_count: intervalCount, mode, game_name: gameName, selected_nodes: selectedNodes });
   if (r.ok) {
     log('✅ Batch start completed: ' + r.data.status);
     if (r.data.results) {
@@ -279,8 +290,9 @@ async function startMaster() {
   if (!spins || spins <= 0) { showAlert('Please enter a valid Spins value'); return; }
   const gameName = document.getElementById('singleGameName').value;
   if (!gameName) { showAlert('Please select a game'); return; }
-  log('🚀 Start Master: game=' + gameName + ', spins=' + spins);
-  const r = await api('/start-master', 'POST', { spins, game_name: gameName });
+  var intervalCount = parseInt(document.getElementById('singleIntervalCount').value) || spins;
+  log('🚀 Start Master: game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount);
+  const r = await api('/start-master', 'POST', { spins, interval_count: intervalCount, game_name: gameName });
   if (r.ok) { log('✅ ' + r.data.message); setNodeRunning('master', true); }
 }
 
@@ -292,8 +304,9 @@ async function startWorker(addr) {
   if (!spins || spins <= 0) { showAlert('Please enter a valid Spins value'); return; }
   const gameName = document.getElementById('singleGameName').value;
   if (!gameName) { showAlert('Please select a game'); return; }
-  log('🚀 Start Worker ' + addr + ': game=' + gameName + ', spins=' + spins);
-  const r = await api('/start-worker', 'POST', { worker_addr: addr, spins, game_name: gameName });
+  var intervalCount = parseInt(document.getElementById('singleIntervalCount').value) || spins;
+  log('🚀 Start Worker ' + addr + ': game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount);
+  const r = await api('/start-worker', 'POST', { worker_addr: addr, spins, interval_count: intervalCount, game_name: gameName });
   if (r.ok) { log('✅ Worker ' + addr + ' start request sent'); setNodeRunning(addr, true); }
 }
 
@@ -303,6 +316,13 @@ async function startWorker(addr) {
 async function getStatus() {
   const r = await api('/status', 'GET');
   if (!r.ok) return;
+  // Sync runningNodes from backend status
+  if (r.data.nodes) {
+    r.data.nodes.forEach(function(n) {
+      runningNodes[n.addr] = (n.status === 'running');
+    });
+    updateButtonStates();
+  }
   renderStatus(r.data);
 }
 
@@ -318,47 +338,262 @@ function renderStatus(data) {
       html += '<div class="node-card">';
       html += '<span class="name">' + n.name + '</span>';
       html += '<span class="status status-' + n.status + '">' + n.status + '</span>';
-      if (n.progress !== null && n.progress !== undefined) {
-        html += ' <span style="font-size:12px;color:#666;">Progress: ' + n.progress + '</span>';
+      if (n.models_completed !== undefined) {
+        html += ' <span style="font-size:12px;color:#666;">Models: ' + n.models_completed + '/' + (n.models_total || '?') + '</span>';
       }
       html += '</div>';
     });
     html += '</div>';
   }
 
-  // Merged result
-  if (data.merged_result) {
-    const m = data.merged_result;
-    html += '<h3 style="margin-top:12px;font-size:14px;">📈 Merged Results</h3>';
-    html += '<table class="result-table"><tr><th>Metric</th><th>Value</th></tr>';
-    html += '<tr><td>Total Spins</td><td>' + fmt(m.spins) + '</td></tr>';
-    html += '<tr><td>Total Spent</td><td>' + fmt(m.total_spent) + '</td></tr>';
-    html += '<tr><td>Total Win</td><td>' + fmt(m.total_win) + '</td></tr>';
-    html += '<tr><td>TOTAL RTP</td><td>' + fmtPct(m.TOTAL_RTP) + '</td></tr>';
-    html += '<tr><td>Base Spent</td><td>' + fmt(m.base_spent) + '</td></tr>';
-    html += '<tr><td>Base Win</td><td>' + fmt(m.base_win) + '</td></tr>';
-    html += '<tr><td>BASE RTP</td><td>' + fmtPct(m.BASE_RTP) + '</td></tr>';
-    html += '<tr><td>EB Spent</td><td>' + fmt(m.eb_spent) + '</td></tr>';
-    html += '<tr><td>EB Win</td><td>' + fmt(m.eb_win) + '</td></tr>';
-    html += '<tr><td>EB RTP</td><td>' + fmtPct(m.EB_RTP) + '</td></tr>';
-    html += '</table>';
+  // Per-model aggregated results with progress bar and volcano chart
+  if (data.model_results && Object.keys(data.model_results).length > 0) {
+    var totalModels = Object.keys(data.model_results).length;
+    var maxModels = 0;
+    if (data.nodes && data.nodes.length) {
+      data.nodes.forEach(function(n) { if (n.models_total > maxModels) maxModels = n.models_total; });
+    }
+    var pct = maxModels > 0 ? Math.round(totalModels / maxModels * 100) : 0;
+    html += '<h3 style="margin-top:12px;font-size:14px;">📈 Per-Model Results (' + totalModels + '/' + (maxModels || '?') + ')</h3>';
+    html += '<div style="background:#e0e0e0;border-radius:4px;height:8px;margin-bottom:12px;">';
+    html += '<div style="background:#27ae60;height:100%;border-radius:4px;width:' + pct + '%;transition:width 0.3s;"></div></div>';
 
-    if (m.SPIN_DISTRIBUTION) {
-      html += '<h3 style="margin-top:8px;font-size:14px;">Spin 分布</h3>';
-      html += '<table class="result-table"><tr><th>节点</th><th>Spins</th></tr>';
-      for (const [node, spins] of Object.entries(m.SPIN_DISTRIBUTION)) {
-        html += '<tr><td>' + node + '</td><td>' + fmt(spins) + '</td></tr>';
+    var models = Object.entries(data.model_results).sort(function(a, b) { return a[0].localeCompare(b[0]); });
+    models.forEach(function(entry, idx) {
+      var name = entry[0];
+      var m = entry[1];
+      var latest = m.latest || m;
+      var history = m.history || [];
+      var modelId = 'model_' + idx;
+      var chartId = 'chart_' + idx;
+
+      html += '<div style="margin-top:8px;padding:8px;border:1px solid #e0e0e0;border-radius:6px;">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
+      html += '<span style="font-weight:600;font-size:13px;cursor:pointer;" onclick="toggleModel(\'' + modelId + '\')">';
+      html += '▶ ' + name + '</span>';
+      html += '<span style="font-size:11px;color:#888;">(nodes: ' + (latest.node_count || 1) + ')</span>';
+      var isSingleNode = (latest.node_count || 1) <= 1;
+      if (history.length > 1) {
+        html += '<button class="btn-warning btn-sm" onclick="toggleChart(\'' + chartId + '\',\'' + name + '\')">📊 Volcano</button>';
       }
-      html += '</table>';
-    }
+      html += '</div>';
 
-    if (m.missing_nodes && m.missing_nodes.length) {
-      html += '<div style="color:#e74c3c;margin-top:6px;font-size:13px;">⚠️ Missing nodes: ' +
-        m.missing_nodes.join(', ') + '</div>';
-    }
+      // Volcano chart canvas (hidden by default, restored from state)
+      var chartVisible = expandedCharts[chartId] ? 'block' : 'none';
+      html += '<div id="' + chartId + '" style="display:' + chartVisible + ';margin-bottom:8px;"><canvas id="canvas_' + chartId + '" width="600" height="200" style="width:100%;border:1px solid #ddd;border-radius:4px;"></canvas></div>';
+
+      // Collapsible detail (restored from state)
+      var modelVisible = expandedModels[modelId] ? 'block' : 'none';
+      html += '<div id="' + modelId + '" style="display:' + modelVisible + ';">';
+      var latestDataId = 'latestData_' + idx;
+      html += '<button class="btn-primary btn-sm" onclick="copyLatest(\'' + latestDataId + '\', this)" style="margin-bottom:4px;">📋 Copy</button>';
+      html += '<table class="result-table" id="' + latestDataId + '">';
+      html += '<tr><th>Metric</th><th>Value</th></tr>';
+      html += '<tr><td>SPIN COUNT</td><td>' + fmt(latest.spin_count) + '</td></tr>';
+      html += '<tr><td>TOTAL WON</td><td>' + fmt(latest.total_won) + '</td></tr>';
+      html += '<tr><td>TOTAL SPENT</td><td>' + fmt(latest.total_spent) + '</td></tr>';
+      html += '<tr><td>BASE WON</td><td>' + fmt(latest.base_won) + '</td></tr>';
+      html += '<tr><td>BASE SPENT</td><td>' + fmt(latest.base_spent) + '</td></tr>';
+      html += '<tr><td>EB WON</td><td>' + fmt(latest.eb_won) + '</td></tr>';
+      html += '<tr><td>EB SPENT</td><td>' + fmt(latest.eb_spent) + '</td></tr>';
+      html += '<tr><td>TOTAL RTP</td><td>' + fmtPct(latest.total_rtp) + '</td></tr>';
+      html += '<tr><td>BASE RTP</td><td>' + fmtPct(latest.base_rtp) + '</td></tr>';
+      html += '<tr><td>EB RTP</td><td>' + fmtPct(latest.eb_rtp) + '</td></tr>';
+      html += '</table>';
+
+      // History snapshots
+      if (history.length > 0) {
+        var histId = 'hist_' + idx;
+        var histTableId = 'histTable_' + idx;
+        var histOpen = expandedHistory[histId] ? 'block' : 'none';
+        html += '<div style="margin-top:6px;"><span style="font-size:12px;cursor:pointer;color:#666;" onclick="toggleHistory(\'' + histId + '\')">▶ History (' + history.length + ' snapshots)</span>';
+        html += ' <button class="btn-primary btn-sm" onclick="copyTable(\'' + histTableId + '\', this)" style="font-size:10px;">📋 Copy</button>';
+        html += '<div id="' + histId + '" style="display:' + histOpen + ';">';
+        html += '<table class="result-table" id="' + histTableId + '" style="margin-top:4px;">';
+        html += '<tr><th>SPIN COUNT</th><th>TOTAL RTP</th><th>BASE RTP</th><th>EB RTP</th></tr>';
+        history.forEach(function(h) {
+          html += '<tr><td>' + fmt(h.spin_count) + '</td><td>' + fmtPct(h.total_rtp) + '</td><td>' + fmtPct(h.base_rtp) + '</td><td>' + fmtPct(h.eb_rtp) + '</td></tr>';
+        });
+        html += '</table></div></div>';
+      }
+
+      html += '</div></div>';
+    });
+
+    // Store model data globally for chart rendering
+    window._modelData = data.model_results;
   }
 
   area.innerHTML = html;
+
+  // Redraw any open volcano charts after DOM update
+  for (var cid in expandedCharts) {
+    if (expandedCharts[cid]) {
+      drawVolcanoChart('canvas_' + cid, expandedCharts[cid]);
+    }
+  }
+}
+
+function toggleModel(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    expandedModels[id] = true;
+  } else {
+    el.style.display = 'none';
+    delete expandedModels[id];
+  }
+}
+
+function toggleHistory(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    expandedHistory[id] = true;
+  } else {
+    el.style.display = 'none';
+    delete expandedHistory[id];
+  }
+}
+
+function copyTable(tableId, btnEl) {
+  var table = document.getElementById(tableId);
+  if (!table) return;
+  var rows = table.querySelectorAll('tr');
+  var text = '';
+  rows.forEach(function(row) {
+    var cells = row.querySelectorAll('th, td');
+    var line = [];
+    cells.forEach(function(cell) { line.push(cell.textContent.trim()); });
+    text += line.join('\t') + '\n';
+  });
+  navigator.clipboard.writeText(text).then(function() {
+    log('📋 Copied to clipboard');
+    // Cooldown: disable button for 3 seconds
+    if (btnEl) {
+      var origText = btnEl.textContent;
+      btnEl.textContent = '✅ Copied';
+      btnEl.disabled = true;
+      setTimeout(function() { btnEl.textContent = origText; btnEl.disabled = false; }, 3000);
+    }
+  });
+}
+
+function copyLatest(tableId, btnEl) {
+  copyTable(tableId, btnEl);
+}
+
+function toggleChart(chartId, modelName) {
+  var el = document.getElementById(chartId);
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    expandedCharts[chartId] = modelName;
+    drawVolcanoChart('canvas_' + chartId, modelName);
+  } else {
+    el.style.display = 'none';
+    delete expandedCharts[chartId];
+  }
+}
+
+function drawVolcanoChart(canvasId, modelName) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas || !window._modelData || !window._modelData[modelName]) return;
+  var ctx = canvas.getContext('2d');
+  var data = window._modelData[modelName];
+  var history = data.history || [];
+  if (history.length < 2) return;
+
+  var w = canvas.width, h = canvas.height;
+  var pad = {top: 20, right: 20, bottom: 30, left: 60};
+  var plotW = w - pad.left - pad.right;
+  var plotH = h - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#fafafa';
+  ctx.fillRect(0, 0, w, h);
+
+  var spins = history.map(function(h) { return h.spin_count || 0; });
+  var maxSpin = Math.max.apply(null, spins);
+  var minSpin = Math.min.apply(null, spins);
+  if (maxSpin === minSpin) maxSpin = minSpin + 1;
+
+  // Collect all RTP series
+  var series = [
+    {key: 'total_rtp', label: 'TOTAL RTP', color: '#e74c3c'},
+    {key: 'base_rtp', label: 'BASE RTP', color: '#2980b9'},
+    {key: 'eb_rtp', label: 'EB RTP', color: '#27ae60'},
+  ];
+
+  // Find global min/max across all series
+  var allVals = [];
+  series.forEach(function(s) {
+    history.forEach(function(h) { allVals.push(h[s.key] || 0); });
+  });
+  var minRtp = Math.min.apply(null, allVals) * 0.998;
+  var maxRtp = Math.max.apply(null, allVals) * 1.002;
+  if (maxRtp === minRtp) maxRtp = minRtp + 0.01;
+
+  // Draw axes
+  ctx.strokeStyle = '#999';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, h - pad.bottom);
+  ctx.lineTo(w - pad.right, h - pad.bottom);
+  ctx.stroke();
+
+  // Y axis labels
+  ctx.fillStyle = '#666';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  for (var i = 0; i <= 4; i++) {
+    var yVal = minRtp + (maxRtp - minRtp) * i / 4;
+    var yPos = h - pad.bottom - (i / 4) * plotH;
+    ctx.fillText((yVal * 100).toFixed(2) + '%', pad.left - 4, yPos + 3);
+    ctx.strokeStyle = '#eee';
+    ctx.beginPath(); ctx.moveTo(pad.left, yPos); ctx.lineTo(w - pad.right, yPos); ctx.stroke();
+  }
+
+  // Draw each series
+  series.forEach(function(s) {
+    var vals = history.map(function(h) { return h[s.key] || 0; });
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (var j = 0; j < vals.length; j++) {
+      var x = pad.left + (spins[j] - minSpin) / (maxSpin - minSpin) * plotW;
+      var y = h - pad.bottom - (vals[j] - minRtp) / (maxRtp - minRtp) * plotH;
+      if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // Dots
+    ctx.fillStyle = s.color;
+    for (var k = 0; k < vals.length; k++) {
+      var dx = pad.left + (spins[k] - minSpin) / (maxSpin - minSpin) * plotW;
+      var dy = h - pad.bottom - (vals[k] - minRtp) / (maxRtp - minRtp) * plotH;
+      ctx.beginPath(); ctx.arc(dx, dy, 3, 0, Math.PI * 2); ctx.fill();
+    }
+  });
+
+  // Legend
+  var legendX = pad.left + 10;
+  var legendY = pad.top + 4;
+  series.forEach(function(s, i) {
+    ctx.fillStyle = s.color;
+    ctx.fillRect(legendX, legendY + i * 14, 10, 10);
+    ctx.fillStyle = '#333';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(s.label, legendX + 14, legendY + i * 14 + 9);
+  });
+
+  // X axis label
+  ctx.fillStyle = '#666';
+  ctx.textAlign = 'center';
+  ctx.fillText('SPIN COUNT', w / 2, h - 4);
 }
 
 function fmt(v) {
