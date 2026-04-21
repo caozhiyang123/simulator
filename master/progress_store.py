@@ -1,4 +1,8 @@
-"""Local file storage for progress snapshots."""
+"""Local file storage for progress snapshots.
+
+Only keeps a single file (latest.json) that gets overwritten each time,
+avoiding the accumulation of thousands of small files.
+"""
 
 import json
 import os
@@ -6,16 +10,14 @@ from datetime import datetime, timezone
 
 
 class ProgressStore:
-    """Persists progress snapshots as JSON files in a local directory."""
+    """Persists the latest progress snapshot as a single JSON file."""
 
     def __init__(self, save_dir: str):
         self._save_dir = save_dir
+        self._filepath = os.path.join(save_dir, "latest.json")
 
     def save(self, snapshot: dict) -> str:
-        """Save a progress snapshot to a timestamped JSON file.
-
-        Automatically adds an ISO-format ``timestamp`` field if one is not
-        already present.  Creates the save directory when it does not exist.
+        """Save a progress snapshot, overwriting the previous one.
 
         Returns:
             The path of the written file.
@@ -28,39 +30,19 @@ class ProgressStore:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-        # Build a filesystem-safe filename from the timestamp
-        safe_ts = snapshot["timestamp"].replace(":", "-")
-        filename = f"progress_{safe_ts}.json"
-        filepath = os.path.join(self._save_dir, filename)
-
-        with open(filepath, "w", encoding="utf-8") as fh:
+        with open(self._filepath, "w", encoding="utf-8") as fh:
             json.dump(snapshot, fh, ensure_ascii=False, indent=2)
 
-        return filepath
+        return self._filepath
 
     def load_latest(self) -> dict | None:
         """Load the most recently saved progress snapshot.
 
         Returns:
-            The snapshot dict, or ``None`` when no snapshots exist (or the
-            directory itself is missing).
+            The snapshot dict, or None when no snapshot exists.
         """
-        if not os.path.isdir(self._save_dir):
+        if not os.path.isfile(self._filepath):
             return None
 
-        files = [
-            f for f in os.listdir(self._save_dir)
-            if f.startswith("progress_")
-            and f.endswith(".json")
-        ]
-
-        if not files:
-            return None
-
-        # Filenames are timestamped – lexicographic sort
-        # gives chronological order.
-        files.sort()
-        latest = os.path.join(self._save_dir, files[-1])
-
-        with open(latest, "r", encoding="utf-8") as fh:
+        with open(self._filepath, "r", encoding="utf-8") as fh:
             return json.load(fh)

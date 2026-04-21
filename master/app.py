@@ -53,7 +53,7 @@ poller = ProgressPoller(
 # ---------------------------------------------------------------------------
 MAX_RETRIES = 3
 RETRY_INTERVAL = 5  # seconds
-_last_saved_status = ""
+_last_saved_status = "idle"
 
 
 def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name: str = "", interval_count: int | None = None) -> dict:
@@ -340,9 +340,14 @@ def status():
         "model_results": aggregated_models,
     }
 
-    # Persist results when all nodes completed (save once)
+    # Persist results when completed or stopped (save once per state change)
     global _last_saved_status
-    if overall_status == "completed" and _last_saved_status != "completed" and aggregated_models:
+    should_save = (
+        overall_status in ("completed", "stopped", "idle")
+        and _last_saved_status in ("running", "completed")
+        and aggregated_models
+    )
+    if should_save:
         try:
             history_store.save_run(aggregated_models)
         except Exception:

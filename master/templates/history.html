@@ -16,6 +16,9 @@
   .btn-primary { background: #4a90d9; }
   .btn-primary:hover { background: #357abd; }
   .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-success { background: #27ae60; }
+  .btn-success:hover { background: #1e8449; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
   .run-card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); margin-bottom: 12px; }
   .run-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
   .run-header h3 { font-size: 14px; color: #333; }
@@ -88,9 +91,10 @@ function renderRuns(runs) {
   runs.forEach(function(run, i) {
     var ts = run.timestamp ? new Date(run.timestamp).toLocaleString() : run.filename;
     html += '<div class="run-card">';
-    html += '<div class="run-header" onclick="toggleRun(\'run_' + i + '\', \'' + run.filename + '\')">';
-    html += '<h3>📅 ' + ts + '</h3>';
-    html += '<span>' + run.model_count + ' models | ' + run.filename + '</span>';
+    html += '<div class="run-header">';
+    html += '<h3 style="flex:1;cursor:pointer;" onclick="toggleRun(\'run_' + i + '\', \'' + run.filename + '\')">📅 ' + ts + '</h3>';
+    html += '<span style="margin-right:8px;">' + run.model_count + ' models</span>';
+    html += '<button class="btn-success btn-sm" onclick="event.stopPropagation();downloadRun(\'' + run.filename + '\')">⬇ Download</button>';
     html += '</div>';
     html += '<div class="run-detail" id="run_' + i + '"></div>';
     html += '</div>';
@@ -99,15 +103,18 @@ function renderRuns(runs) {
 }
 
 function renderQueryResults(results) {
+  window._queryResults = results;  // store for download
   var el = document.getElementById('results');
   if (!results.length) { el.innerHTML = '<div class="no-data">No matching results</div>'; return; }
   var html = '';
   results.forEach(function(record, i) {
     var ts = record.timestamp ? new Date(record.timestamp).toLocaleString() : '';
+    var fname = record.timestamp ? record.timestamp.replace(/[:.]/g, '-') + '.json' : 'result_' + i + '.json';
     html += '<div class="run-card">';
-    html += '<div class="run-header" onclick="toggleRunInline(\'qrun_' + i + '\')">';
-    html += '<h3>📅 ' + ts + '</h3>';
-    html += '<span>' + Object.keys(record.models || {}).length + ' models</span>';
+    html += '<div class="run-header">';
+    html += '<h3 style="flex:1;cursor:pointer;" onclick="toggleRunInline(\'qrun_' + i + '\')">📅 ' + ts + '</h3>';
+    html += '<span style="margin-right:8px;">' + Object.keys(record.models || {}).length + ' models</span>';
+    html += '<button class="btn-success btn-sm" onclick="event.stopPropagation();downloadQueryResult(' + i + ')">⬇ Download</button>';
     html += '</div>';
     html += '<div class="run-detail" id="qrun_' + i + '" style="display:none;">';
     html += renderModels(record.models || {});
@@ -132,6 +139,8 @@ function toggleRunInline(divId) {
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
+var _histChartCounter = 0;
+
 function renderModels(models) {
   var html = '';
   var names = Object.keys(models).sort();
@@ -139,24 +148,190 @@ function renderModels(models) {
     var m = models[name];
     var latest = m.latest || m;
     var history = m.history || [];
+    var mid = 'hm_' + (_histChartCounter++);
+    var detailId = mid + '_detail';
+    var histId = mid + '_hist';
+    var chartId = mid + '_chart';
+
     html += '<div class="model-block">';
-    html += '<h4>' + name + '</h4>';
+    html += '<div style="display:flex;align-items:center;gap:8px;">';
+    html += '<h4 style="cursor:pointer;" onclick="toggleEl(\'' + detailId + '\')">▶ ' + name + '</h4>';
+    html += '<button class="btn-primary btn-sm" onclick="event.stopPropagation();copyModelTable(\'' + detailId + '\',this)">📋 Copy</button>';
+    if (history.length > 1) {
+      html += '<button class="btn-primary btn-sm" onclick="toggleVolcano(\'' + chartId + '\',\'' + mid + '\')">📊 Volcano</button>';
+    }
+    html += '</div>';
+
+    // Volcano chart (hidden)
+    html += '<div id="' + chartId + '" style="display:none;margin:8px 0;"><canvas id="canvas_' + mid + '" width="600" height="200" style="width:100%;border:1px solid #ddd;border-radius:4px;"></canvas></div>';
+
+    // Collapsible detail (hidden by default)
+    html += '<div id="' + detailId + '" style="display:none;">';
     html += '<table><tr><th>Metric</th><th>Value</th></tr>';
     html += '<tr><td>SPIN COUNT</td><td>' + fmt(latest.spin_count) + '</td></tr>';
     html += '<tr><td>TOTAL RTP</td><td>' + fmtPct(latest.total_rtp) + '</td></tr>';
     html += '<tr><td>BASE RTP</td><td>' + fmtPct(latest.base_rtp) + '</td></tr>';
     html += '<tr><td>EB RTP</td><td>' + fmtPct(latest.eb_rtp) + '</td></tr>';
     html += '</table>';
+
     if (history.length > 0) {
-      html += '<table style="margin-top:6px;"><tr><th>SPIN COUNT</th><th>TOTAL RTP</th><th>BASE RTP</th><th>EB RTP</th></tr>';
+      html += '<div style="margin-top:6px;"><span style="font-size:12px;cursor:pointer;color:#666;" onclick="toggleEl(\'' + histId + '\')">▶ History (' + history.length + ' snapshots)</span>';
+      html += '<div id="' + histId + '" style="display:none;">';
+      html += '<table style="margin-top:4px;"><tr><th>SPIN COUNT</th><th>TOTAL RTP</th><th>BASE RTP</th><th>EB RTP</th></tr>';
       history.forEach(function(h) {
         html += '<tr><td>' + fmt(h.spin_count) + '</td><td>' + fmtPct(h.total_rtp) + '</td><td>' + fmtPct(h.base_rtp) + '</td><td>' + fmtPct(h.eb_rtp) + '</td></tr>';
       });
-      html += '</table>';
+      html += '</table></div></div>';
     }
-    html += '</div>';
+
+    html += '</div></div>';
+
+    // Store history data for chart
+    if (!window._histModels) window._histModels = {};
+    window._histModels[mid] = history;
   });
   return html;
+}
+
+function toggleEl(id) {
+  var el = document.getElementById(id);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleVolcano(chartId, mid) {
+  var el = document.getElementById(chartId);
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    drawHistVolcano('canvas_' + mid, mid);
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function drawHistVolcano(canvasId, mid) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas || !window._histModels || !window._histModels[mid]) return;
+  var history = window._histModels[mid];
+  if (history.length < 2) return;
+
+  var ctx = canvas.getContext('2d');
+  var w = canvas.width, h = canvas.height;
+  var pad = {top: 20, right: 20, bottom: 30, left: 60};
+  var plotW = w - pad.left - pad.right;
+  var plotH = h - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#fafafa';
+  ctx.fillRect(0, 0, w, h);
+
+  var spins = history.map(function(h) { return h.spin_count || 0; });
+  var maxSpin = Math.max.apply(null, spins);
+  var minSpin = Math.min.apply(null, spins);
+  if (maxSpin === minSpin) maxSpin = minSpin + 1;
+
+  var series = [
+    {key: 'total_rtp', label: 'TOTAL RTP', color: '#e74c3c'},
+    {key: 'base_rtp', label: 'BASE RTP', color: '#2980b9'},
+    {key: 'eb_rtp', label: 'EB RTP', color: '#27ae60'},
+  ];
+
+  var allVals = [];
+  series.forEach(function(s) { history.forEach(function(h) { allVals.push(h[s.key] || 0); }); });
+  var minRtp = Math.min.apply(null, allVals) * 0.998;
+  var maxRtp = Math.max.apply(null, allVals) * 1.002;
+  if (maxRtp === minRtp) maxRtp = minRtp + 0.01;
+
+  // Axes
+  ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.left, pad.top); ctx.lineTo(pad.left, h - pad.bottom); ctx.lineTo(w - pad.right, h - pad.bottom); ctx.stroke();
+
+  // Y labels
+  ctx.fillStyle = '#666'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  for (var i = 0; i <= 4; i++) {
+    var yVal = minRtp + (maxRtp - minRtp) * i / 4;
+    var yPos = h - pad.bottom - (i / 4) * plotH;
+    ctx.fillText((yVal * 100).toFixed(2) + '%', pad.left - 4, yPos + 3);
+    ctx.strokeStyle = '#eee'; ctx.beginPath(); ctx.moveTo(pad.left, yPos); ctx.lineTo(w - pad.right, yPos); ctx.stroke();
+  }
+
+  // Lines
+  series.forEach(function(s) {
+    var vals = history.map(function(h) { return h[s.key] || 0; });
+    ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.beginPath();
+    for (var j = 0; j < vals.length; j++) {
+      var x = pad.left + (spins[j] - minSpin) / (maxSpin - minSpin) * plotW;
+      var y = h - pad.bottom - (vals[j] - minRtp) / (maxRtp - minRtp) * plotH;
+      if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = s.color;
+    for (var k = 0; k < vals.length; k++) {
+      var dx = pad.left + (spins[k] - minSpin) / (maxSpin - minSpin) * plotW;
+      var dy = h - pad.bottom - (vals[k] - minRtp) / (maxRtp - minRtp) * plotH;
+      ctx.beginPath(); ctx.arc(dx, dy, 3, 0, Math.PI * 2); ctx.fill();
+    }
+  });
+
+  // Legend
+  var lx = pad.left + 10, ly = pad.top + 4;
+  series.forEach(function(s, i) {
+    ctx.fillStyle = s.color; ctx.fillRect(lx, ly + i * 14, 10, 10);
+    ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(s.label, lx + 14, ly + i * 14 + 9);
+  });
+
+  ctx.fillStyle = '#666'; ctx.textAlign = 'center';
+  ctx.fillText('SPIN COUNT', w / 2, h - 4);
+}
+
+function copyModelTable(detailId, btnEl) {
+  var el = document.getElementById(detailId);
+  if (!el) return;
+  var tables = el.querySelectorAll('table');
+  var text = '';
+  tables.forEach(function(table) {
+    table.querySelectorAll('tr').forEach(function(row) {
+      var cells = row.querySelectorAll('th, td');
+      var line = [];
+      cells.forEach(function(cell) { line.push(cell.textContent.trim()); });
+      text += line.join('\t') + '\n';
+    });
+    text += '\n';
+  });
+  navigator.clipboard.writeText(text.trim()).then(function() {
+    if (btnEl) {
+      var orig = btnEl.textContent;
+      btnEl.textContent = '✅ Copied';
+      btnEl.disabled = true;
+      setTimeout(function() { btnEl.textContent = orig; btnEl.disabled = false; }, 3000);
+    }
+  });
+}
+
+async function downloadRun(filename) {
+  var r = await fetch('/history/load?filename=' + encodeURIComponent(filename));
+  var data = await r.json();
+  downloadJson(JSON.stringify(data, null, 2), filename);
+}
+
+function downloadJson(jsonStr, filename) {
+  var blob = new Blob([jsonStr], {type: 'application/json'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadQueryResult(index) {
+  if (!window._queryResults || !window._queryResults[index]) return;
+  var record = window._queryResults[index];
+  var ts = record.timestamp ? record.timestamp.replace(/[:.]/g, '-') : 'result_' + index;
+  downloadJson(JSON.stringify(record, null, 2), ts + '.json');
 }
 
 loadAll();
