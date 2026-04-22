@@ -33,6 +33,7 @@ class ClusterConfig:
         self._allocation_mode: str = "vcpu"
         self._progress_save_dir: str = "./progress_data"
         self._simulator_dir: str = ""
+        self._production_dir: str = ""
 
         if os.path.exists(config_path):
             self._load(config_path)
@@ -62,6 +63,7 @@ class ClusterConfig:
         self._allocation_mode = data.get("allocation_mode", "vcpu")
         self._progress_save_dir = data.get("progress_save_dir", "./progress_data")
         self._simulator_dir = data.get("simulator_dir", "")
+        self._production_dir = data.get("production_dir", "")
 
     def _save(self):
         """Persist current config back to config.json."""
@@ -72,6 +74,7 @@ class ClusterConfig:
             "allocation_mode": self._allocation_mode,
             "progress_save_dir": self._progress_save_dir,
             "simulator_dir": self._simulator_dir,
+            "production_dir": self._production_dir,
         }
         with open(self._config_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -164,6 +167,10 @@ class ClusterConfig:
     @property
     def simulator_dir(self) -> str:
         return self._simulator_dir
+
+    @property
+    def production_dir(self) -> str:
+        return self._production_dir
 
     @property
     def workers(self) -> list[dict]:

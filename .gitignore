@@ -4,3 +4,6 @@
 .vscode
 progress_data/
 master/data
+master/build
+worker/build
+worker/dist

@@ -40,7 +40,7 @@ splitter = TaskSplitter()
 merger = ResultMerger()
 progress_store = ProgressStore(config.progress_save_dir)
 history_store = HistoryStore(os.path.join(os.path.dirname(__file__), "data"))
-sim_runner = SimulatorRunner(config.simulator_dir)
+sim_runner = SimulatorRunner(config.simulator_dir, config.production_dir)
 file_sync = FileSync(config.simulator_dir, "")
 poller = ProgressPoller(
     interval=config.get_poll_interval(),
@@ -54,9 +54,10 @@ poller = ProgressPoller(
 MAX_RETRIES = 3
 RETRY_INTERVAL = 5  # seconds
 _last_saved_status = "idle"
+_has_been_running = False
 
 
-def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name: str = "", interval_count: int | None = None) -> dict:
+def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name: str = "", interval_count: int | None = None, sim_type: str = "production") -> dict:
     """Send POST /start to a worker with retry logic.
 
     Returns dict with keys: node, success, retries, error (optional).
@@ -65,7 +66,7 @@ def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name
         try:
             response = http_requests.post(
                 f"http://{worker_addr}/start",
-                json={"spins": spins, "job_id": job_id, "game_name": game_name, "interval_count": interval_count},
+                json={"spins": spins, "job_id": job_id, "game_name": game_name, "interval_count": interval_count, "sim_type": sim_type},
                 timeout=10,
             )
             if response.status_code == 200:
@@ -75,11 +76,14 @@ def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name
                     "retries": attempt - 1,
                 }
             if response.status_code == 409:
+                detail = response.json() if response.text else {}
                 return {
                     "node": worker_addr,
                     "success": False,
                     "retries": attempt - 1,
-                    "error": "Task conflict",
+                    "error": "Task already running on worker"
+                    + (f" (job: {detail['job_id']})" if detail.get("job_id") else "")
+                    + ", stop it first",
                 }
         except http_requests.RequestException as exc:
             if attempt < MAX_RETRIES:
@@ -133,6 +137,7 @@ def start():
     mode = data.get("mode", config.get_allocation_mode())
     game_name = data.get("game_name", "")
     interval_count = data.get("interval_count")
+    sim_type = data.get("sim_type", "production")
     selected_nodes = data.get("selected_nodes")  # None means all
 
     if not game_name:
@@ -171,7 +176,7 @@ def start():
     master_spins = allocation.get("master", 0)
     if master_spins > 0:
         try:
-            started = sim_runner.start(master_spins, job_id, game_name, interval_count)
+            started = sim_runner.start(master_spins, job_id, game_name, interval_count, sim_type)
             results.append({
                 "node": "master",
                 "success": started,
@@ -190,13 +195,16 @@ def start():
     for addr in worker_addrs:
         spins = allocation.get(addr, 0)
         if spins > 0:
-            result = start_worker_with_retry(addr, spins, job_id, game_name, interval_count)
+            result = start_worker_with_retry(addr, spins, job_id, game_name, interval_count, sim_type)
             results.append(result)
 
     # Start poller
     poller.start(worker_addrs)
 
     all_ok = all(r.get("success") for r in results)
+    if all_ok:
+        global _has_been_running
+        _has_been_running = True
     return jsonify({
         "status": "success" if all_ok else "partial_failure",
         "job_id": job_id,
@@ -209,6 +217,10 @@ def status():
     """获取汇总进度/结果，实时按 model 跨节点汇总，保留历史快照。"""
     snapshot = poller.get_snapshot()
     nodes_data = snapshot.get("nodes", {})
+
+    # If poller hasn't collected yet, get master status directly
+    if not nodes_data:
+        nodes_data = {"master(local)": sim_runner.get_status()}
 
     statuses = []
     nodes_info = []
@@ -341,15 +353,18 @@ def status():
     }
 
     # Persist results when completed or stopped (save once per state change)
-    global _last_saved_status
+    global _last_saved_status, _has_been_running
+    if overall_status == "running":
+        _has_been_running = True
     should_save = (
         overall_status in ("completed", "stopped", "idle")
-        and _last_saved_status in ("running", "completed")
+        and (_last_saved_status in ("running", "completed") or _has_been_running)
         and aggregated_models
     )
     if should_save:
         try:
             history_store.save_run(aggregated_models)
+            _has_been_running = False
         except Exception:
             pass
     _last_saved_status = overall_status
@@ -367,13 +382,14 @@ def start_master():
     spins = data.get("spins")
     game_name = data.get("game_name", "")
     interval_count = data.get("interval_count")
+    sim_type = data.get("sim_type", "production")
     job_id = str(uuid.uuid4())
 
     if not game_name:
         return jsonify({"status": "error", "message": "game_name is required"}), 400
 
     try:
-        started = sim_runner.start(spins, job_id, game_name, interval_count)
+        started = sim_runner.start(spins, job_id, game_name, interval_count, sim_type)
     except RuntimeError as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
 
@@ -385,6 +401,9 @@ def start_master():
 
     # Ensure poller is running to collect status
     poller.start([w["addr"] for w in config.workers])
+
+    global _has_been_running
+    _has_been_running = True
 
     return jsonify({
         "status": "started",
@@ -404,6 +423,7 @@ def start_worker():
     spins = data.get("spins")
     game_name = data.get("game_name", "")
     interval_count = data.get("interval_count")
+    sim_type = data.get("sim_type", "production")
     job_id = str(uuid.uuid4())
 
     # Check worker exists in config
@@ -414,7 +434,7 @@ def start_worker():
             "addr": worker_addr,
         }), 404
 
-    result = start_worker_with_retry(worker_addr, spins, job_id, game_name, interval_count)
+    result = start_worker_with_retry(worker_addr, spins, job_id, game_name, interval_count, sim_type)
 
     # Ensure poller is running to collect status
     poller.start([w["addr"] for w in config.workers])
@@ -429,6 +449,17 @@ def stop_master():
     if stopped:
         return jsonify({"status": "stopped", "message": "Master simulator stopped"})
     return jsonify({"status": "error", "message": "No running task to stop"}), 400
+
+
+@app.route("/clear-results", methods=["POST"])
+def clear_results():
+    """清除当前 Per-Model Results 记录。"""
+    global _last_saved_status, _has_been_running
+    sim_runner.clear_results()
+    poller.clear_snapshot()
+    _last_saved_status = "idle"
+    _has_been_running = False
+    return jsonify({"status": "ok", "message": "Results cleared"})
 
 
 @app.route("/stop-worker", methods=["POST"])

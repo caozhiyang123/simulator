@@ -1,4 +1,5 @@
 {
   "simulator_dir": "D:\\tools2\\b2b\\B2BBMM\\B2BSimulator",
+  "production_dir": "E:\\python\\workSpace\\temp\\ShowBingoSim",
   "port": 5001
 }

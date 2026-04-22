@@ -88,6 +88,11 @@ class ProgressPoller:
         with self._snapshot_lock:
             return dict(self._snapshot)
 
+    def clear_snapshot(self) -> None:
+        """Clear the cached progress snapshot."""
+        with self._snapshot_lock:
+            self._snapshot = {}
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------

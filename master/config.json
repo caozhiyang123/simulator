@@ -32,5 +32,6 @@
   "poll_interval": 2.0,
   "allocation_mode": "vcpu",
   "progress_save_dir": "./progress_data",
-  "simulator_dir": "D:\\tools2\\b2b\\B2BBMM\\B2BSimulator"
+  "simulator_dir": "D:\\tools2\\b2b\\B2BBMM\\B2BSimulator",
+  "production_dir": "E:\\python\\workSpace\\temp\\ShowBingoSim"
 }

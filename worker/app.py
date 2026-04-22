@@ -36,9 +36,10 @@ if os.path.exists(_config_path):
         _config = json.load(_f)
 
 SIMULATOR_DIR = os.environ.get("SIMULATOR_DIR", _config.get("simulator_dir", ""))
+PRODUCTION_DIR = os.environ.get("PRODUCTION_DIR", _config.get("production_dir", ""))
 PORT = int(os.environ.get("PORT", _config.get("port", 5001)))
 
-runner = SimulatorRunner(SIMULATOR_DIR)
+runner = SimulatorRunner(SIMULATOR_DIR, PRODUCTION_DIR)
 
 
 @app.route("/start", methods=["POST"])
@@ -55,9 +56,10 @@ def start():
     job_id = data.get("job_id")
     game_name = data.get("game_name", "")
     interval_count = data.get("interval_count")
+    sim_type = data.get("sim_type", "production")
 
     try:
-        started = runner.start(spins, job_id, game_name, interval_count)
+        started = runner.start(spins, job_id, game_name, interval_count, sim_type)
     except RuntimeError as exc:
         return jsonify({
             "error": "Failed to start simulator",

@@ -65,6 +65,11 @@
   <!-- Batch Start -->
   <div class="card">
     <h2>📦 Batch Start</h2>
+    <label>Type</label>
+    <select id="batchSimType">
+      <option value="production" selected>Production</option>
+      <option value="test">Test</option>
+    </select>
     <label>Game</label>
     <select id="batchGameName" class="game-select"></select>
     <label>Total Spins</label>
@@ -81,6 +86,11 @@
   <!-- Single Start -->
   <div class="card">
     <h2>🚀 Single Start</h2>
+    <label>Type</label>
+    <select id="singleSimType">
+      <option value="production" selected>Production</option>
+      <option value="test">Test</option>
+    </select>
     <label>Game</label>
     <select id="singleGameName" class="game-select"></select>
     <div class="row">
@@ -170,6 +180,7 @@
 // ---------------------------------------------------------------------------
 let nodes = [];          // [{addr, vcpu, percentage}, ...]
 let autoRefreshTimer = null;
+let autoRefreshAutoStarted = false;  // true when auto-refresh was started by simulation
 let autoLogsTimer = null;
 let logSinceMap = {};  // {nodeKey: sinceLineNumber}
 let activeLogTab = 'master';
@@ -202,6 +213,15 @@ let runningNodes = {};  // {nodeAddr: true/false}
 function setNodeRunning(addr, running) {
   runningNodes[addr] = running;
   updateButtonStates();
+  // Auto-enable status polling when any node starts running
+  if (running && !autoRefreshTimer) {
+    var interval = parseFloat(document.getElementById('pollInterval').value) || 2;
+    autoRefreshTimer = setInterval(getStatus, interval * 1000);
+    autoRefreshAutoStarted = true;
+    document.getElementById('autoRefreshBtn').textContent = 'Disable Auto Refresh';
+    log('▶ Auto refresh enabled (simulation started)');
+    getStatus();
+  }
 }
 
 function updateButtonStates() {
@@ -267,8 +287,9 @@ async function startBatch() {
   const selectedNodes = Array.from(checkboxes).map(function(cb) { return cb.value; });
   if (selectedNodes.length === 0) { showAlert('Please select at least one simulator'); return; }
   var intervalCount = parseInt(document.getElementById('batchIntervalCount').value) || spins;
-  log('🚀 Batch start: game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount + ', mode=' + mode + ', nodes=' + selectedNodes.join(','));
-  const r = await api('/start', 'POST', { total_spins: spins, interval_count: intervalCount, mode, game_name: gameName, selected_nodes: selectedNodes });
+  var simType = document.getElementById('batchSimType').value;
+  log('🚀 Batch start: type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount + ', mode=' + mode + ', nodes=' + selectedNodes.join(','));
+  const r = await api('/start', 'POST', { total_spins: spins, interval_count: intervalCount, mode, game_name: gameName, selected_nodes: selectedNodes, sim_type: simType });
   if (r.ok) {
     log('✅ Batch start completed: ' + r.data.status);
     if (r.data.results) {
@@ -291,8 +312,9 @@ async function startMaster() {
   const gameName = document.getElementById('singleGameName').value;
   if (!gameName) { showAlert('Please select a game'); return; }
   var intervalCount = parseInt(document.getElementById('singleIntervalCount').value) || spins;
-  log('🚀 Start Master: game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount);
-  const r = await api('/start-master', 'POST', { spins, interval_count: intervalCount, game_name: gameName });
+  var simType = document.getElementById('singleSimType').value;
+  log('🚀 Start Master: type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount);
+  const r = await api('/start-master', 'POST', { spins, interval_count: intervalCount, game_name: gameName, sim_type: simType });
   if (r.ok) { log('✅ ' + r.data.message); setNodeRunning('master', true); }
 }
 
@@ -305,23 +327,54 @@ async function startWorker(addr) {
   const gameName = document.getElementById('singleGameName').value;
   if (!gameName) { showAlert('Please select a game'); return; }
   var intervalCount = parseInt(document.getElementById('singleIntervalCount').value) || spins;
-  log('🚀 Start Worker ' + addr + ': game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount);
-  const r = await api('/start-worker', 'POST', { worker_addr: addr, spins, interval_count: intervalCount, game_name: gameName });
+  var simType = document.getElementById('singleSimType').value;
+  log('🚀 Start Worker ' + addr + ': type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount);
+  const r = await api('/start-worker', 'POST', { worker_addr: addr, spins, interval_count: intervalCount, game_name: gameName, sim_type: simType });
   if (r.ok) { log('✅ Worker ' + addr + ' start request sent'); setNodeRunning(addr, true); }
 }
 
 // ---------------------------------------------------------------------------
 // Status
 // ---------------------------------------------------------------------------
+async function clearResults() {
+  if (!confirm('Clear all Per-Model Results?')) return;
+  var r = await api('/clear-results', 'POST', {});
+  if (r.ok) {
+    log('🗑 Results cleared');
+    expandedModels = {};
+    expandedCharts = {};
+    expandedHistory = {};
+    getStatus();
+  }
+}
+
 async function getStatus() {
   const r = await api('/status', 'GET');
   if (!r.ok) return;
-  // Sync runningNodes from backend status
-  if (r.data.nodes) {
+  // Sync runningNodes from backend status (only when nodes are reported)
+  if (r.data.nodes && r.data.nodes.length > 0) {
     r.data.nodes.forEach(function(n) {
-      runningNodes[n.addr] = (n.status === 'running');
+      var wasRunning = runningNodes[n.addr];
+      var isRunning = (n.status === 'running');
+      // Reset log offset when a node starts a new run
+      if (isRunning && !wasRunning) {
+        var logKey = n.addr === 'master' ? 'master' : n.addr;
+        logSinceMap[logKey] = 0;
+        var panel = document.getElementById(safeId(logKey));
+        if (panel) panel.textContent = '';
+      }
+      runningNodes[n.addr] = isRunning;
     });
     updateButtonStates();
+    // Auto-disable polling when no nodes are running (only if auto-started)
+    var anyRunning = Object.values(runningNodes).some(function(v) { return v; });
+    if (!anyRunning && autoRefreshTimer && autoRefreshAutoStarted) {
+      clearInterval(autoRefreshTimer);
+      autoRefreshTimer = null;
+      autoRefreshAutoStarted = false;
+      document.getElementById('autoRefreshBtn').textContent = 'Enable Auto Refresh';
+      log('⏸ Auto refresh disabled (all nodes finished)');
+    }
   }
   renderStatus(r.data);
 }
@@ -348,15 +401,10 @@ function renderStatus(data) {
 
   // Per-model aggregated results with progress bar and volcano chart
   if (data.model_results && Object.keys(data.model_results).length > 0) {
-    var totalModels = Object.keys(data.model_results).length;
-    var maxModels = 0;
-    if (data.nodes && data.nodes.length) {
-      data.nodes.forEach(function(n) { if (n.models_total > maxModels) maxModels = n.models_total; });
-    }
-    var pct = maxModels > 0 ? Math.round(totalModels / maxModels * 100) : 0;
-    html += '<h3 style="margin-top:12px;font-size:14px;">📈 Per-Model Results (' + totalModels + '/' + (maxModels || '?') + ')</h3>';
-    html += '<div style="background:#e0e0e0;border-radius:4px;height:8px;margin-bottom:12px;">';
-    html += '<div style="background:#27ae60;height:100%;border-radius:4px;width:' + pct + '%;transition:width 0.3s;"></div></div>';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-top:12px;margin-bottom:8px;">';
+    html += '<h3 style="font-size:14px;margin:0;">📈 Per-Model Results</h3>';
+    html += '<button class="btn-danger btn-sm" onclick="clearResults()">🗑 Clear</button>';
+    html += '</div>';
 
     var models = Object.entries(data.model_results).sort(function(a, b) { return a[0].localeCompare(b[0]); });
     models.forEach(function(entry, idx) {
@@ -367,10 +415,23 @@ function renderStatus(data) {
       var modelId = 'model_' + idx;
       var chartId = 'chart_' + idx;
 
+      // Parse open card info from composite key "open N card | filename"
+      var openCard = '';
+      var displayName = name;
+      if (name.indexOf(' | ') !== -1) {
+        var parts = name.split(' | ');
+        openCard = parts[0];
+        displayName = parts[1];
+      }
+
       html += '<div style="margin-top:8px;padding:8px;border:1px solid #e0e0e0;border-radius:6px;">';
       html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
       html += '<span style="font-weight:600;font-size:13px;cursor:pointer;" onclick="toggleModel(\'' + modelId + '\')">';
-      html += '▶ ' + name + '</span>';
+      if (openCard) {
+        html += '▶ <span style="color:#e67e22;">[' + openCard + ']</span> ' + displayName + '</span>';
+      } else {
+        html += '▶ ' + displayName + '</span>';
+      }
       html += '<span style="font-size:11px;color:#888;">(nodes: ' + (latest.node_count || 1) + ')</span>';
       var isSingleNode = (latest.node_count || 1) <= 1;
       if (history.length > 1) {
@@ -614,6 +675,7 @@ function toggleAutoRefresh() {
   if (autoRefreshTimer) {
     clearInterval(autoRefreshTimer);
     autoRefreshTimer = null;
+    autoRefreshAutoStarted = false;
     btn.textContent = 'Enable Auto Refresh';
     log('⏸ Auto refresh disabled');
   } else {

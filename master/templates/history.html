@@ -155,7 +155,20 @@ function renderModels(models) {
 
     html += '<div class="model-block">';
     html += '<div style="display:flex;align-items:center;gap:8px;">';
-    html += '<h4 style="cursor:pointer;" onclick="toggleEl(\'' + detailId + '\')">▶ ' + name + '</h4>';
+
+    // Parse open card info from composite key "open N card | filename"
+    var openCard = '';
+    var displayName = name;
+    if (name.indexOf(' | ') !== -1) {
+      var parts = name.split(' | ');
+      openCard = parts[0];
+      displayName = parts[1];
+    }
+
+    var headerLabel = openCard
+      ? '<span style="color:#e67e22;">[' + openCard + ']</span> ' + displayName
+      : displayName;
+    html += '<h4 style="cursor:pointer;" onclick="toggleEl(\'' + detailId + '\')">▶ ' + headerLabel + '</h4>';
     html += '<button class="btn-primary btn-sm" onclick="event.stopPropagation();copyModelTable(\'' + detailId + '\',this)">📋 Copy</button>';
     if (history.length > 1) {
       html += '<button class="btn-primary btn-sm" onclick="toggleVolcano(\'' + chartId + '\',\'' + mid + '\')">📊 Volcano</button>';

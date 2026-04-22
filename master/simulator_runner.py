@@ -20,13 +20,16 @@ logger = logging.getLogger(__name__)
 class SimulatorRunner:
     """管理 Master 本地模拟器子进程的启动、状态查询和结果获取。"""
 
-    def __init__(self, simulator_dir: str):
+    def __init__(self, simulator_dir: str, production_dir: str = ""):
         """初始化 SimulatorRunner。
 
         Args:
-            simulator_dir: 模拟器根目录，如 D:\\tools2\\b2b\\B2BBMM\\B2BSimulator
+            simulator_dir: test 模式模拟器根目录
+            production_dir: production 模式模拟器根目录
         """
         self._simulator_dir = simulator_dir
+        self._production_dir = production_dir
+        self._sim_type: str = "test"
         self._game_name: str = ""
         self._lock = threading.Lock()
         self._status = "idle"
@@ -47,34 +50,58 @@ class SimulatorRunner:
         self._completed_models: set = set()
         self._current_snapshot_dirty: bool = False
         self._last_spin_count: int = 0
+        self._current_open_card: str = ""  # e.g. "open 1 card"
+
+    @property
+    def _active_dir(self) -> str:
+        """Return the active simulator directory based on sim_type."""
+        if self._sim_type == "production":
+            return self._production_dir
+        return self._simulator_dir
 
     @property
     def _properties_path(self) -> str:
         return os.path.join(
-            self._simulator_dir, "simulator", "B2BGameSimulator",
+            self._active_dir, "simulator", "B2BGameSimulator",
             "config", "stresstest.properties"
         )
 
     @property
     def _simulation_result_dir(self) -> str:
         return os.path.join(
-            self._simulator_dir, "math", self._game_name,
+            self._active_dir, "math", self._game_name,
             "simulationResult"
         )
 
     def _write_spin_times(self, spins: int, interval_count: int | None = None) -> None:
         """覆盖 stresstest.properties 中的 spinTimes 和 intervalCount 值。
 
-        Args:
-            spins: spinTimes 的值
-            interval_count: intervalCount 的值，默认与 spins 相同
+        For production mode, writes to all SimC*/simulator/B2BGameSimulator/config/stresstest.properties.
+        For test mode, writes to the single properties file.
         """
         ic = interval_count if interval_count is not None else spins
-        path = self._properties_path
+
+        if self._sim_type == "production":
+            # Write to all SimC* subdirectories
+            prod_dir = self._production_dir
+            if os.path.isdir(prod_dir):
+                for entry in os.listdir(prod_dir):
+                    entry_path = os.path.join(prod_dir, entry)
+                    if os.path.isdir(entry_path) and entry.startswith("SimC"):
+                        props = os.path.join(
+                            entry_path, "simulator", "B2BGameSimulator",
+                            "config", "stresstest.properties"
+                        )
+                        self._write_properties_file(props, spins, ic)
+                        logger.info("Updated %s: spinTimes=%d, intervalCount=%d", props, spins, ic)
+        else:
+            self._write_properties_file(self._properties_path, spins, ic)
+
+    def _write_properties_file(self, path: str, spins: int, ic: int) -> None:
+        """Write spinTimes and intervalCount to a single properties file."""
         if os.path.isfile(path):
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()
-            # 替换 spinTimes
             new_content = re.sub(
                 r"^spinTimes\s*=\s*.*$",
                 f"spinTimes={spins}",
@@ -83,7 +110,6 @@ class SimulatorRunner:
             )
             if f"spinTimes={spins}" not in new_content:
                 new_content = new_content.rstrip("\n") + f"\nspinTimes={spins}\n"
-            # 替换 intervalCount
             new_content = re.sub(
                 r"^intervalCount\s*=\s*.*$",
                 f"intervalCount={ic}",
@@ -95,6 +121,7 @@ class SimulatorRunner:
         else:
             new_content = f"spinTimes={spins}\nintervalCount={ic}\n"
 
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(new_content)
 
@@ -111,15 +138,30 @@ class SimulatorRunner:
         return None
 
     def _get_start_command(self) -> str:
-        """根据操作系统自动选择启动脚本。"""
-        sim_base = os.path.join(
+        """根据 sim_type 和操作系统选择启动脚本。"""
+        if self._sim_type == "production":
+            # Production: start_all.bat in production_dir
+            if platform.system() == "Windows":
+                return os.path.join(self._production_dir, "start_all.bat")
+            return os.path.join(self._production_dir, "start_all.sh")
+        else:
+            # Test: run.bat in simulator_dir
+            sim_base = os.path.join(
+                self._simulator_dir, "simulator", "B2BGameSimulator"
+            )
+            if platform.system() == "Windows":
+                return os.path.join(sim_base, "run.bat")
+            return os.path.join(sim_base, "run.sh")
+
+    def _get_start_cwd(self) -> str:
+        """Get the working directory for the simulator process."""
+        if self._sim_type == "production":
+            return self._production_dir
+        return os.path.join(
             self._simulator_dir, "simulator", "B2BGameSimulator"
         )
-        if platform.system() == "Windows":
-            return os.path.join(sim_base, "run.bat")
-        return os.path.join(sim_base, "run.sh")
 
-    def start(self, spins: int, job_id: str, game_name: str = "", interval_count: int | None = None) -> bool:
+    def start(self, spins: int, job_id: str, game_name: str = "", interval_count: int | None = None, sim_type: str = "production") -> bool:
         """在独立线程中启动本地模拟器子进程。
 
         自动检测 OS 选择 run.bat 或 run.sh。
@@ -140,6 +182,9 @@ class SimulatorRunner:
             if self._status == "running":
                 return False
 
+            self._sim_type = sim_type
+            self._game_name = game_name
+
             # 覆盖 spinTimes
             try:
                 self._write_spin_times(spins, interval_count)
@@ -151,7 +196,6 @@ class SimulatorRunner:
             # 重置状态
             self._status = "running"
             self._job_id = job_id
-            self._game_name = game_name
             self._progress = 0
             self._result = None
             self._error = None
@@ -164,6 +208,7 @@ class SimulatorRunner:
             self._completed_models = set()
             self._current_snapshot_dirty = False
             self._last_spin_count = 0
+            self._current_open_card = ""
 
         # 在独立线程中启动子进程
         self._thread = threading.Thread(
@@ -190,6 +235,13 @@ class SimulatorRunner:
         """
         stripped = line.strip()
 
+        # Detect "=== open N card(s) ===" lines (production mode)
+        if re.match(r"^===\s*open\s+\d+\s+cards?\s*===$", stripped):
+            m = re.search(r"open\s+(\d+)\s+cards?", stripped)
+            if m:
+                self._current_open_card = f"open {m.group(1)} card"
+            return
+
         # Detect new model start: "working on:filename.json N/M"
         if stripped.startswith("working on:"):
             self._finalize_current_snapshot()
@@ -200,7 +252,12 @@ class SimulatorRunner:
 
             rest = stripped[len("working on:"):].strip()
             parts = rest.split()
-            model_name = parts[0] if parts else rest
+            raw_name = parts[0] if parts else rest
+            # Build composite key: "open N card | filename" when open card is set
+            if self._current_open_card:
+                model_name = f"{self._current_open_card} | {raw_name}"
+            else:
+                model_name = raw_name
             self._current_model = model_name
             self._current_model_data = {}
             self._current_snapshot_dirty = False
@@ -274,9 +331,7 @@ class SimulatorRunner:
         cmd = self._get_start_command()
         try:
             logger.info("Starting local simulator: %s", cmd)
-            sim_cwd = os.path.join(
-                self._simulator_dir, "simulator", "B2BGameSimulator"
-            )
+            sim_cwd = self._get_start_cwd()
             self._process = subprocess.Popen(
                 [cmd],
                 cwd=sim_cwd,
@@ -388,6 +443,19 @@ class SimulatorRunner:
             self._process = None
             self._output_lines.append("[STOPPED] Simulator stopped manually")
         return True
+
+    def clear_results(self) -> None:
+        """Clear all model results and reset status to idle."""
+        with self._lock:
+            self._model_results = {}
+            self._current_model = None
+            self._current_model_data = {}
+            self._models_total = 0
+            self._models_completed = 0
+            self._completed_models = set()
+            self._current_open_card = ""
+            if self._status != "running":
+                self._status = "idle"
 
     def get_logs(self, since: int = 0) -> dict:
         """获取模拟器输出日志。
