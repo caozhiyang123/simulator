@@ -27,6 +27,14 @@
       "shared_dir": "",
       "username": null,
       "password": null
+    },
+    {
+      "addr": "10.147.18.208:5001",
+      "vcpu": 4,
+      "percentage": 0.0,
+      "shared_dir": "",
+      "username": null,
+      "password": null
     }
   ],
   "poll_interval": 2.0,

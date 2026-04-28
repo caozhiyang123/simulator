@@ -700,6 +700,252 @@ def history_save():
     return jsonify({"status": "saved", "filename": filename})
 
 
+@app.route("/files/local/browse", methods=["GET"])
+def local_browse():
+    """Browse local directory contents using absolute paths.
+
+    Query param: ?path=absolute/path (defaults to production_dir)
+    Special: ?path=__drives__ lists all drive letters (Windows)
+    """
+    browse_path = request.args.get("path", "")
+
+    # List all drives
+    if browse_path == "__drives__":
+        import string
+        drives = []
+        for letter in string.ascii_uppercase:
+            drive = f"{letter}:/"
+            if os.path.isdir(drive):
+                drives.append({
+                    "name": f"{letter}:",
+                    "type": "dir",
+                    "size": 0,
+                    "full_path": drive,
+                })
+        return jsonify({"path": "My Computer", "parent": "", "entries": drives})
+
+    if not browse_path:
+        browse_path = config.production_dir
+    if not browse_path:
+        return jsonify({"error": "production_dir not configured"}), 400
+
+    full_path = os.path.normpath(browse_path)
+    if not os.path.isdir(full_path):
+        return jsonify({"error": "Directory not found"}), 404
+
+    parent = os.path.dirname(full_path)
+    # If at drive root (e.g. E:\), parent goes to drive list
+    if parent == full_path:
+        parent = "__drives__"
+    else:
+        parent = parent.replace("\\", "/")
+
+    entries = []
+    for name in sorted(os.listdir(full_path)):
+        fp = os.path.join(full_path, name)
+        entries.append({
+            "name": name,
+            "type": "dir" if os.path.isdir(fp) else "file",
+            "size": os.path.getsize(fp) if os.path.isfile(fp) else 0,
+            "full_path": fp.replace("\\", "/"),
+        })
+
+    return jsonify({
+        "path": full_path.replace("\\", "/"),
+        "parent": parent,
+        "entries": entries,
+    })
+
+
+@app.route("/files/local/write", methods=["POST"])
+def local_write():
+    """Write content to a local file.
+
+    Request body: {"path": "absolute/path", "content": "file content"}
+    """
+    data = request.get_json(force=True)
+    file_path = data.get("path", "")
+    content = data.get("content", "")
+    full_path = os.path.normpath(file_path)
+    try:
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return jsonify({"status": "ok", "path": file_path})
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/local/delete", methods=["POST"])
+def local_delete():
+    """Delete local files or directories.
+
+    Request body: {"paths": ["absolute/path1", "absolute/path2"]}
+    """
+    import shutil
+    data = request.get_json(force=True)
+    paths = data.get("paths", [])
+    results = []
+    for p in paths:
+        full = os.path.normpath(p)
+        try:
+            if os.path.isfile(full):
+                os.remove(full)
+                results.append({"path": p, "status": "deleted"})
+            elif os.path.isdir(full):
+                shutil.rmtree(full)
+                results.append({"path": p, "status": "deleted"})
+            else:
+                results.append({"path": p, "status": "not found"})
+        except OSError as exc:
+            results.append({"path": p, "status": "error", "error": str(exc)})
+    return jsonify({"results": results})
+
+
+@app.route("/files/local/read", methods=["GET"])
+def local_read():
+    """Read a local file content for preview or transfer.
+
+    Query param: ?path=absolute/path&preview=1 (preview returns JSON with content)
+    """
+    from flask import send_file
+    file_path = request.args.get("path", "")
+    preview = request.args.get("preview", "")
+    full_path = os.path.normpath(file_path)
+    if not os.path.isfile(full_path):
+        return jsonify({"error": "File not found"}), 404
+    if preview:
+        try:
+            with open(full_path, "r", encoding="utf-8") as f:
+                content = f.read(100000)
+            return jsonify({"path": file_path, "content": content, "size": os.path.getsize(full_path)})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+    return send_file(full_path, as_attachment=True)
+
+
+@app.route("/files/worker/browse", methods=["GET"])
+def worker_browse():
+    """Proxy: browse a worker's directory (absolute path).
+
+    Query params: ?addr=ip:port&path=absolute/path (empty = worker's production_dir)
+    """
+    addr = request.args.get("addr", "")
+    browse_path = request.args.get("path", "")
+    if not addr:
+        return jsonify({"error": "addr required"}), 400
+    try:
+        r = http_requests.get(
+            f"http://{addr}/files/browse",
+            params={"path": browse_path}, timeout=10
+        )
+        try:
+            data = r.json()
+        except ValueError:
+            return jsonify({"error": f"Worker returned non-JSON (status {r.status_code})"}), 500
+        return jsonify(data), r.status_code
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/worker/upload", methods=["POST"])
+def worker_upload():
+    """Upload a local file to a worker.
+
+    Form data: addr, rel_dir (target dir on worker), local_path (absolute path on master)
+    """
+    addr = request.form.get("addr", "")
+    rel_dir = request.form.get("rel_dir", "")
+    local_path = request.form.get("local_path", "")
+
+    if not addr or not local_path:
+        return jsonify({"error": "addr and local_path required"}), 400
+
+    full_local = os.path.normpath(local_path)
+    if not os.path.isfile(full_local):
+        return jsonify({"error": "Local file not found"}), 404
+
+    try:
+        with open(full_local, "rb") as f:
+            files = {"file": (os.path.basename(full_local), f)}
+            r = http_requests.post(
+                f"http://{addr}/files/upload",
+                data={"path": rel_dir},
+                files=files,
+                timeout=30,
+            )
+        return jsonify(r.json()), r.status_code
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/worker/read", methods=["GET"])
+def worker_read():
+    """Proxy: read a file on a worker for preview.
+
+    Query params: ?addr=ip:port&path=absolute/path
+    """
+    addr = request.args.get("addr", "")
+    file_path = request.args.get("path", "")
+    if not addr or not file_path:
+        return jsonify({"error": "addr and path required"}), 400
+    try:
+        r = http_requests.get(
+            f"http://{addr}/files/read",
+            params={"path": file_path}, timeout=10
+        )
+        try:
+            return jsonify(r.json()), r.status_code
+        except ValueError:
+            return jsonify({"error": "Worker returned non-JSON"}), 500
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/worker/write", methods=["POST"])
+def worker_write():
+    """Proxy: write file content on a worker.
+
+    Request body: {"addr": "ip:port", "path": "absolute/path", "content": "..."}
+    """
+    data = request.get_json(force=True)
+    addr = data.get("addr", "")
+    file_path = data.get("path", "")
+    content = data.get("content", "")
+    if not addr or not file_path:
+        return jsonify({"error": "addr and path required"}), 400
+    try:
+        r = http_requests.post(
+            f"http://{addr}/files/write",
+            json={"path": file_path, "content": content},
+            timeout=10,
+        )
+        return jsonify(r.json()), r.status_code
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/worker/delete", methods=["POST"])
+def worker_delete():
+    """Proxy: delete files on a worker.
+
+    Request body: {"addr": "ip:port", "paths": ["abs/path1", ...]}
+    """
+    data = request.get_json(force=True)
+    addr = data.get("addr", "")
+    paths = data.get("paths", [])
+    if not addr or not paths:
+        return jsonify({"error": "addr and paths required"}), 400
+    try:
+        r = http_requests.post(
+            f"http://{addr}/files/delete",
+            json={"paths": paths},
+            timeout=10,
+        )
+        return jsonify(r.json()), r.status_code
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/history/page")
 def history_page():
     """Render the history replay page."""

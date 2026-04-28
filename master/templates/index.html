@@ -54,6 +54,11 @@
   .result-table th, .result-table td { border: 1px solid #ddd; padding: 5px 8px; text-align: left; }
   .result-table th { background: #f0f0f0; }
   .hidden { display: none; }
+  .file-item { padding: 3px 6px; cursor: pointer; border-radius: 3px; display: flex; align-items: center; gap: 4px; }
+  .file-item:hover { background: #f0f0f0; }
+  .file-item.selected { background: #d4edda; }
+  .file-item[draggable="true"] { cursor: grab; }
+  .file-item .icon { width: 16px; text-align: center; }
 </style>
 </head>
 <body>
@@ -61,6 +66,31 @@
 <h1>🎰 Distributed Simulator Control Panel</h1>
 
 <div class="grid">
+
+  <!-- File Sync -->
+  <div class="card full-width">
+    <h2>📂 File Sync</h2>
+    <div style="display:flex;gap:16px;min-height:300px;">
+      <!-- Left: Local files -->
+      <div style="flex:1;border:1px solid #ddd;border-radius:6px;padding:8px;overflow:auto;">
+        <div style="font-weight:600;font-size:13px;margin-bottom:6px;">Local Files (Master)
+          <button class="btn-danger btn-sm" onclick="deleteSelectedLocal()" style="margin-left:8px;">🗑 Delete</button>
+        </div>
+        <div id="localBreadcrumb" style="font-size:12px;color:#666;margin-bottom:4px;cursor:pointer;"></div>
+        <div id="localFileList" style="font-size:13px;"></div>
+      </div>
+      <!-- Right: Remote worker files -->
+      <div style="flex:1;border:1px solid #ddd;border-radius:6px;padding:8px;overflow:auto;" ondragover="event.preventDefault();event.dataTransfer.dropEffect='copy';document.getElementById('remoteFileList').style.background='#e8f4e8'" ondragleave="document.getElementById('remoteFileList').style.background=''" ondrop="handleDrop(event)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <span style="font-weight:600;font-size:13px;">Remote Files</span>
+          <select id="syncWorkerSelect" onchange="loadRemoteDir('')" style="font-size:12px;padding:2px 6px;"></select>
+          <button class="btn-danger btn-sm" onclick="deleteSelectedRemote()">🗑 Delete</button>
+        </div>
+        <div id="remoteBreadcrumb" style="font-size:12px;color:#666;margin-bottom:4px;cursor:pointer;"></div>
+        <div id="remoteFileList" style="font-size:13px;min-height:200px;"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- Batch Start -->
   <div class="card">
@@ -172,6 +202,21 @@
     <div id="log">Waiting for operations...</div>
   </div>
 
+</div>
+
+<!-- File Preview/Edit Modal -->
+<div id="previewModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;justify-content:center;align-items:center;" onclick="if(event.target===this)closePreview()">
+  <div style="background:#fff;border-radius:8px;width:80%;max-width:800px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #eee;">
+      <span id="previewTitle" style="font-weight:600;font-size:14px;"></span>
+      <div>
+        <button id="previewSaveBtn" onclick="savePreview()" style="background:#27ae60;color:#fff;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;margin-right:4px;display:none;">💾 Save</button>
+        <button onclick="closePreview()" style="background:#e74c3c;color:#fff;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;">✕</button>
+      </div>
+    </div>
+    <div id="previewLoading" style="padding:16px;text-align:center;color:#888;">Loading...</div>
+    <textarea id="previewContent" style="flex:1;min-height:400px;overflow:auto;padding:16px;margin:0;font-size:12px;font-family:'Cascadia Code',monospace;background:#1e1e2e;color:#cdd6f4;border:none;border-radius:0 0 8px 8px;display:none;white-space:pre;resize:none;outline:none;"></textarea>
+  </div>
 </div>
 
 <script>
@@ -288,6 +333,24 @@ async function startBatch() {
   if (selectedNodes.length === 0) { showAlert('Please select at least one simulator'); return; }
   var intervalCount = parseInt(document.getElementById('batchIntervalCount').value) || spins;
   var simType = document.getElementById('batchSimType').value;
+
+  // Clear old status & results
+  document.getElementById('statusArea').innerHTML = '';
+  // Clear old logs and reset offsets
+  logSinceMap = {};
+  var logNodes = getLogNodes();
+  logNodes.forEach(function(k) {
+    var panel = document.getElementById(safeId(k));
+    if (panel) panel.textContent = '';
+  });
+  // Clear expanded states
+  expandedModels = {};
+  expandedHistory = {};
+  expandedCharts = {};
+
+  // Immediately mark selected nodes as running (optimistic)
+  selectedNodes.forEach(function(addr) { setNodeRunning(addr, true); });
+
   log('🚀 Batch start: type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount + ', mode=' + mode + ', nodes=' + selectedNodes.join(','));
   const r = await api('/start', 'POST', { total_spins: spins, interval_count: intervalCount, mode, game_name: gameName, selected_nodes: selectedNodes, sim_type: simType });
   if (r.ok) {
@@ -295,10 +358,16 @@ async function startBatch() {
     if (r.data.results) {
       r.data.results.forEach(function(n) {
         if (n.success) setNodeRunning(n.node, true);
-        log('   ' + n.node + ': ' + (n.success ? '成功' : '失败') +
-            (n.retries ? ' (重试' + n.retries + '次)' : '') +
+        log('   ' + n.node + ': ' + (n.success ? 'OK' : 'FAIL') +
+            (n.retries ? ' (retries: ' + n.retries + ')' : '') +
             (n.error ? ' - ' + n.error : ''));
       });
+    }
+    // Auto-enable status refresh to track progress
+    if (!autoRefreshTimer) {
+      var interval = parseFloat(document.getElementById('pollInterval').value) || 2;
+      autoRefreshTimer = setInterval(getStatus, interval * 1000);
+      document.getElementById('autoRefreshBtn').textContent = 'Disable Auto Refresh';
     }
   }
 }
@@ -314,8 +383,10 @@ async function startMaster() {
   var intervalCount = parseInt(document.getElementById('singleIntervalCount').value) || spins;
   var simType = document.getElementById('singleSimType').value;
   log('🚀 Start Master: type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount);
+  setNodeRunning('master', true);
   const r = await api('/start-master', 'POST', { spins, interval_count: intervalCount, game_name: gameName, sim_type: simType });
-  if (r.ok) { log('✅ ' + r.data.message); setNodeRunning('master', true); }
+  if (r.ok) { log('✅ ' + r.data.message); }
+  else { setNodeRunning('master', false); }
 }
 
 // ---------------------------------------------------------------------------
@@ -329,8 +400,10 @@ async function startWorker(addr) {
   var intervalCount = parseInt(document.getElementById('singleIntervalCount').value) || spins;
   var simType = document.getElementById('singleSimType').value;
   log('🚀 Start Worker ' + addr + ': type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount);
+  setNodeRunning(addr, true);
   const r = await api('/start-worker', 'POST', { worker_addr: addr, spins, interval_count: intervalCount, game_name: gameName, sim_type: simType });
-  if (r.ok) { log('✅ Worker ' + addr + ' start request sent'); setNodeRunning(addr, true); }
+  if (r.ok) { log('✅ Worker ' + addr + ' start request sent'); }
+  else { setNodeRunning(addr, false); }
 }
 
 // ---------------------------------------------------------------------------
@@ -833,6 +906,7 @@ function renderWorkers() {
 
   // Refresh log tabs
   renderLogTabs();
+  initFileSyncWorkerSelect();
 }
 
 // ---------------------------------------------------------------------------
@@ -977,6 +1051,254 @@ function toggleAutoLogs() {
 }
 
 // ---------------------------------------------------------------------------
+// File Sync
+// ---------------------------------------------------------------------------
+var localCurrentPath = '';  // absolute path
+var remoteCurrentPath = '';
+var selectedLocalFiles = [];
+
+async function loadLocalDir(path) {
+  var r = await api('/files/local/browse?path=' + encodeURIComponent(path), 'GET');
+  if (!r.ok) return;
+  localCurrentPath = r.data.path || '';
+  var parentPath = r.data.parent || '';
+
+  // Breadcrumb
+  var bcEl = document.getElementById('localBreadcrumb');
+  bcEl.innerHTML = '<span style="font-size:12px;color:#666;">' + localCurrentPath + '</span>';
+
+  var el = document.getElementById('localFileList');
+  var html = '';
+  // Always show parent navigation
+  var parentPath = r.data.parent || '';
+  if (parentPath) {
+    html += '<div class="file-item" onclick="loadLocalDir(\'' + parentPath.replace(/'/g, "\\'") + '\')"><span class="icon">⬆</span> ..</div>';
+  }
+  (r.data.entries || []).forEach(function(e) {
+    var fp = e.full_path;
+    if (e.type === 'dir') {
+      html += '<div class="file-item local-selectable" data-path="' + fp + '" onclick="if(!event.detail||event.detail===1){toggleSelectFile(this)}" ondblclick="loadLocalDir(\'' + fp.replace(/'/g, "\\'") + '\')"><span class="icon">📁</span> ' + e.name + '</div>';
+    } else {
+      html += '<div class="file-item local-selectable" draggable="true" data-path="' + fp + '" data-name="' + e.name + '" onclick="toggleSelectFile(this)" ondblclick="previewLocalFile(\'' + fp.replace(/'/g, "\\'") + '\',\'' + e.name.replace(/'/g, "\\'") + '\')" ondragstart="onDragStart(event)"><span class="icon">📄</span> ' + e.name + '</div>';
+    }
+  });
+  el.innerHTML = html || '<span style="color:#999;">Empty</span>';
+}
+
+async function loadRemoteDir(path) {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) return;
+  var r = await api('/files/worker/browse?addr=' + encodeURIComponent(addr) + '&path=' + encodeURIComponent(path || 'default'), 'GET');
+  if (!r.ok) return;
+  remoteCurrentPath = r.data.path || '';
+  var parentPath = r.data.parent || '';
+
+  var bcEl = document.getElementById('remoteBreadcrumb');
+  bcEl.innerHTML = '<span style="font-size:12px;color:#666;">' + remoteCurrentPath + '</span>';
+
+  var el = document.getElementById('remoteFileList');
+  var html = '';
+  if (parentPath) {
+    html += '<div class="file-item" onclick="loadRemoteDir(\'' + parentPath.replace(/'/g, "\\'") + '\')"><span class="icon">⬆</span> ..</div>';
+  }
+  (r.data.entries || []).forEach(function(e) {
+    var fp = e.full_path || e.name;
+    if (e.type === 'dir') {
+      html += '<div class="file-item remote-selectable" data-path="' + fp + '" onclick="if(!event.detail||event.detail===1){toggleSelectFile(this)}" ondblclick="loadRemoteDir(\'' + fp.replace(/'/g, "\\'") + '\')" ondragover="event.preventDefault();event.dataTransfer.dropEffect=\'copy\';this.style.background=\'#d4edda\'" ondragleave="this.style.background=\'\'" ondrop="handleDropOnDir(event,\'' + fp.replace(/'/g, "\\'") + '\')"><span class="icon">📁</span> ' + e.name + '</div>';
+    } else {
+      html += '<div class="file-item remote-selectable" data-path="' + fp + '" onclick="toggleSelectFile(this)" ondblclick="previewRemoteFile(\'' + fp.replace(/'/g, "\\'") + '\',\'' + e.name.replace(/'/g, "\\'") + '\')"><span class="icon">📄</span> ' + e.name + ' <span style="color:#999;font-size:11px;">(' + (e.size/1024).toFixed(1) + 'KB)</span></div>';
+    }
+  });
+  el.innerHTML = html || '<span style="color:#999;">Empty</span>';
+}
+
+function toggleSelectFile(el) {
+  el.classList.toggle('selected');
+}
+
+function onDragStart(event) {
+  var files = [];
+  document.querySelectorAll('#localFileList .file-item.selected').forEach(function(item) {
+    if (item.dataset.path) files.push({path: item.dataset.path, name: item.dataset.name});
+  });
+  // Add dragged file if not already selected
+  var el = event.currentTarget;
+  var dragged = {path: el.dataset.path, name: el.dataset.name};
+  if (dragged.path && !files.some(function(f) { return f.path === dragged.path; })) {
+    files.push(dragged);
+  }
+  event.dataTransfer.setData('application/json', JSON.stringify(files));
+  event.dataTransfer.effectAllowed = 'copy';
+}
+
+async function handleDrop(event) {
+  event.preventDefault();
+  event.currentTarget.style.background = '';
+  await uploadDroppedFiles(event, remoteCurrentPath);
+}
+
+async function handleDropOnDir(event, dirPath) {
+  event.preventDefault();
+  event.stopPropagation();
+  event.currentTarget.style.background = '';
+  await uploadDroppedFiles(event, dirPath);
+}
+
+async function uploadDroppedFiles(event, targetDir) {
+  var data = event.dataTransfer.getData('application/json');
+  if (!data) return;
+  var files = JSON.parse(data);
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+
+  log('📂 Uploading ' + files.length + ' file(s) to ' + addr + ':' + targetDir);
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    var formData = new FormData();
+    formData.append('addr', addr);
+    formData.append('rel_dir', targetDir);  // now absolute path on worker
+    formData.append('local_path', f.path);  // absolute path on master
+    try {
+      var r = await fetch('/files/worker/upload', {method: 'POST', body: formData});
+      var result = await r.json();
+      if (r.ok) {
+        log('  ✅ ' + f.name + ' → ' + targetDir);
+      } else {
+        log('  ❌ ' + f.name + ': ' + (result.error || 'failed'));
+      }
+    } catch(e) {
+      log('  ❌ ' + f.name + ': ' + e.message);
+    }
+  }
+  log('📂 Upload complete');
+  // Refresh remote dir
+  loadRemoteDir(targetDir);
+  // Clear selection
+  document.querySelectorAll('#localFileList .file-item.selected').forEach(function(el) {
+    el.classList.remove('selected');
+  });
+}
+
+// ---------------------------------------------------------------------------
+// File Preview & Edit
+// ---------------------------------------------------------------------------
+var _previewSource = null; // {type: 'local'|'remote', path: '', addr: ''}
+
+async function previewLocalFile(path, name) {
+  _previewSource = {type: 'local', path: path};
+  openPreviewModal(name);
+  var r = await api('/files/local/read?path=' + encodeURIComponent(path) + '&preview=1', 'GET');
+  if (r.ok) {
+    showPreviewContent(r.data.content, r.data.size);
+  } else {
+    showPreviewContent('Error: ' + (r.data.error || 'Failed to load'), 0);
+  }
+}
+
+async function previewRemoteFile(path, name) {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  _previewSource = {type: 'remote', path: path, addr: addr};
+  openPreviewModal(name + ' (' + addr + ')');
+  var r = await api('/files/worker/read?addr=' + encodeURIComponent(addr) + '&path=' + encodeURIComponent(path), 'GET');
+  if (r.ok) {
+    showPreviewContent(r.data.content, r.data.size);
+  } else {
+    showPreviewContent('Error: ' + (r.data.error || 'Failed to load'), 0);
+  }
+}
+
+function openPreviewModal(title) {
+  document.getElementById('previewTitle').textContent = title;
+  document.getElementById('previewLoading').style.display = 'block';
+  document.getElementById('previewContent').style.display = 'none';
+  document.getElementById('previewSaveBtn').style.display = 'none';
+  document.getElementById('previewModal').style.display = 'flex';
+}
+
+function showPreviewContent(content, size) {
+  document.getElementById('previewLoading').style.display = 'none';
+  var el = document.getElementById('previewContent');
+  el.value = content;
+  el.style.display = 'block';
+  document.getElementById('previewSaveBtn').style.display = 'inline-block';
+}
+
+async function savePreview() {
+  if (!_previewSource) return;
+  var content = document.getElementById('previewContent').value;
+  var btn = document.getElementById('previewSaveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  var r;
+  if (_previewSource.type === 'local') {
+    r = await api('/files/local/write', 'POST', {path: _previewSource.path, content: content});
+  } else {
+    r = await api('/files/worker/write', 'POST', {addr: _previewSource.addr, path: _previewSource.path, content: content});
+  }
+
+  if (r.ok) {
+    btn.textContent = '✅ Saved';
+    log('💾 File saved: ' + _previewSource.path);
+    setTimeout(function() { btn.textContent = '💾 Save'; btn.disabled = false; }, 2000);
+  } else {
+    btn.textContent = '❌ Failed';
+    log('❌ Save failed: ' + (r.data.error || 'unknown'));
+    setTimeout(function() { btn.textContent = '💾 Save'; btn.disabled = false; }, 2000);
+  }
+}
+
+function closePreview() {
+  document.getElementById('previewModal').style.display = 'none';
+  _previewSource = null;
+}
+
+async function deleteSelectedLocal() {
+  var selected = document.querySelectorAll('#localFileList .local-selectable.selected');
+  if (!selected.length) { showAlert('Please select files or folders to delete'); return; }
+  var paths = [];
+  selected.forEach(function(el) { if (el.dataset.path) paths.push(el.dataset.path); });
+  if (!confirm('Delete ' + paths.length + ' item(s) locally?')) return;
+  log('🗑 Deleting ' + paths.length + ' local item(s)');
+  var r = await api('/files/local/delete', 'POST', {paths: paths});
+  if (r.ok && r.data.results) {
+    r.data.results.forEach(function(res) {
+      log('  ' + (res.status === 'deleted' ? '✅' : '❌') + ' ' + res.path + ': ' + res.status);
+    });
+  }
+  loadLocalDir(localCurrentPath);
+}
+
+async function deleteSelectedRemote() {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  var selected = document.querySelectorAll('#remoteFileList .remote-selectable.selected');
+  if (!selected.length) { showAlert('Please select files or folders to delete'); return; }
+  var paths = [];
+  selected.forEach(function(el) { if (el.dataset.path) paths.push(el.dataset.path); });
+  if (!confirm('Delete ' + paths.length + ' item(s) on ' + addr + '?')) return;
+  log('🗑 Deleting ' + paths.length + ' item(s) on ' + addr);
+  var r = await api('/files/worker/delete', 'POST', {addr: addr, paths: paths});
+  if (r.ok && r.data.results) {
+    r.data.results.forEach(function(res) {
+      log('  ' + (res.status === 'deleted' ? '✅' : '❌') + ' ' + res.path + ': ' + res.status);
+    });
+  }
+  loadRemoteDir(remoteCurrentPath);
+}
+
+function initFileSyncWorkerSelect() {
+  var sel = document.getElementById('syncWorkerSelect');
+  var html = '<option value="">-- Select Worker --</option>';
+  nodes.forEach(function(n) {
+    if (n.addr === 'master') return;
+    html += '<option value="' + n.addr + '">' + n.addr + '</option>';
+  });
+  sel.innerHTML = html;
+}
+
+// ---------------------------------------------------------------------------
 // Init: load node list from /config/nodes on page load
 // ---------------------------------------------------------------------------
 async function init() {
@@ -997,6 +1319,8 @@ async function init() {
   }
   renderWorkers();
   renderPercentageInputs();
+  initFileSyncWorkerSelect();
+  loadLocalDir('');
 
   // Load game list
   const gr = await api('/games', 'GET');

@@ -50,6 +50,7 @@ class SimulatorRunner:
         self._completed_models: set = set()
         self._current_snapshot_dirty: bool = False
         self._last_spin_count: int = 0
+        self._all_finished: bool = False
         self._current_open_card: str = ""  # e.g. "open 1 card"
 
     @property
@@ -209,6 +210,7 @@ class SimulatorRunner:
             self._current_snapshot_dirty = False
             self._last_spin_count = 0
             self._current_open_card = ""
+            self._all_finished = False
 
         # 在独立线程中启动子进程
         self._thread = threading.Thread(
@@ -234,6 +236,19 @@ class SimulatorRunner:
         只有收齐全部 7 个字段的完整快照才存入 history。
         """
         stripped = line.strip()
+
+        # Detect completion marker
+        if "All Simulators Finished" in stripped:
+            self._finalize_current_snapshot()
+            if self._current_model and self._current_model not in self._completed_models:
+                with self._lock:
+                    self._completed_models.add(self._current_model)
+                    self._models_completed = len(self._completed_models)
+            with self._lock:
+                self._all_finished = True
+                if self._status == "running":
+                    self._status = "completed"
+            return
 
         # Detect "=== open N card(s) ===" lines (production mode)
         if re.match(r"^===\s*open\s+\d+\s+cards?\s*===$", stripped):
@@ -359,10 +374,10 @@ class SimulatorRunner:
             return_code = self._process.returncode
 
             with self._lock:
-                # Don't overwrite if already stopped manually
-                if self._status == "stopped":
+                # Don't overwrite if already stopped manually or already completed
+                if self._status in ("stopped", "completed"):
                     pass
-                elif return_code == 0:
+                elif return_code == 0 or self._all_finished:
                     self._progress = spins
                     self._status = "completed"
                 else:
