@@ -59,11 +59,36 @@
   .file-item.selected { background: #d4edda; }
   .file-item[draggable="true"] { cursor: grab; }
   .file-item .icon { width: 16px; text-align: center; }
+  /* Sidebar navigation */
+  .app-layout { display: flex; gap: 12px; max-width: 1260px; margin: 0 auto; align-items: flex-start; }
+  .sidebar { width: 60px; background: #1a1a2e; border-radius: 8px; padding: 6px 0; display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; }
+  .sidebar-btn { width: 48px; height: 48px; border: none; border-radius: 8px; background: transparent; color: #888; cursor: pointer; font-size: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; transition: all 0.2s; }
+  .sidebar-btn span { font-size: 9px; }
+  .sidebar-btn:hover { background: #2a2a4e; color: #ccc; }
+  .sidebar-btn.active { background: #4a90d9; color: #fff; }
+  .main-content { flex: 1; }
+  .page-panel { display: none; }
+  .page-panel.active { display: block; }
 </style>
 </head>
 <body>
 
 <h1>🎰 Distributed Simulator Control Panel</h1>
+
+<div class="app-layout">
+  <!-- Sidebar -->
+  <div class="sidebar" style="margin-top:0;">
+    <button class="sidebar-btn active" onclick="switchPage('home')" id="navHome">🏠<span>Home</span></button>
+    <button class="sidebar-btn" onclick="switchPage('workers')" id="navWorkers">👷<span>Workers</span></button>
+    <button class="sidebar-btn" onclick="switchPage('config')" id="navConfig">⚙️<span>Config</span></button>
+    <button class="sidebar-btn" onclick="switchPage('history')" id="navHistory">📜<span>History</span></button>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+
+    <!-- HOME PAGE -->
+    <div class="page-panel active" id="pageHome">
 
 <div class="grid">
 
@@ -183,7 +208,6 @@
     <h2>📊 Status & Results</h2>
     <button class="btn-primary" onclick="getStatus()">Get Status</button>
     <button class="btn-warning btn-sm" onclick="toggleAutoRefresh()" id="autoRefreshBtn">Enable Auto Refresh</button>
-    <button class="btn-primary btn-sm" onclick="window.open('/history/page','_blank')">📜 History</button>
     <div id="statusArea" style="margin-top:12px;"></div>
   </div>
 
@@ -202,7 +226,82 @@
     <div id="log">Waiting for operations...</div>
   </div>
 
+  <!-- Node Status -->
+  <div class="card full-width">
+    <h2>📊 Node Status</h2>
+    <button class="btn-primary btn-sm" onclick="fetchNodeStatus()">Refresh</button>
+    <button class="btn-warning btn-sm" onclick="toggleNodeStatusAuto()" id="nodeStatusAutoBtn">Enable Auto Refresh</button>
+    <div id="nodeStatusArea" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:12px;"></div>
+    <div style="margin-top:12px;">
+      <div style="display:flex;gap:16px;">
+        <div style="flex:1;"><canvas id="cpuChart" width="500" height="150" style="width:100%;border:1px solid #ddd;border-radius:4px;"></canvas></div>
+        <div style="flex:1;"><canvas id="memChart" width="500" height="150" style="width:100%;border:1px solid #ddd;border-radius:4px;"></canvas></div>
+      </div>
+    </div>
+  </div>
+
 </div>
+    </div><!-- end pageHome -->
+
+    <!-- WORKERS PAGE -->
+    <div class="page-panel" id="pageWorkers">
+      <div class="card">
+        <h2>👷 Worker Management</h2>
+        <div class="row">
+          <div>
+            <label>New Worker (IP:PORT)</label>
+            <input type="text" id="pgNewWorkerAddr" placeholder="192.168.1.2:5001">
+          </div>
+          <div>
+            <label>vCPU</label>
+            <input type="number" id="pgNewWorkerVcpu" value="1" min="1" style="width:70px;">
+          </div>
+          <button class="btn-success" onclick="pgAddWorker()">Add</button>
+        </div>
+        <div id="pgWorkerList"></div>
+      </div>
+    </div><!-- end pageWorkers -->
+
+    <!-- CONFIG PAGE -->
+    <div class="page-panel" id="pageConfig">
+      <div class="card">
+        <h2>⚙️ Configuration</h2>
+        <label>Poll Interval (seconds)</label>
+        <div class="row">
+          <input type="number" id="pgPollInterval" value="2" min="0.5" step="0.5">
+          <button class="btn-primary" onclick="pgSetPollInterval()">Set</button>
+        </div>
+        <label>Allocation Mode</label>
+        <div class="row">
+          <select id="pgAllocationMode" onchange="pgOnModeChange()">
+            <option value="vcpu">vCPU Mode</option>
+            <option value="percentage">Percentage Mode</option>
+          </select>
+          <button class="btn-primary" onclick="pgSetAllocationMode()">Apply</button>
+        </div>
+        <div id="pgPercentageSection" class="hidden">
+          <label>Node Percentages (must sum to 100%)</label>
+          <div id="pgPercentageInputs" class="pct-inputs"></div>
+          <button class="btn-warning btn-sm" onclick="pgSavePercentages()" style="margin-top:4px;">Save Percentages</button>
+        </div>
+      </div>
+    </div><!-- end pageConfig -->
+
+    <!-- HISTORY PAGE -->
+    <div class="page-panel" id="pageHistory">
+      <h1>📜 Simulation History</h1>
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
+        <div><label>Model Name</label><input type="text" id="histFilterModel" placeholder="e.g. AmericanChampion"></div>
+        <div><label>Start Date</label><input type="date" id="histFilterStart"></div>
+        <div><label>End Date</label><input type="date" id="histFilterEnd"></div>
+        <button class="btn-primary" onclick="histSearch()">Search</button>
+        <button class="btn-primary" onclick="histLoadAll()">Show All</button>
+      </div>
+      <div id="histResults"></div>
+    </div><!-- end pageHistory -->
+
+  </div><!-- end main-content -->
+</div><!-- end app-layout -->
 
 <!-- File Preview/Edit Modal -->
 <div id="previewModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;justify-content:center;align-items:center;" onclick="if(event.target===this)closePreview()">
@@ -1296,6 +1395,460 @@ function initFileSyncWorkerSelect() {
     html += '<option value="' + n.addr + '">' + n.addr + '</option>';
   });
   sel.innerHTML = html;
+}
+
+// ---------------------------------------------------------------------------
+// Node Status Monitoring
+// ---------------------------------------------------------------------------
+var nodeStatusTimer = null;
+var cpuHistory = {};   // {nodeAddr: [values]}
+var memHistory = {};
+var NODE_HISTORY_MAX = 30;
+
+async function fetchNodeStatus() {
+  // Only fetch for running nodes
+  var activeNodes = [];
+  for (var addr in runningNodes) {
+    if (runningNodes[addr]) activeNodes.push(addr);
+  }
+  if (activeNodes.length === 0) {
+    document.getElementById('nodeStatusArea').innerHTML = '<span style="color:#999;">No active nodes</span>';
+    // Auto-stop refresh when no nodes running
+    if (nodeStatusTimer) {
+      clearInterval(nodeStatusTimer);
+      nodeStatusTimer = null;
+      document.getElementById('nodeStatusAutoBtn').textContent = 'Enable Auto Refresh';
+    }
+    return;
+  }
+  var r = await api('/sysinfo/all', 'GET');
+  if (!r.ok) return;
+  var data = r.data;
+  var area = document.getElementById('nodeStatusArea');
+  var html = '';
+  for (var i = 0; i < activeNodes.length; i++) {
+    var addr = activeNodes[i];
+    var info = data[addr];
+    if (!info || info.error) {
+      html += '<div class="node-card" style="min-width:200px;"><span class="name">' + addr + '</span><div style="color:#e74c3c;font-size:12px;">Error: ' + (info ? info.error : 'No data') + '</div></div>';
+      continue;
+    }
+    // Track history
+    if (!cpuHistory[addr]) cpuHistory[addr] = [];
+    if (!memHistory[addr]) memHistory[addr] = [];
+    cpuHistory[addr].push(info.cpu_percent);
+    memHistory[addr].push(info.mem_percent);
+    if (cpuHistory[addr].length > NODE_HISTORY_MAX) cpuHistory[addr].shift();
+    if (memHistory[addr].length > NODE_HISTORY_MAX) memHistory[addr].shift();
+
+    var cpuColor = info.cpu_percent > 80 ? '#e74c3c' : info.cpu_percent > 50 ? '#f39c12' : '#27ae60';
+    var memColor = info.mem_percent > 80 ? '#e74c3c' : info.mem_percent > 50 ? '#f39c12' : '#2980b9';
+    html += '<div class="node-card" style="min-width:200px;flex:1;">';
+    html += '<div class="name">' + addr + '</div>';
+    html += '<div style="font-size:12px;margin-top:4px;">CPU: <span style="color:' + cpuColor + ';font-weight:600;">' + info.cpu_percent.toFixed(1) + '%</span> (' + info.cpu_count + ' cores)</div>';
+    html += '<div style="background:#eee;border-radius:3px;height:8px;margin:2px 0;"><div style="background:' + cpuColor + ';height:100%;border-radius:3px;width:' + info.cpu_percent + '%;transition:width 0.3s;"></div></div>';
+    html += '<div style="font-size:12px;">Memory: <span style="color:' + memColor + ';font-weight:600;">' + info.mem_percent.toFixed(1) + '%</span> (' + info.mem_used_mb + ' / ' + info.mem_total_mb + ' MB)</div>';
+    html += '<div style="background:#eee;border-radius:3px;height:8px;margin:2px 0;"><div style="background:' + memColor + ';height:100%;border-radius:3px;width:' + info.mem_percent + '%;transition:width 0.3s;"></div></div>';
+    html += '</div>';
+  }
+  area.innerHTML = html || '<span style="color:#999;">No nodes</span>';
+  drawNodeChart('cpuChart', cpuHistory, 'CPU %', 100);
+  drawNodeChart('memChart', memHistory, 'Memory %', 100);
+}
+
+function drawNodeChart(canvasId, historyMap, label, maxVal) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var w = canvas.width, h = canvas.height;
+  var pad = {top: 15, right: 15, bottom: 20, left: 40};
+  var plotW = w - pad.left - pad.right;
+  var plotH = h - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#fafafa';
+  ctx.fillRect(0, 0, w, h);
+
+  // Axes
+  ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.left, pad.top); ctx.lineTo(pad.left, h - pad.bottom); ctx.lineTo(w - pad.right, h - pad.bottom); ctx.stroke();
+
+  // Y labels
+  ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  for (var i = 0; i <= 4; i++) {
+    var yVal = maxVal * i / 4;
+    var yPos = h - pad.bottom - (i / 4) * plotH;
+    ctx.fillText(yVal + '%', pad.left - 4, yPos + 3);
+    if (i > 0) { ctx.strokeStyle = '#eee'; ctx.beginPath(); ctx.moveTo(pad.left, yPos); ctx.lineTo(w - pad.right, yPos); ctx.stroke(); }
+  }
+
+  // Title
+  ctx.fillStyle = '#666'; ctx.textAlign = 'center'; ctx.font = '11px sans-serif';
+  ctx.fillText(label, w / 2, h - 3);
+
+  // Draw lines per node
+  var colors = ['#e74c3c', '#2980b9', '#27ae60', '#f39c12', '#9b59b6', '#1abc9c'];
+  var ci = 0;
+  var legendX = pad.left + 8, legendY = pad.top + 2;
+  for (var addr in historyMap) {
+    var vals = historyMap[addr];
+    if (!vals.length) continue;
+    var color = colors[ci % colors.length];
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+    for (var j = 0; j < vals.length; j++) {
+      var x = pad.left + (j / (NODE_HISTORY_MAX - 1)) * plotW;
+      var y = h - pad.bottom - (vals[j] / maxVal) * plotH;
+      if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // Fill area
+    ctx.globalAlpha = 0.1; ctx.fillStyle = color;
+    ctx.lineTo(pad.left + ((vals.length - 1) / (NODE_HISTORY_MAX - 1)) * plotW, h - pad.bottom);
+    ctx.lineTo(pad.left, h - pad.bottom); ctx.fill();
+    ctx.globalAlpha = 1.0;
+    // Legend
+    ctx.fillStyle = color; ctx.fillRect(legendX, legendY + ci * 13, 8, 8);
+    ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(addr, legendX + 12, legendY + ci * 13 + 8);
+    ci++;
+  }
+}
+
+function toggleNodeStatusAuto() {
+  var btn = document.getElementById('nodeStatusAutoBtn');
+  if (nodeStatusTimer) {
+    clearInterval(nodeStatusTimer);
+    nodeStatusTimer = null;
+    btn.textContent = 'Enable Auto Refresh';
+  } else {
+    var interval = parseFloat(document.getElementById('pollInterval').value) || 2;
+    nodeStatusTimer = setInterval(fetchNodeStatus, interval * 1000);
+    btn.textContent = 'Disable Auto Refresh';
+    fetchNodeStatus();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Page Navigation
+// ---------------------------------------------------------------------------
+function switchPage(page) {
+  document.querySelectorAll('.page-panel').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.sidebar-btn').forEach(function(el) { el.classList.remove('active'); });
+  document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1)).classList.add('active');
+  document.getElementById('nav' + page.charAt(0).toUpperCase() + page.slice(1)).classList.add('active');
+  if (page === 'history') histLoadAll();
+  if (page === 'workers') pgRenderWorkers();
+  if (page === 'config') pgLoadConfig();
+}
+
+// ---------------------------------------------------------------------------
+// Workers Page Functions
+// ---------------------------------------------------------------------------
+function pgRenderWorkers() {
+  var el = document.getElementById('pgWorkerList');
+  var html = '';
+  nodes.forEach(function(n) {
+    if (n.addr === 'master') return;
+    html += '<div class="worker-item">';
+    html += '<span>🖥 ' + n.addr + ' (vCPU: ' + n.vcpu + ')</span>';
+    html += '<button class="btn-danger btn-sm" onclick="pgDelWorker(\'' + n.addr + '\')">Delete</button>';
+    html += '</div>';
+  });
+  el.innerHTML = html || '<span style="font-size:13px;color:#999;">No Workers</span>';
+}
+
+async function pgAddWorker() {
+  var addr = document.getElementById('pgNewWorkerAddr').value.trim();
+  var vcpu = parseInt(document.getElementById('pgNewWorkerVcpu').value) || 1;
+  if (!addr) { showAlert('Please enter Worker address'); return; }
+  var r = await api('/add_worker', 'POST', { addr: addr, vcpu: vcpu });
+  if (r.ok) {
+    log('✅ Worker ' + addr + ' added');
+    document.getElementById('pgNewWorkerAddr').value = '';
+    nodes = r.data.workers;
+    pgRenderWorkers();
+    renderWorkers();
+    renderPercentageInputs();
+  }
+}
+
+async function pgDelWorker(addr) {
+  if (!confirm('Delete Worker ' + addr + '?')) return;
+  var r = await api('/del_worker', 'POST', { addr: addr });
+  if (r.ok) {
+    log('✅ Worker ' + addr + ' deleted');
+    nodes = r.data.workers;
+    pgRenderWorkers();
+    renderWorkers();
+    renderPercentageInputs();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Config Page Functions
+// ---------------------------------------------------------------------------
+function pgLoadConfig() {
+  document.getElementById('pgPollInterval').value = document.getElementById('pollInterval').value;
+  document.getElementById('pgAllocationMode').value = document.getElementById('allocationMode').value;
+  pgOnModeChange();
+  pgRenderPercentageInputs();
+}
+
+function pgOnModeChange() {
+  var mode = document.getElementById('pgAllocationMode').value;
+  var section = document.getElementById('pgPercentageSection');
+  if (mode === 'percentage') {
+    section.classList.remove('hidden');
+    pgRenderPercentageInputs();
+  } else {
+    section.classList.add('hidden');
+  }
+}
+
+function pgRenderPercentageInputs() {
+  var container = document.getElementById('pgPercentageInputs');
+  var html = '';
+  nodes.forEach(function(n) {
+    var label = n.addr === 'master' ? 'Master' : 'Worker(' + n.addr + ')';
+    html += '<div class="pct-row">';
+    html += '<span>' + label + '</span>';
+    html += '<input type="number" class="pg-pct-input" data-addr="' + n.addr + '" value="' + (n.percentage || 0) + '" min="0" max="100" step="0.1">';
+    html += '<span>%</span>';
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+
+async function pgSetPollInterval() {
+  var val = parseFloat(document.getElementById('pgPollInterval').value);
+  if (!val || val <= 0) { showAlert('Please enter a valid poll interval'); return; }
+  var r = await api('/config/poll-interval', 'POST', { interval: val });
+  if (r.ok) {
+    log('✅ Poll interval updated to ' + r.data.interval + 's');
+    document.getElementById('pollInterval').value = val;
+  }
+}
+
+async function pgSetAllocationMode() {
+  var mode = document.getElementById('pgAllocationMode').value;
+  var r = await api('/config/allocation-mode', 'POST', { mode: mode });
+  if (r.ok) {
+    log('✅ Allocation mode switched to ' + r.data.mode);
+    document.getElementById('allocationMode').value = mode;
+    onModeChange();
+  }
+}
+
+async function pgSavePercentages() {
+  var inputs = document.querySelectorAll('.pg-pct-input');
+  var percentages = {};
+  inputs.forEach(function(inp) { percentages[inp.dataset.addr] = parseFloat(inp.value) || 0; });
+  var sum = Object.values(percentages).reduce(function(a, b) { return a + b; }, 0);
+  if (Math.abs(sum - 100) > 0.01) {
+    showAlert('Percentages sum to ' + sum.toFixed(2) + '%, must be 100%');
+    return;
+  }
+  var r = await api('/config/percentages', 'POST', { percentages: percentages });
+  if (r.ok) {
+    log('✅ Percentage config saved');
+    renderPercentageInputs();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// History Page Functions
+// ---------------------------------------------------------------------------
+var _histChartCounter = 0;
+
+async function histLoadAll() {
+  var r = await fetch('/history/list');
+  var data = await r.json();
+  histRenderRuns(data.runs || []);
+}
+
+async function histSearch() {
+  var model = document.getElementById('histFilterModel').value;
+  var start = document.getElementById('histFilterStart').value;
+  var end = document.getElementById('histFilterEnd').value;
+  var params = new URLSearchParams();
+  if (model) params.set('model', model);
+  if (start) params.set('start', start);
+  if (end) params.set('end', end);
+  var r = await fetch('/history/query?' + params.toString());
+  var data = await r.json();
+  histRenderQueryResults(data.results || []);
+}
+
+function histRenderRuns(runs) {
+  var el = document.getElementById('histResults');
+  if (!runs.length) { el.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">No history data found</div>'; return; }
+  var html = '';
+  runs.forEach(function(run, i) {
+    var ts = run.timestamp ? new Date(run.timestamp).toLocaleString() : run.filename;
+    html += '<div class="card" style="margin-bottom:12px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="histToggleRun(\'hrun_' + i + '\', \'' + run.filename + '\')">';
+    html += '<h2 style="border:none;margin:0;padding:0;">📅 ' + ts + '</h2>';
+    html += '<span style="font-size:12px;color:#888;">' + run.model_count + ' models</span>';
+    html += '</div>';
+    html += '<div style="margin-top:4px;"><button class="btn-success btn-sm" onclick="event.stopPropagation();histDownloadRun(\'' + run.filename + '\')">⬇ Download</button></div>';
+    html += '<div id="hrun_' + i + '" style="display:none;margin-top:12px;"></div>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function histRenderQueryResults(results) {
+  window._histQueryResults = results;
+  var el = document.getElementById('histResults');
+  if (!results.length) { el.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">No matching results</div>'; return; }
+  var html = '';
+  results.forEach(function(record, i) {
+    var ts = record.timestamp ? new Date(record.timestamp).toLocaleString() : '';
+    html += '<div class="card" style="margin-bottom:12px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="histToggleInline(\'hqrun_' + i + '\')">';
+    html += '<h2 style="border:none;margin:0;padding:0;">📅 ' + ts + '</h2>';
+    html += '<span style="font-size:12px;color:#888;">' + Object.keys(record.models || {}).length + ' models</span>';
+    html += '</div>';
+    html += '<div style="margin-top:4px;"><button class="btn-success btn-sm" onclick="event.stopPropagation();histDownloadQueryResult(' + i + ')">⬇ Download</button></div>';
+    html += '<div id="hqrun_' + i + '" style="display:none;margin-top:12px;">' + histRenderModels(record.models || {}) + '</div>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+async function histToggleRun(divId, filename) {
+  var el = document.getElementById(divId);
+  if (el.style.display === 'block') { el.style.display = 'none'; return; }
+  if (el.dataset.loaded) { el.style.display = 'block'; return; }
+  var r = await fetch('/history/load?filename=' + encodeURIComponent(filename));
+  var data = await r.json();
+  el.innerHTML = histRenderModels(data.models || {});
+  el.dataset.loaded = '1';
+  el.style.display = 'block';
+}
+
+function histToggleInline(divId) {
+  var el = document.getElementById(divId);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function histRenderModels(models) {
+  var html = '';
+  var names = Object.keys(models).sort();
+  names.forEach(function(name) {
+    var m = models[name];
+    var latest = m.latest || m;
+    var history = m.history || [];
+    var mid = 'hm_' + (_histChartCounter++);
+    var detailId = mid + '_detail';
+    var histId = mid + '_hist';
+    var chartId = mid + '_chart';
+    var tableId = mid + '_table';
+
+    html += '<div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px;margin-bottom:8px;">';
+    html += '<div style="display:flex;align-items:center;gap:8px;">';
+    html += '<span style="font-weight:600;font-size:13px;cursor:pointer;" onclick="histToggleEl(\'' + detailId + '\')">▶ ' + name + '</span>';
+    html += '<button class="btn-primary btn-sm" onclick="event.stopPropagation();histCopyTable(\'' + tableId + '\',this)">📋 Copy</button>';
+    if (history.length > 1) {
+      html += '<button class="btn-primary btn-sm" onclick="histToggleVolcano(\'' + chartId + '\',\'' + mid + '\')">📊 Volcano</button>';
+    }
+    html += '</div>';
+
+    html += '<div id="' + chartId + '" style="display:none;margin:8px 0;"><canvas id="canvas_' + mid + '" width="600" height="200" style="width:100%;border:1px solid #ddd;border-radius:4px;"></canvas></div>';
+
+    html += '<div id="' + detailId + '" style="display:none;">';
+    html += '<table class="result-table" id="' + tableId + '"><tr><th>Metric</th><th>Value</th></tr>';
+    html += '<tr><td>SPIN COUNT</td><td>' + fmt(latest.spin_count) + '</td></tr>';
+    html += '<tr><td>TOTAL RTP</td><td>' + fmtPct(latest.total_rtp) + '</td></tr>';
+    html += '<tr><td>BASE RTP</td><td>' + fmtPct(latest.base_rtp) + '</td></tr>';
+    html += '<tr><td>EB RTP</td><td>' + fmtPct(latest.eb_rtp) + '</td></tr>';
+    html += '</table>';
+
+    if (history.length > 0) {
+      html += '<div style="margin-top:6px;"><span style="font-size:12px;cursor:pointer;color:#666;" onclick="histToggleEl(\'' + histId + '\')">▶ History (' + history.length + ' snapshots)</span>';
+      html += '<div id="' + histId + '" style="display:none;">';
+      html += '<table class="result-table" style="margin-top:4px;"><tr><th>SPIN COUNT</th><th>TOTAL RTP</th><th>BASE RTP</th><th>EB RTP</th></tr>';
+      history.forEach(function(h) {
+        html += '<tr><td>' + fmt(h.spin_count) + '</td><td>' + fmtPct(h.total_rtp) + '</td><td>' + fmtPct(h.base_rtp) + '</td><td>' + fmtPct(h.eb_rtp) + '</td></tr>';
+      });
+      html += '</table></div></div>';
+    }
+
+    html += '</div></div>';
+
+    if (!window._histModels) window._histModels = {};
+    window._histModels[mid] = history;
+  });
+  return html;
+}
+
+function histToggleEl(id) {
+  var el = document.getElementById(id);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function histCopyTable(tableId, btnEl) {
+  copyTable(tableId, btnEl);
+}
+
+function histToggleVolcano(chartId, mid) {
+  var el = document.getElementById(chartId);
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    histDrawVolcano('canvas_' + mid, mid);
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function histDrawVolcano(canvasId, mid) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas || !window._histModels || !window._histModels[mid]) return;
+  var hist = window._histModels[mid];
+  if (hist.length < 2) return;
+  // Reuse the main drawVolcanoChart logic
+  var ctx = canvas.getContext('2d');
+  var w = canvas.width, h = canvas.height;
+  var pad = {top:20,right:20,bottom:30,left:60};
+  var plotW = w-pad.left-pad.right, plotH = h-pad.top-pad.bottom;
+  ctx.clearRect(0,0,w,h); ctx.fillStyle='#fafafa'; ctx.fillRect(0,0,w,h);
+  var spins = hist.map(function(h){return h.spin_count||0;});
+  var maxS=Math.max.apply(null,spins), minS=Math.min.apply(null,spins);
+  if(maxS===minS)maxS=minS+1;
+  var series=[{key:'total_rtp',label:'TOTAL RTP',color:'#e74c3c'},{key:'base_rtp',label:'BASE RTP',color:'#2980b9'},{key:'eb_rtp',label:'EB RTP',color:'#27ae60'}];
+  var allV=[]; series.forEach(function(s){hist.forEach(function(h){allV.push(h[s.key]||0);});});
+  var minR=Math.min.apply(null,allV)*0.998, maxR=Math.max.apply(null,allV)*1.002;
+  if(maxR===minR)maxR=minR+0.01;
+  ctx.strokeStyle='#999';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad.left,pad.top);ctx.lineTo(pad.left,h-pad.bottom);ctx.lineTo(w-pad.right,h-pad.bottom);ctx.stroke();
+  ctx.fillStyle='#666';ctx.font='10px sans-serif';ctx.textAlign='right';
+  for(var i=0;i<=4;i++){var yV=minR+(maxR-minR)*i/4;var yP=h-pad.bottom-(i/4)*plotH;ctx.fillText((yV*100).toFixed(2)+'%',pad.left-4,yP+3);ctx.strokeStyle='#eee';ctx.beginPath();ctx.moveTo(pad.left,yP);ctx.lineTo(w-pad.right,yP);ctx.stroke();}
+  series.forEach(function(s){var vals=hist.map(function(h){return h[s.key]||0;});ctx.strokeStyle=s.color;ctx.lineWidth=2;ctx.beginPath();for(var j=0;j<vals.length;j++){var x=pad.left+(spins[j]-minS)/(maxS-minS)*plotW;var y=h-pad.bottom-(vals[j]-minR)/(maxR-minR)*plotH;if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.stroke();ctx.fillStyle=s.color;for(var k=0;k<vals.length;k++){var dx=pad.left+(spins[k]-minS)/(maxS-minS)*plotW;var dy=h-pad.bottom-(vals[k]-minR)/(maxR-minR)*plotH;ctx.beginPath();ctx.arc(dx,dy,3,0,Math.PI*2);ctx.fill();}});
+  var lx=pad.left+10,ly=pad.top+4;series.forEach(function(s,i){ctx.fillStyle=s.color;ctx.fillRect(lx,ly+i*14,10,10);ctx.fillStyle='#333';ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillText(s.label,lx+14,ly+i*14+9);});
+  ctx.fillStyle='#666';ctx.textAlign='center';ctx.fillText('SPIN COUNT',w/2,h-4);
+}
+
+async function histDownloadRun(filename) {
+  var r = await fetch('/history/load?filename=' + encodeURIComponent(filename));
+  var data = await r.json();
+  histDownloadJson(JSON.stringify(data, null, 2), filename);
+}
+
+function histDownloadQueryResult(index) {
+  if (!window._histQueryResults || !window._histQueryResults[index]) return;
+  var record = window._histQueryResults[index];
+  var ts = record.timestamp ? record.timestamp.replace(/[:.]/g, '-') : 'result_' + index;
+  histDownloadJson(JSON.stringify(record, null, 2), ts + '.json');
+}
+
+function histDownloadJson(jsonStr, filename) {
+  var blob = new Blob([jsonStr], {type: 'application/json'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ---------------------------------------------------------------------------

@@ -240,6 +240,21 @@ def delete_files():
     return jsonify({"results": results})
 
 
+@app.route("/sysinfo", methods=["GET"])
+def sysinfo():
+    """Return system CPU and memory info."""
+    import psutil
+    cpu_pct = psutil.cpu_percent(interval=0.5)
+    mem = psutil.virtual_memory()
+    return jsonify({
+        "cpu_percent": cpu_pct,
+        "cpu_count": psutil.cpu_count(),
+        "mem_total_mb": round(mem.total / 1024 / 1024),
+        "mem_used_mb": round(mem.used / 1024 / 1024),
+        "mem_percent": mem.percent,
+    })
+
+
 if __name__ == "__main__":
     print(f"Worker listening on 0.0.0.0:{PORT}")
     print(f"SIMULATOR_DIR: {SIMULATOR_DIR}")

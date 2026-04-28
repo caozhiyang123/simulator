@@ -952,6 +952,47 @@ def history_page():
     return render_template("history.html")
 
 
+@app.route("/sysinfo", methods=["GET"])
+def master_sysinfo():
+    """Return master's local system info."""
+    import psutil
+    cpu_pct = psutil.cpu_percent(interval=0.5)
+    mem = psutil.virtual_memory()
+    return jsonify({
+        "cpu_percent": cpu_pct,
+        "cpu_count": psutil.cpu_count(),
+        "mem_total_mb": round(mem.total / 1024 / 1024),
+        "mem_used_mb": round(mem.used / 1024 / 1024),
+        "mem_percent": mem.percent,
+    })
+
+
+@app.route("/sysinfo/all", methods=["GET"])
+def all_sysinfo():
+    """Collect system info from master + all workers."""
+    import psutil
+    results = {}
+    # Master local
+    cpu_pct = psutil.cpu_percent(interval=0.5)
+    mem = psutil.virtual_memory()
+    results["master"] = {
+        "cpu_percent": cpu_pct,
+        "cpu_count": psutil.cpu_count(),
+        "mem_total_mb": round(mem.total / 1024 / 1024),
+        "mem_used_mb": round(mem.used / 1024 / 1024),
+        "mem_percent": mem.percent,
+    }
+    # Workers
+    for w in config.workers:
+        addr = w["addr"]
+        try:
+            r = http_requests.get(f"http://{addr}/sysinfo", timeout=3)
+            results[addr] = r.json()
+        except Exception as exc:
+            results[addr] = {"error": str(exc)}
+    return jsonify(results)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
