@@ -679,6 +679,56 @@ def history_query():
     return jsonify({"results": results})
 
 
+@app.route("/history/export", methods=["POST"])
+def history_export():
+    """Package selected history files as a zip and send to browser.
+
+    Request body: {"filenames": ["file1.json", ...]}
+    """
+    import io
+    import zipfile
+    data = request.get_json(force=True)
+    filenames = data.get("filenames", [])
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fname in filenames:
+            fpath = os.path.join(history_store._data_dir, fname)
+            if os.path.isfile(fpath):
+                zf.write(fpath, fname)
+
+    buf.seek(0)
+    from flask import send_file
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="history_export.zip",
+    )
+
+
+@app.route("/history/delete", methods=["POST"])
+def history_delete():
+    """Delete history files.
+
+    Request body: {"filenames": ["file1.json", "file2.json"]}
+    """
+    data = request.get_json(force=True)
+    filenames = data.get("filenames", [])
+    results = []
+    for fname in filenames:
+        fpath = os.path.join(history_store._data_dir, fname)
+        try:
+            if os.path.isfile(fpath):
+                os.remove(fpath)
+                results.append({"filename": fname, "status": "deleted"})
+            else:
+                results.append({"filename": fname, "status": "not found"})
+        except OSError as exc:
+            results.append({"filename": fname, "status": "error", "error": str(exc)})
+    return jsonify({"results": results})
+
+
 @app.route("/history/save", methods=["POST"])
 def history_save():
     """Manually save current aggregated results to history."""

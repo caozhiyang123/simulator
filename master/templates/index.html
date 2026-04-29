@@ -289,15 +289,17 @@
 
     <!-- HISTORY PAGE -->
     <div class="page-panel" id="pageHistory">
-      <h1>📜 Simulation History</h1>
-      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
-        <div><label>Model Name</label><input type="text" id="histFilterModel" placeholder="e.g. AmericanChampion"></div>
-        <div><label>Start Date</label><input type="date" id="histFilterStart"></div>
-        <div><label>End Date</label><input type="date" id="histFilterEnd"></div>
-        <button class="btn-primary" onclick="histSearch()">Search</button>
-        <button class="btn-primary" onclick="histLoadAll()">Show All</button>
+      <div class="card">
+        <h2>📜 Simulation History</h2>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
+          <div><label>Model Name</label><input type="text" id="histFilterModel" placeholder="e.g. AmericanChampion" style="margin-bottom:0;"></div>
+          <div><label>Start Date</label><input type="date" id="histFilterStart" style="margin-bottom:0;"></div>
+          <div><label>End Date</label><input type="date" id="histFilterEnd" style="margin-bottom:0;"></div>
+          <button class="btn-primary" onclick="histSearch()">Search</button>
+          <button class="btn-primary" onclick="histLoadAll()">Show All</button>
+        </div>
+        <div id="histResults"></div>
       </div>
-      <div id="histResults"></div>
     </div><!-- end pageHistory -->
 
   </div><!-- end main-content -->
@@ -1682,16 +1684,22 @@ async function histSearch() {
 function histRenderRuns(runs) {
   var el = document.getElementById('histResults');
   if (!runs.length) { el.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">No history data found</div>'; return; }
-  var html = '';
+  var html = '<div style="margin-bottom:8px;display:flex;gap:4px;">';
+  html += '<button class="btn-primary btn-sm" onclick="histBatchDownload()">⬇ Download Selected</button>';
+  html += '<button class="btn-danger btn-sm" onclick="histBatchDelete()">🗑 Delete Selected</button>';
+  html += '<label style="font-size:12px;display:flex;align-items:center;gap:4px;margin-left:8px;cursor:pointer;color:#666;"><input type="checkbox" onchange="histToggleAll(this)"> Select All</label>';
+  html += '</div>';
   runs.forEach(function(run, i) {
     var ts = run.timestamp ? new Date(run.timestamp).toLocaleString() : run.filename;
-    html += '<div class="card" style="margin-bottom:12px;">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="histToggleRun(\'hrun_' + i + '\', \'' + run.filename + '\')">';
-    html += '<h2 style="border:none;margin:0;padding:0;">📅 ' + ts + '</h2>';
-    html += '<span style="font-size:12px;color:#888;">' + run.model_count + ' models</span>';
+    html += '<div class="card" style="margin-bottom:8px;padding:10px;">';
+    html += '<div style="display:flex;align-items:center;gap:8px;">';
+    html += '<input type="checkbox" class="hist-cb" value="' + run.filename + '">';
+    html += '<span style="flex:1;cursor:pointer;font-weight:600;font-size:13px;" onclick="histToggleRun(\'hrun_' + i + '\', \'' + run.filename + '\')">📅 ' + ts + '</span>';
+    html += '<span style="font-size:11px;color:#888;">' + run.model_count + ' models</span>';
+    html += '<button class="btn-success btn-sm" onclick="event.stopPropagation();histDownloadRun(\'' + run.filename + '\')">⬇</button>';
+    html += '<button class="btn-danger btn-sm" onclick="event.stopPropagation();histDeleteOne(\'' + run.filename + '\',' + i + ')">🗑</button>';
     html += '</div>';
-    html += '<div style="margin-top:4px;"><button class="btn-success btn-sm" onclick="event.stopPropagation();histDownloadRun(\'' + run.filename + '\')">⬇ Download</button></div>';
-    html += '<div id="hrun_' + i + '" style="display:none;margin-top:12px;"></div>';
+    html += '<div id="hrun_' + i + '" style="display:none;margin-top:8px;"></div>';
     html += '</div>';
   });
   el.innerHTML = html;
@@ -1849,6 +1857,51 @@ function histDownloadJson(jsonStr, filename) {
   document.body.appendChild(a); a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+function histToggleAll(masterCb) {
+  document.querySelectorAll('.hist-cb').forEach(function(cb) { cb.checked = masterCb.checked; });
+}
+
+async function histDeleteOne(filename) {
+  if (!confirm('Delete history record ' + filename + '?')) return;
+  var r = await api('/history/delete', 'POST', {filenames: [filename]});
+  if (r.ok) { log('✅ Deleted ' + filename); histLoadAll(); }
+}
+
+async function histBatchDelete() {
+  var selected = [];
+  document.querySelectorAll('.hist-cb:checked').forEach(function(cb) { selected.push(cb.value); });
+  if (!selected.length) { showAlert('Please select records to delete'); return; }
+  if (!confirm('Delete ' + selected.length + ' record(s)?')) return;
+  var r = await api('/history/delete', 'POST', {filenames: selected});
+  if (r.ok) { log('✅ Deleted ' + selected.length + ' record(s)'); histLoadAll(); }
+}
+
+async function histBatchDownload() {
+  var selected = [];
+  document.querySelectorAll('.hist-cb:checked').forEach(function(cb) { selected.push(cb.value); });
+  if (!selected.length) { showAlert('Please select records to download'); return; }
+  log('⬇ Downloading ' + selected.length + ' record(s) as zip...');
+  try {
+    var res = await fetch('/history/export', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({filenames: selected}),
+    });
+    var blob = await res.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'history_export.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    log('✅ Downloaded ' + selected.length + ' record(s)');
+  } catch(e) {
+    log('❌ Download failed: ' + e.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
