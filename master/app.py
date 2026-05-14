@@ -510,13 +510,46 @@ def add_worker():
     data = request.get_json(force=True)
     addr = data.get("addr")
     vcpu = data.get("vcpu", 1)
+    alias = data.get("alias", "")
 
     try:
-        nodes = config.add_worker(addr, vcpu)
+        nodes = config.add_worker(addr, vcpu, alias)
     except WorkerExistsError as exc:
         return jsonify({"error": str(exc), "addr": addr}), exc.status_code
 
     return jsonify({"workers": nodes})
+
+
+@app.route("/edit_worker", methods=["POST"])
+def edit_worker():
+    """Edit an existing Worker node.
+
+    Request body: {"old_addr": "ip:port", "addr": "ip:port", "vcpu": int, "alias": str}
+    """
+    data = request.get_json(force=True)
+    old_addr = data.get("old_addr", "")
+    new_addr = data.get("addr", "")
+    vcpu = data.get("vcpu", 1)
+    alias = data.get("alias", "")
+
+    if not old_addr:
+        return jsonify({"error": "old_addr required"}), 400
+
+    # Find and update the worker
+    found = False
+    for w in config._workers:
+        if w["addr"] == old_addr:
+            w["addr"] = new_addr or old_addr
+            w["vcpu"] = vcpu
+            w["alias"] = alias
+            found = True
+            break
+
+    if not found:
+        return jsonify({"error": "Worker not found", "addr": old_addr}), 404
+
+    config._save()
+    return jsonify({"workers": config.get_nodes()})
 
 
 @app.route("/del_worker", methods=["POST"])
@@ -1000,6 +1033,20 @@ def worker_delete():
 def history_page():
     """Render the history replay page."""
     return render_template("history.html")
+
+
+@app.route("/workers/health", methods=["GET"])
+def workers_health():
+    """Check if each worker is online by pinging /status."""
+    results = {}
+    for w in config.workers:
+        addr = w["addr"]
+        try:
+            r = http_requests.get(f"http://{addr}/status", timeout=2)
+            results[addr] = r.status_code == 200
+        except Exception:
+            results[addr] = False
+    return jsonify(results)
 
 
 @app.route("/sysinfo", methods=["GET"])

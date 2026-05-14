@@ -7,6 +7,7 @@
     {
       "addr": "127.0.0.1:5001",
       "vcpu": 8,
+      "alias": "local",
       "percentage": 0,
       "shared_dir": "",
       "username": null,
@@ -15,6 +16,7 @@
     {
       "addr": "10.147.18.57:5001",
       "vcpu": 8,
+      "alias": "local",
       "percentage": 0.0,
       "shared_dir": "",
       "username": null,
@@ -23,6 +25,7 @@
     {
       "addr": "10.147.18.17:5001",
       "vcpu": 12,
+      "alias": "Yamy",
       "percentage": 0.0,
       "shared_dir": "",
       "username": null,
@@ -31,6 +34,7 @@
     {
       "addr": "10.147.18.208:5001",
       "vcpu": 4,
+      "alias": "ubuntu-b2b-prod",
       "percentage": 0.0,
       "shared_dir": "",
       "username": null,

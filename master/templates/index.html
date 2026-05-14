@@ -7,8 +7,10 @@
 <title>Distributed Simulator Control Panel</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #333; padding: 20px; }
-  h1 { text-align: center; margin-bottom: 20px; color: #1a1a2e; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #f5f7fa url('/static/background_1.PNG') no-repeat center center fixed; background-size: cover; color: #333; padding: 20px; position: relative; }
+  #bgMask { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.85); z-index: 0; pointer-events: none; }
+  body > *:not(#bgMask) { position: relative; z-index: 1; }
+  h1 { text-align: center; margin-bottom: 0; color: #1a1a2e; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 1200px; margin: 0 auto; }
   .card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
   .card h2 { font-size: 15px; color: #555; margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
@@ -50,6 +52,7 @@
   .pct-row span { min-width: 140px; }
   .worker-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
   .worker-item span { font-size: 13px; }
+  .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
   .result-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
   .result-table th, .result-table td { border: 1px solid #ddd; padding: 5px 8px; text-align: left; }
   .result-table th { background: #f0f0f0; }
@@ -72,9 +75,26 @@
 </style>
 </head>
 <body>
+<div id="bgMask"></div>
 
-<h1>🎰 Distributed Simulator Control Panel</h1>
+<!-- HEADER SECTION -->
+<div style="padding:12px 20px;text-align:center;border-bottom:1px solid #ddd;margin-bottom:16px;">
+  <h1 style="margin:0;font-size:20px;display:inline-block;">🎰 Distributed Simulator Control Panel</h1>
+  <div style="float:right;font-size:14px;">
+    <select id="bgSelect" onchange="changeBg(this.value)" style="padding:4px 8px;border-radius:4px;border:1px solid #ccc;font-size:12px;">
+      <option value="gray">Gray</option>
+      <option value="black">Black</option>
+      <option value="white">White</option>
+      <option value="bg1" selected>Background 1</option>
+      <option value="bg2">Background 2</option>
+    </select>
+    <label style="font-size:12px;margin-left:8px;cursor:pointer;color:#666;">
+      <input type="checkbox" id="maskToggle" onchange="toggleMask(this.checked)" checked> Mask
+    </label>
+  </div>
+</div>
 
+<!-- MIDDLE SECTION -->
 <div class="app-layout">
   <!-- Sidebar -->
   <div class="sidebar" style="margin-top:0;">
@@ -189,17 +209,22 @@
   <!-- Worker Management -->
   <div class="card">
     <h2>👷 Worker Management</h2>
-    <div class="row">
-      <div>
+    <div class="row" style="gap:8px;flex-wrap:nowrap;">
+      <div style="flex:1;">
         <label>New Worker (IP:PORT)</label>
         <input type="text" id="newWorkerAddr" placeholder="192.168.1.2:5001">
       </div>
-      <div>
+      <div style="flex:none;width:70px;">
         <label>vCPU</label>
-        <input type="number" id="newWorkerVcpu" value="1" min="1" style="width:70px;">
+        <input type="number" id="newWorkerVcpu" value="1" min="1">
       </div>
-      <button class="btn-success" onclick="addWorker()">Add</button>
+      <div style="flex:none;width:110px;">
+        <label>Alias</label>
+        <input type="text" id="newWorkerAlias" placeholder="e.g. PC-Office">
+      </div>
+      <button class="btn-success" style="flex:none;align-self:flex-end;height:34px;margin-bottom:8px;" onclick="addWorker()">Add</button>
     </div>
+    <button class="btn-primary btn-sm" onclick="checkWorkersHealth()" style="margin-bottom:8px;">🔍 Check(batch)</button>
     <div id="workerList"></div>
   </div>
 
@@ -247,17 +272,22 @@
     <div class="page-panel" id="pageWorkers">
       <div class="card">
         <h2>👷 Worker Management</h2>
-        <div class="row">
-          <div>
+        <div class="row" style="gap:8px;flex-wrap:nowrap;">
+          <div style="flex:1;">
             <label>New Worker (IP:PORT)</label>
             <input type="text" id="pgNewWorkerAddr" placeholder="192.168.1.2:5001">
           </div>
-          <div>
+          <div style="flex:none;width:70px;">
             <label>vCPU</label>
-            <input type="number" id="pgNewWorkerVcpu" value="1" min="1" style="width:70px;">
+            <input type="number" id="pgNewWorkerVcpu" value="1" min="1">
           </div>
-          <button class="btn-success" onclick="pgAddWorker()">Add</button>
+          <div style="flex:none;width:110px;">
+            <label>Alias</label>
+            <input type="text" id="pgNewWorkerAlias" placeholder="e.g. PC-Office">
+          </div>
+          <button class="btn-success" style="flex:none;align-self:flex-end;height:34px;margin-bottom:8px;" onclick="pgAddWorker()">Add</button>
         </div>
+        <button class="btn-primary btn-sm" onclick="checkWorkersHealth()" style="margin-bottom:8px;">🔍 Check(batch)</button>
         <div id="pgWorkerList"></div>
       </div>
     </div><!-- end pageWorkers -->
@@ -305,7 +335,12 @@
   </div><!-- end main-content -->
 </div><!-- end app-layout -->
 
-<!-- File Preview/Edit Modal -->
+<!-- FOOTER SECTION (shared) -->
+<div style="margin-top:16px;padding:12px;text-align:center;font-size:18px;color:#888;border-top:1px solid #ddd;">
+  <a href="https://dev.sandbox.gamesmartasia.com/home" target="_blank" style="color:#4a90d9;text-decoration:none;">Sandbox Games dev</a>
+</div>
+
+<!-- FOOTER SECTION (separator already on footer div) -->
 <div id="previewModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;justify-content:center;align-items:center;" onclick="if(event.target===this)closePreview()">
   <div style="background:#fff;border-radius:8px;width:80%;max-width:800px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 4px 20px rgba(0,0,0,0.3);">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #eee;">
@@ -322,9 +357,32 @@
 
 <script>
 // ---------------------------------------------------------------------------
+// Background & Mask
+// ---------------------------------------------------------------------------
+function changeBg(val) {
+  var body = document.body;
+  switch(val) {
+    case 'gray': body.style.background = '#e0e0e0'; body.style.backgroundImage = 'none'; break;
+    case 'black': body.style.background = '#1a1a1a'; body.style.backgroundImage = 'none'; break;
+    case 'white': body.style.background = '#ffffff'; body.style.backgroundImage = 'none'; break;
+    case 'bg1': body.style.background = '#f5f7fa url("/static/background_1.PNG") no-repeat center center fixed'; body.style.backgroundSize = 'cover'; break;
+    case 'bg2': body.style.background = '#f5f7fa url("/static/background_2.PNG") no-repeat center center fixed'; body.style.backgroundSize = 'cover'; break;
+  }
+  // Adjust text color for dark backgrounds
+  if (val === 'black') { document.querySelector('h1').style.color = '#fff'; }
+  else { document.querySelector('h1').style.color = '#1a1a2e'; }
+}
+
+function toggleMask(enabled) {
+  var before = document.getElementById('bgMask');
+  if (before) before.style.display = enabled ? 'block' : 'none';
+}
+
+// ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 let nodes = [];          // [{addr, vcpu, percentage}, ...]
+let workerHealthMap = {};  // {addr: true/false}
 let autoRefreshTimer = null;
 let autoRefreshAutoStarted = false;  // true when auto-refresh was started by simulation
 let autoLogsTimer = null;
@@ -930,12 +988,14 @@ async function savePercentages() {
 async function addWorker() {
   const addr = document.getElementById('newWorkerAddr').value.trim();
   const vcpu = parseInt(document.getElementById('newWorkerVcpu').value) || 1;
+  const alias = document.getElementById('newWorkerAlias').value.trim();
   if (!addr) { log('⚠️ Please enter Worker address'); return; }
-  log('➕ Add Worker: ' + addr + ' (vCPU=' + vcpu + ')');
-  const r = await api('/add_worker', 'POST', { addr, vcpu });
+  log('➕ Add Worker: ' + addr + ' (vCPU=' + vcpu + ', alias=' + alias + ')');
+  const r = await api('/add_worker', 'POST', { addr, vcpu, alias });
   if (r.ok) {
     log('✅ Worker ' + addr + ' added');
     document.getElementById('newWorkerAddr').value = '';
+    document.getElementById('newWorkerAlias').value = '';
     nodes = r.data.workers;
     renderWorkers();
     renderPercentageInputs();
@@ -954,15 +1014,38 @@ async function delWorker(addr) {
   }
 }
 
+function editWorker(addr, vcpu, alias) {
+  var newAddr = prompt('IP:PORT', addr);
+  if (newAddr === null) return;
+  var newVcpu = prompt('vCPU', vcpu);
+  if (newVcpu === null) return;
+  var newAlias = prompt('Alias', alias);
+  if (newAlias === null) return;
+  doEditWorker(addr, newAddr.trim(), parseInt(newVcpu) || 1, newAlias.trim());
+}
+
+async function doEditWorker(oldAddr, addr, vcpu, alias) {
+  var r = await api('/edit_worker', 'POST', {old_addr: oldAddr, addr: addr, vcpu: vcpu, alias: alias});
+  if (r.ok) {
+    log('✅ Worker ' + oldAddr + ' updated');
+    nodes = r.data.workers;
+    renderWorkers();
+    renderPercentageInputs();
+  }
+}
+
 function renderWorkers() {
   // Worker list with delete buttons
   const listEl = document.getElementById('workerList');
   let listHtml = '';
   nodes.forEach(function(n) {
     if (n.addr === 'master') return;
+    var dotColor = workerHealthMap[n.addr] ? '#27ae60' : '#e74c3c';
     listHtml += '<div class="worker-item">';
-    listHtml += '<span>🖥 ' + n.addr + ' (vCPU: ' + n.vcpu + ')</span>';
+    listHtml += '<span class="status-dot" style="background:' + dotColor + ';"></span>';
+    listHtml += '<span>🖥 ' + n.addr + (n.alias ? ' [' + n.alias + ']' : '') + ' (vCPU: ' + n.vcpu + ')</span>';
     listHtml += '<button class="btn-danger btn-sm" onclick="delWorker(\'' + n.addr + '\')">Delete</button>';
+    listHtml += '<button class="btn-primary btn-sm" onclick="editWorker(\'' + n.addr + '\',' + n.vcpu + ',\'' + (n.alias || '') + '\')">Edit</button>';
     listHtml += '</div>';
   });
   listEl.innerHTML = listHtml || '<span style="font-size:13px;color:#999;">No Workers</span>';
@@ -982,11 +1065,14 @@ function renderWorkers() {
 
   // Batch stop buttons
   const batchStopEl = document.getElementById('batchStopButtons');
-  let batchHtml = '<button class="btn-danger btn-sm" onclick="stopMaster()">⏹ Stop Master</button> ';
+  let batchHtml = '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;">';
+  batchHtml += '<button class="btn-danger btn-sm" onclick="stopMaster()">⏹ Stop Master</button>';
   nodes.forEach(function(n) {
     if (n.addr === 'master') return;
-    batchHtml += '<button class="btn-danger btn-sm" onclick="stopWorker(\'' + n.addr + '\')">⏹ Stop ' + n.addr + '</button> ';
+    var label = n.alias ? n.alias + ' (' + n.addr + ')' : n.addr;
+    batchHtml += '<button class="btn-danger btn-sm" onclick="stopWorker(\'' + n.addr + '\')">⏹ Stop ' + label + '</button>';
   });
+  batchHtml += '</div>';
   batchStopEl.innerHTML = batchHtml;
 
   // Batch node checkboxes
@@ -1552,7 +1638,7 @@ function pgRenderWorkers() {
   nodes.forEach(function(n) {
     if (n.addr === 'master') return;
     html += '<div class="worker-item">';
-    html += '<span>🖥 ' + n.addr + ' (vCPU: ' + n.vcpu + ')</span>';
+    html += '<span>🖥 ' + n.addr + (n.alias ? ' [' + n.alias + ']' : '') + ' (vCPU: ' + n.vcpu + ')</span>';
     html += '<button class="btn-danger btn-sm" onclick="pgDelWorker(\'' + n.addr + '\')">Delete</button>';
     html += '</div>';
   });
@@ -1562,11 +1648,13 @@ function pgRenderWorkers() {
 async function pgAddWorker() {
   var addr = document.getElementById('pgNewWorkerAddr').value.trim();
   var vcpu = parseInt(document.getElementById('pgNewWorkerVcpu').value) || 1;
+  var alias = document.getElementById('pgNewWorkerAlias').value.trim();
   if (!addr) { showAlert('Please enter Worker address'); return; }
-  var r = await api('/add_worker', 'POST', { addr: addr, vcpu: vcpu });
+  var r = await api('/add_worker', 'POST', { addr: addr, vcpu: vcpu, alias: alias });
   if (r.ok) {
     log('✅ Worker ' + addr + ' added');
     document.getElementById('pgNewWorkerAddr').value = '';
+    document.getElementById('pgNewWorkerAlias').value = '';
     nodes = r.data.workers;
     pgRenderWorkers();
     renderWorkers();
@@ -1904,6 +1992,14 @@ async function histBatchDownload() {
   }
 }
 
+async function checkWorkersHealth() {
+  var r = await api('/workers/health', 'GET');
+  if (r.ok) {
+    workerHealthMap = r.data;
+    renderWorkers();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Init: load node list from /config/nodes on page load
 // ---------------------------------------------------------------------------
@@ -1942,6 +2038,7 @@ async function init() {
   }
 
   log('✅ Page loaded, ' + nodes.length + ' nodes');
+  checkWorkersHealth();
 }
 
 init();

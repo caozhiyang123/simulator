@@ -53,6 +53,7 @@ class ClusterConfig:
             self._workers.append({
                 "addr": w["addr"],
                 "vcpu": w.get("vcpu", 1),
+                "alias": w.get("alias", ""),
                 "percentage": w.get("percentage", 0.0),
                 "shared_dir": w.get("shared_dir", ""),
                 "username": w.get("username"),
@@ -85,6 +86,7 @@ class ClusterConfig:
             {
                 "addr": "master",
                 "vcpu": self._master["vcpu"],
+                "alias": "master",
                 "percentage": self._master["percentage"],
             }
         ]
@@ -92,11 +94,12 @@ class ClusterConfig:
             nodes.append({
                 "addr": w["addr"],
                 "vcpu": w["vcpu"],
+                "alias": w.get("alias", ""),
                 "percentage": w["percentage"],
             })
         return nodes
 
-    def add_worker(self, addr: str, vcpu: int = 1) -> list[dict]:
+    def add_worker(self, addr: str, vcpu: int = 1, alias: str = "") -> list[dict]:
         """Add a worker at runtime.
 
         Raises WorkerExistsError if already present.
@@ -107,6 +110,7 @@ class ClusterConfig:
         self._workers.append({
             "addr": addr,
             "vcpu": vcpu,
+            "alias": alias,
             "percentage": 0.0,
             "shared_dir": "",
             "username": None,
