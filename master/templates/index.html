@@ -1687,9 +1687,12 @@ function pgRenderWorkers() {
   var html = '';
   nodes.forEach(function(n) {
     if (n.addr === 'master') return;
+    var dotColor = workerHealthMap[n.addr] ? '#27ae60' : '#e74c3c';
     html += '<div class="worker-item">';
+    html += '<span class="status-dot" style="background:' + dotColor + ';"></span>';
     html += '<span>🖥 ' + n.addr + (n.alias ? ' [' + n.alias + ']' : '') + ' (vCPU: ' + n.vcpu + ')</span>';
     html += '<button class="btn-danger btn-sm" onclick="pgDelWorker(\'' + n.addr + '\')">Delete</button>';
+    html += '<button class="btn-primary btn-sm" onclick="editWorker(\'' + n.addr + '\',' + n.vcpu + ',\'' + (n.alias || '') + '\')">Edit</button>';
     html += '</div>';
   });
   el.innerHTML = html || '<span style="font-size:13px;color:#999;">No Workers</span>';
