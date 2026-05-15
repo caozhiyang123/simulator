@@ -78,9 +78,11 @@
 <div id="bgMask"></div>
 
 <!-- HEADER SECTION -->
-<div style="padding:12px 20px;text-align:center;border-bottom:1px solid #ddd;margin-bottom:16px;">
+<div style="padding:12px 20px;text-align:center;border-bottom:1px solid #ddd;margin-bottom:16px;position:relative;">
   <h1 style="margin:0;font-size:20px;display:inline-block;">🎰 Distributed Simulator Control Panel</h1>
-  <div style="float:right;font-size:14px;">
+  <div style="position:absolute;right:20px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:12px;font-size:13px;">
+    <span id="userInfo" style="color:#666;">👤 Loading...</span>
+    <button onclick="doLogout()" style="background:#e74c3c;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">Logout</button>
     <select id="bgSelect" onchange="changeBg(this.value)" style="padding:4px 8px;border-radius:4px;border:1px solid #ccc;font-size:12px;">
       <option value="gray">Gray</option>
       <option value="black">Black</option>
@@ -88,7 +90,7 @@
       <option value="bg1" selected>Background 1</option>
       <option value="bg2">Background 2</option>
     </select>
-    <label style="font-size:12px;margin-left:8px;cursor:pointer;color:#666;">
+    <label style="font-size:12px;cursor:pointer;color:#666;">
       <input type="checkbox" id="maskToggle" onchange="toggleMask(this.checked)" checked> Mask
     </label>
   </div>
@@ -395,6 +397,21 @@ function changeBg(val) {
 function toggleMask(enabled) {
   var before = document.getElementById('bgMask');
   if (before) before.style.display = enabled ? 'block' : 'none';
+}
+
+async function doLogout() {
+  await fetch('/auth/logout', {method: 'POST'});
+  window.location.href = '/login';
+}
+
+async function loadUserInfo() {
+  try {
+    var r = await fetch('/auth/me');
+    if (r.ok) {
+      var data = await r.json();
+      document.getElementById('userInfo').textContent = '👤 ' + data.username + ' (' + data.role + ')';
+    }
+  } catch(e) {}
 }
 
 function guideScrollTo(sectionId) {
@@ -2072,6 +2089,7 @@ async function init() {
 
   log('✅ Page loaded, ' + nodes.length + ' nodes');
   checkWorkersHealth();
+  loadUserInfo();
 }
 
 init();

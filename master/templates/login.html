@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎰</text></svg>">
+<title>Login - Simulator Control Panel</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+  .login-container { display: flex; align-items: center; gap: 60px; max-width: 800px; }
+  .login-left { flex-shrink: 0; }
+  .login-left img { width: 250px; }
+  .login-right { width: 320px; }
+  .login-right h2 { font-size: 22px; color: #333; margin-bottom: 24px; }
+  .login-right h2 span { color: #4a90d9; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
+  .form-group input { width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; }
+  .form-group input:focus { border-color: #4a90d9; }
+  .remember { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #666; margin-bottom: 16px; }
+  .btn-login { width: 100%; padding: 12px; background: #4a90d9; color: #fff; border: none; border-radius: 4px; font-size: 15px; cursor: pointer; }
+  .btn-login:hover { background: #357abd; }
+  .btn-register { display: inline-block; margin-top: 12px; font-size: 13px; color: #4a90d9; cursor: pointer; text-decoration: none; }
+  .btn-register:hover { text-decoration: underline; }
+  .error { color: #e74c3c; font-size: 13px; margin-top: 8px; display: none; }
+  .register-form { display: none; margin-top: 16px; padding-top: 16px; border-top: 1px solid #eee; }
+</style>
+</head>
+<body>
+
+<div class="login-container">
+  <div class="login-left">
+    <img src="/static/background_1.PNG" alt="777" style="border-radius:12px;">
+  </div>
+  <div class="login-right">
+    <div id="loginSection">
+      <h2>Sign in to <span>administration</span></h2>
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="loginUser" placeholder="Enter username">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="loginPass" placeholder="Enter password">
+      </div>
+      <div class="remember">
+        <input type="checkbox" id="rememberMe" checked> Keep me signed in
+      </div>
+      <button class="btn-login" onclick="doLogin()">Sign In</button>
+      <a class="btn-register" onclick="showRegister()">Register (Admin only)</a>
+      <div class="error" id="loginError"></div>
+    </div>
+
+    <div id="registerSection" class="register-form">
+      <h2>Register New User</h2>
+      <div class="form-group">
+        <label>Admin Username</label>
+        <input type="text" id="regAdminUser" placeholder="Admin username">
+      </div>
+      <div class="form-group">
+        <label>Admin Password</label>
+        <input type="password" id="regAdminPass" placeholder="Admin password">
+      </div>
+      <div class="form-group">
+        <label>New Username</label>
+        <input type="text" id="regNewUser" placeholder="New username">
+      </div>
+      <div class="form-group">
+        <label>New Password</label>
+        <input type="password" id="regNewPass" placeholder="New password">
+      </div>
+      <button class="btn-login" onclick="doRegister()">Register</button>
+      <a class="btn-register" onclick="hideRegister()">← Back to Login</a>
+      <div class="error" id="regError"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showRegister() {
+  document.getElementById('loginSection').style.display = 'none';
+  document.getElementById('registerSection').style.display = 'block';
+}
+function hideRegister() {
+  document.getElementById('registerSection').style.display = 'none';
+  document.getElementById('loginSection').style.display = 'block';
+}
+
+async function doLogin() {
+  var user = document.getElementById('loginUser').value.trim();
+  var pass = document.getElementById('loginPass').value;
+  var errEl = document.getElementById('loginError');
+  errEl.style.display = 'none';
+  if (!user || !pass) { errEl.textContent = 'Please enter username and password'; errEl.style.display = 'block'; return; }
+  var r = await fetch('/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:user, password:pass})});
+  var data = await r.json();
+  if (r.ok) {
+    window.location.href = '/';
+  } else {
+    errEl.textContent = data.error || 'Login failed';
+    errEl.style.display = 'block';
+  }
+}
+
+async function doRegister() {
+  var adminUser = document.getElementById('regAdminUser').value.trim();
+  var adminPass = document.getElementById('regAdminPass').value;
+  var newUser = document.getElementById('regNewUser').value.trim();
+  var newPass = document.getElementById('regNewPass').value;
+  var errEl = document.getElementById('regError');
+  errEl.style.display = 'none';
+  if (!adminUser || !adminPass || !newUser || !newPass) { errEl.textContent = 'All fields required'; errEl.style.display = 'block'; return; }
+  var r = await fetch('/auth/register', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({admin_username:adminUser, admin_password:adminPass, username:newUser, password:newPass})});
+  var data = await r.json();
+  if (r.ok) {
+    alert('User registered successfully!');
+    hideRegister();
+  } else {
+    errEl.textContent = data.error || 'Registration failed';
+    errEl.style.display = 'block';
+  }
+}
+
+// Enter key support
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    if (document.getElementById('loginSection').style.display !== 'none') doLogin();
+    else doRegister();
+  }
+});
+</script>
+</body>
+</html>

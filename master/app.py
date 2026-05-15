@@ -11,7 +11,7 @@ import time
 import uuid
 
 import requests as http_requests
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, session, redirect
 
 from config import ClusterConfig, WorkerExistsError, WorkerNotFoundError
 from file_sync import FileSync
@@ -34,6 +34,7 @@ PORT = int(os.environ.get("MASTER_PORT", "5000"))
 # Application & component initialisation
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "simulator-cluster-secret-2026")
 
 config = ClusterConfig(CONFIG_PATH)
 splitter = TaskSplitter()
@@ -101,6 +102,109 @@ def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name
         "retries": MAX_RETRIES,
         "error": "Max retries exceeded",
     }
+
+
+# ---------------------------------------------------------------------------
+# Auth helpers
+# ---------------------------------------------------------------------------
+import hashlib
+import json as json_module
+
+USERS_PATH = os.path.join(os.path.dirname(__file__), "users.json")
+
+
+def _load_users():
+    if not os.path.isfile(USERS_PATH):
+        return []
+    with open(USERS_PATH, "r", encoding="utf-8") as f:
+        return json_module.load(f)
+
+
+def _save_users(users):
+    with open(USERS_PATH, "w", encoding="utf-8") as f:
+        json_module.dump(users, f, ensure_ascii=False, indent=2)
+
+
+def _md5(text):
+    return hashlib.md5(text.encode()).hexdigest()
+
+
+@app.before_request
+def require_login():
+    """Require login for all routes except auth and static."""
+    allowed_prefixes = ('/auth/', '/static/', '/login')
+    if any(request.path.startswith(p) for p in allowed_prefixes):
+        return
+    if not session.get('logged_in'):
+        return redirect('/login')
+
+
+@app.route("/login")
+def login_page():
+    if session.get('logged_in'):
+        return redirect('/')
+    return render_template("login.html")
+
+
+@app.route("/auth/login", methods=["POST"])
+def auth_login():
+    data = request.get_json(force=True)
+    username = data.get("username", "")
+    password = data.get("password", "")
+    users = _load_users()
+    for u in users:
+        if u["username"] == username and u["password"] == _md5(password):
+            session['logged_in'] = True
+            session['username'] = username
+            session['role'] = u.get("role", "worker")
+            return jsonify({"status": "ok", "username": username, "role": u["role"]})
+    return jsonify({"error": "Invalid username or password"}), 401
+
+
+@app.route("/auth/register", methods=["POST"])
+def auth_register():
+    data = request.get_json(force=True)
+    admin_user = data.get("admin_username", "")
+    admin_pass = data.get("admin_password", "")
+    new_user = data.get("username", "")
+    new_pass = data.get("password", "")
+
+    users = _load_users()
+    # Verify admin credentials
+    admin_ok = False
+    for u in users:
+        if u["username"] == admin_user and u["password"] == _md5(admin_pass) and u["role"] == "admin":
+            admin_ok = True
+            break
+    if not admin_ok:
+        return jsonify({"error": "Admin authentication failed"}), 403
+
+    # Check if user exists
+    for u in users:
+        if u["username"] == new_user:
+            return jsonify({"error": "Username already exists"}), 409
+
+    users.append({
+        "username": new_user,
+        "password": _md5(new_pass),
+        "role": "worker",
+    })
+    _save_users(users)
+    return jsonify({"status": "ok", "username": new_user})
+
+
+@app.route("/auth/logout", methods=["POST"])
+def auth_logout():
+    session.clear()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/auth/me", methods=["GET"])
+def auth_me():
+    """Return current logged-in user info."""
+    if session.get('logged_in'):
+        return jsonify({"username": session.get('username'), "role": session.get('role')})
+    return jsonify({"error": "not logged in"}), 401
 
 
 # ---------------------------------------------------------------------------
