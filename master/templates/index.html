@@ -104,6 +104,7 @@
     <button class="sidebar-btn" onclick="switchPage('workers')" id="navWorkers">👷<span>Workers</span></button>
     <button class="sidebar-btn" onclick="switchPage('config')" id="navConfig">⚙️<span>Config</span></button>
     <button class="sidebar-btn" onclick="switchPage('history')" id="navHistory">📜<span>History</span></button>
+    <button class="sidebar-btn" onclick="switchPage('family')" id="navFamily">👨‍👩‍👧‍👦<span>Family</span></button>
   </div>
 
   <!-- Main Content -->
@@ -334,12 +335,22 @@
       </div>
     </div><!-- end pageHistory -->
 
+    <!-- FAMILY PAGE -->
+    <div class="page-panel" id="pageFamily">
+      <div class="card">
+        <h2>👨‍👩‍👧‍👦 Our Family</h2>
+        <div id="familyGallery" style="position:relative;min-height:500px;overflow:hidden;border-radius:8px;background:#f9f9f9;"></div>
+      </div>
+    </div><!-- end pageFamily -->
+
   </div><!-- end main-content -->
 </div><!-- end app-layout -->
 
 <!-- FOOTER SECTION (shared) -->
 <div style="margin-top:16px;padding:12px;text-align:center;font-size:18px;color:#888;border-top:1px solid #ddd;">
   <a href="https://dev.sandbox.gamesmartasia.com/home" target="_blank" style="color:#4a90d9;text-decoration:none;">Sandbox Games dev</a>
+  <span style="margin:0 12px;color:#ddd;">|</span>
+  <a href="javascript:void(0)" onclick="switchPage('family')" style="color:#4a90d9;text-decoration:none;">Our Family</a>
 </div>
 <div style="position:fixed;bottom:0;left:0;width:100%;text-align:center;padding:6px;font-size:11px;color:#999;background:rgba(255,255,255,0.9);border-top:1px solid #eee;z-index:50;">
   © 2026 GameSmart Web Services, Inc. or its affiliates. All rights reserved.
@@ -1677,6 +1688,7 @@ function switchPage(page) {
   if (page === 'history') histLoadAll();
   if (page === 'workers') pgRenderWorkers();
   if (page === 'config') pgLoadConfig();
+  if (page === 'family') loadFamilyGallery();
 }
 
 // ---------------------------------------------------------------------------
@@ -2043,6 +2055,44 @@ async function histBatchDownload() {
   } catch(e) {
     log('❌ Download failed: ' + e.message);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Family Gallery
+// ---------------------------------------------------------------------------
+async function loadFamilyGallery() {
+  var r = await api('/family/images', 'GET');
+  if (!r.ok) return;
+  var images = r.data.images || [];
+  var gallery = document.getElementById('familyGallery');
+  if (!images.length) {
+    gallery.innerHTML = '<div style="text-align:center;padding:60px;color:#999;">No photos yet. Add images to master/static/family/</div>';
+    return;
+  }
+  var html = '';
+  images.forEach(function(img, i) {
+    var rotate = (Math.random() * 20 - 10).toFixed(1);
+    var left = (Math.random() * 70 + 5).toFixed(1);
+    var top = (Math.random() * 70 + 5).toFixed(1);
+    html += '<div style="position:absolute;left:' + left + '%;top:' + top + '%;transform:rotate(' + rotate + 'deg);cursor:pointer;transition:transform 0.3s;box-shadow:2px 4px 12px rgba(0,0,0,0.2);border:4px solid #fff;border-radius:4px;background:#fff;" ';
+    html += 'onmouseenter="this.style.transform=\'rotate(0deg) scale(1.1)\';this.style.zIndex=10;" ';
+    html += 'onmouseleave="this.style.transform=\'rotate(' + rotate + 'deg) scale(1)\';this.style.zIndex=1;" ';
+    html += 'onclick="showFamilyPhoto(\'/static/family/' + img + '\')">';
+    html += '<img src="/static/family/' + img + '" style="width:150px;height:120px;object-fit:cover;display:block;border-radius:2px;">';
+    html += '</div>';
+  });
+  gallery.innerHTML = html;
+}
+
+function showFamilyPhoto(src) {
+  var modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:2000;display:flex;align-items:center;justify-content:center;cursor:pointer;';
+  modal.onclick = function() { document.body.removeChild(modal); };
+  var img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:90%;max-height:90%;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.5);';
+  modal.appendChild(img);
+  document.body.appendChild(modal);
 }
 
 async function checkWorkersHealth() {

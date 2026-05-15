@@ -1145,6 +1145,17 @@ def worker_delete():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/family/images", methods=["GET"])
+def family_images():
+    """List all images in static/family directory."""
+    family_dir = os.path.join(app.static_folder, "family")
+    if not os.path.isdir(family_dir):
+        return jsonify({"images": []})
+    images = [f for f in os.listdir(family_dir)
+              if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))]
+    return jsonify({"images": images})
+
+
 @app.route("/history/page")
 def history_page():
     """Render the history replay page."""
