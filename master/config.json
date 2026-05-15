@@ -32,7 +32,7 @@
       "password": null
     },
     {
-      "addr": "10.147.18.208:5001",
+      "addr": "10.147.18.121:5002",
       "vcpu": 4,
       "alias": "ubuntu-b2b-prod",
       "percentage": 0.0,

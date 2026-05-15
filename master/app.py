@@ -124,6 +124,9 @@ import json as json_module
 
 USERS_PATH = os.path.join(_base_dir, "users.json")
 
+# Active sessions: {username: session_token} - only one active session per user
+_active_sessions: dict[str, str] = {}
+
 
 def _load_users():
     if not os.path.isfile(USERS_PATH):
@@ -149,6 +152,13 @@ def require_login():
         return
     if not session.get('logged_in'):
         return redirect('/login')
+    # Check if this session is still the active one (single device enforcement)
+    username = session.get('username')
+    token = session.get('token')
+    if username and token and _active_sessions.get(username) != token:
+        # Another device logged in with this account
+        session.clear()
+        return redirect('/login')
 
 
 @app.route("/login")
@@ -166,9 +176,13 @@ def auth_login():
     users = _load_users()
     for u in users:
         if u["username"] == username and u["password"] == _md5(password):
+            # Generate unique session token
+            token = str(uuid.uuid4())
+            _active_sessions[username] = token
             session['logged_in'] = True
             session['username'] = username
             session['role'] = u.get("role", "worker")
+            session['token'] = token
             return jsonify({"status": "ok", "username": username, "role": u["role"]})
     return jsonify({"error": "Invalid username or password"}), 401
 
@@ -215,7 +229,13 @@ def auth_logout():
 def auth_me():
     """Return current logged-in user info."""
     if session.get('logged_in'):
-        return jsonify({"username": session.get('username'), "role": session.get('role')})
+        username = session.get('username')
+        token = session.get('token')
+        # Check if session was kicked by another login
+        if username and token and _active_sessions.get(username) != token:
+            session.clear()
+            return jsonify({"error": "Session expired (logged in elsewhere)"}), 401
+        return jsonify({"username": username, "role": session.get('role')})
     return jsonify({"error": "not logged in"}), 401
 
 

@@ -351,6 +351,10 @@
   <a href="https://dev.sandbox.gamesmartasia.com/home" target="_blank" style="color:#4a90d9;text-decoration:none;">Sandbox Games dev</a>
   <span style="margin:0 12px;color:#ddd;">|</span>
   <a href="javascript:void(0)" onclick="switchPage('family')" style="color:#4a90d9;text-decoration:none;">Our Family</a>
+  <span style="margin:0 12px;color:#ddd;">|</span>
+  <a href="https://my.zerotier.com/network/363c67c55aab4109" target="_blank" style="color:#4a90d9;text-decoration:none;">VPN Group a</a>
+  <span style="margin:0 12px;color:#ddd;">|</span>
+  <a href="https://central.zerotier.com/network/743993800f004a4a" target="_blank" style="color:#4a90d9;text-decoration:none;">VPN Group b</a>
 </div>
 <div style="position:fixed;bottom:0;left:0;width:100%;text-align:center;padding:6px;font-size:11px;color:#999;background:rgba(255,255,255,0.9);border-top:1px solid #eee;z-index:50;">
   © 2026 GameSmart Web Services, Inc. or its affiliates. All rights reserved.
@@ -421,9 +425,24 @@ async function loadUserInfo() {
     if (r.ok) {
       var data = await r.json();
       document.getElementById('userInfo').textContent = '👤 ' + data.username + ' (' + data.role + ')';
+    } else if (r.status === 401) {
+      window.location.href = '/login';
     }
-  } catch(e) {}
+  } catch(e) {
+    // Server down - redirect to login
+    window.location.href = '/login';
+  }
 }
+
+// Heartbeat: check session every 5 seconds, redirect if server down or session expired
+setInterval(async function() {
+  try {
+    var r = await fetch('/auth/me');
+    if (!r.ok) window.location.href = '/login';
+  } catch(e) {
+    window.location.href = '/login';
+  }
+}, 5000);
 
 function guideScrollTo(sectionId) {
   // Switch to Home page first
@@ -1046,11 +1065,31 @@ async function savePercentages() {
 // ---------------------------------------------------------------------------
 // Worker management
 // ---------------------------------------------------------------------------
+function validateWorkerInput(addr, vcpu, alias) {
+  // Validate IP:PORT format
+  if (!addr) { showAlert('Please enter Worker address (IP:PORT)'); return false; }
+  var parts = addr.split(':');
+  if (parts.length !== 2) { showAlert('Invalid format. Use IP:PORT (e.g. 192.168.1.2:5001)'); return false; }
+  var ip = parts[0], port = parseInt(parts[1]);
+  // Validate IP
+  var ipParts = ip.split('.');
+  if (ipParts.length !== 4 || ipParts.some(function(p) { var n = parseInt(p); return isNaN(n) || n < 0 || n > 255 || p !== String(n); })) {
+    showAlert('Invalid IP address'); return false;
+  }
+  // Validate port
+  if (isNaN(port) || port < 1 || port > 65535) { showAlert('Invalid port (1-65535)'); return false; }
+  // Validate vCPU
+  if (!vcpu || vcpu < 1 || vcpu > 256) { showAlert('vCPU must be between 1 and 256'); return false; }
+  // Validate alias length
+  if (alias && alias.length > 50) { showAlert('Alias must be 50 characters or less'); return false; }
+  return true;
+}
+
 async function addWorker() {
   const addr = document.getElementById('newWorkerAddr').value.trim();
   const vcpu = parseInt(document.getElementById('newWorkerVcpu').value) || 1;
   const alias = document.getElementById('newWorkerAlias').value.trim();
-  if (!addr) { log('⚠️ Please enter Worker address'); return; }
+  if (!validateWorkerInput(addr, vcpu, alias)) return;
   log('➕ Add Worker: ' + addr + ' (vCPU=' + vcpu + ', alias=' + alias + ')');
   const r = await api('/add_worker', 'POST', { addr, vcpu, alias });
   if (r.ok) {
@@ -1082,7 +1121,9 @@ function editWorker(addr, vcpu, alias) {
   if (newVcpu === null) return;
   var newAlias = prompt('Alias', alias);
   if (newAlias === null) return;
-  doEditWorker(addr, newAddr.trim(), parseInt(newVcpu) || 1, newAlias.trim());
+  var parsedVcpu = parseInt(newVcpu) || 1;
+  if (!validateWorkerInput(newAddr.trim(), parsedVcpu, newAlias.trim())) return;
+  doEditWorker(addr, newAddr.trim(), parsedVcpu, newAlias.trim());
 }
 
 async function doEditWorker(oldAddr, addr, vcpu, alias) {
@@ -1541,7 +1582,8 @@ function initFileSyncWorkerSelect() {
   var html = '<option value="">-- Select Worker --</option>';
   nodes.forEach(function(n) {
     if (n.addr === 'master') return;
-    html += '<option value="' + n.addr + '">' + n.addr + '</option>';
+    var label = n.addr + ' [' + (n.alias || 'unknown') + ']';
+    html += '<option value="' + n.addr + '">' + label + '</option>';
   });
   sel.innerHTML = html;
 }
@@ -1714,7 +1756,7 @@ async function pgAddWorker() {
   var addr = document.getElementById('pgNewWorkerAddr').value.trim();
   var vcpu = parseInt(document.getElementById('pgNewWorkerVcpu').value) || 1;
   var alias = document.getElementById('pgNewWorkerAlias').value.trim();
-  if (!addr) { showAlert('Please enter Worker address'); return; }
+  if (!validateWorkerInput(addr, vcpu, alias)) return;
   var r = await api('/add_worker', 'POST', { addr: addr, vcpu: vcpu, alias: alias });
   if (r.ok) {
     log('✅ Worker ' + addr + ' added');
