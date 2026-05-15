@@ -7,8 +7,18 @@ Worker 动态管理、配置修改、文件同步等 HTTP 端点。
 import logging
 import math
 import os
+import sys
 import time
 import uuid
+
+# PyInstaller support: resolve templates/static paths
+if getattr(sys, 'frozen', False):
+    _base_dir = os.path.dirname(sys.executable)
+    _bundle_dir = sys._MEIPASS
+    sys.path.insert(0, _bundle_dir)
+else:
+    _base_dir = os.path.dirname(__file__)
+    _bundle_dir = os.path.dirname(__file__)
 
 import requests as http_requests
 from flask import Flask, jsonify, render_template, request, session, redirect
@@ -27,20 +37,22 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-CONFIG_PATH = os.environ.get("CONFIG_PATH", os.path.join(os.path.dirname(__file__), "config.json"))
+CONFIG_PATH = os.environ.get("CONFIG_PATH", os.path.join(_base_dir, "config.json"))
 PORT = int(os.environ.get("MASTER_PORT", "5000"))
 
 # ---------------------------------------------------------------------------
 # Application & component initialisation
 # ---------------------------------------------------------------------------
-app = Flask(__name__)
+app = Flask(__name__,
+            template_folder=os.path.join(_bundle_dir, 'templates'),
+            static_folder=os.path.join(_bundle_dir, 'static'))
 app.secret_key = os.environ.get("SECRET_KEY", "simulator-cluster-secret-2026")
 
 config = ClusterConfig(CONFIG_PATH)
 splitter = TaskSplitter()
 merger = ResultMerger()
 progress_store = ProgressStore(config.progress_save_dir)
-history_store = HistoryStore(os.path.join(os.path.dirname(__file__), "data"))
+history_store = HistoryStore(os.path.join(_base_dir, "data"))
 sim_runner = SimulatorRunner(config.simulator_dir, config.production_dir)
 file_sync = FileSync(config.simulator_dir, "")
 poller = ProgressPoller(
@@ -110,7 +122,7 @@ def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name
 import hashlib
 import json as json_module
 
-USERS_PATH = os.path.join(os.path.dirname(__file__), "users.json")
+USERS_PATH = os.path.join(_base_dir, "users.json")
 
 
 def _load_users():

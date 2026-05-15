@@ -5,6 +5,7 @@
 progress_data/
 master/data
 master/build
+master/dist
 worker/build
 worker/dist
 windows
