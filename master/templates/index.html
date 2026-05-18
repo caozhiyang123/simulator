@@ -367,6 +367,15 @@
           <button class="btn-primary btn-sm" onclick="compareSha1()">Compare</button>
           <div id="sha1Compare" style="font-size:12px;margin-top:8px;max-height:300px;overflow-y:auto;"></div>
         </div>
+        <!-- History row -->
+        <div class="card" style="grid-column:1/-1;">
+          <h2>📜 SHA1 Compute History</h2>
+          <div style="display:flex;gap:4px;margin-bottom:8px;">
+            <button class="btn-primary btn-sm" onclick="loadSha1History()">Refresh</button>
+            <button class="btn-primary btn-sm" onclick="compareSha1History()">Compare Selected</button>
+          </div>
+          <div id="sha1HistoryList" style="font-size:12px;max-height:300px;overflow-y:auto;"></div>
+        </div>
       </div>
     </div><!-- end pageSha1 -->
 
@@ -1765,6 +1774,7 @@ function switchPage(page) {
   if (page === 'history') histLoadAll();
   if (page === 'workers') pgRenderWorkers();
   if (page === 'config') pgLoadConfig();
+  if (page === 'sha1') loadSha1History();
   if (page === 'family') loadFamilyGallery();
 }
 
@@ -2230,6 +2240,85 @@ function compareSha1() {
   html += '</table>';
   html += '<div style="margin-top:8px;">Summary: <span style="color:#27ae60;">' + same + ' same</span>, <span style="color:#e74c3c;">' + diff + ' different</span>, <span style="color:#f39c12;">' + onlyA + ' only A, ' + onlyB + ' only B</span></div>';
   el.innerHTML = html;
+}
+
+async function loadSha1History() {
+  var r = await api('/sha1/history', 'GET');
+  if (!r.ok) return;
+  var records = r.data.records || [];
+  var el = document.getElementById('sha1HistoryList');
+  if (!records.length) { el.innerHTML = '<span style="color:#999;">No history</span>'; return; }
+  var html = '<table class="result-table"><tr><th></th><th>Time</th><th>Directory</th><th>Files</th><th>Filename</th></tr>';
+  records.forEach(function(rec) {
+    var ts = rec.timestamp.replace('_', ' ');
+    html += '<tr>';
+    html += '<td><input type="checkbox" class="sha1-hist-cb" value="' + rec.filename + '"></td>';
+    html += '<td>' + ts + '</td><td>' + rec.directory + '</td><td>' + rec.file_count + '</td>';
+    html += '<td><a href="javascript:void(0)" onclick="viewSha1File(\'' + rec.filename + '\')" style="color:#4a90d9;">' + rec.filename + '</a></td>';
+    html += '</tr>';
+  });
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+async function viewSha1File(filename) {
+  openPreviewModal(filename);
+  var r = await api('/sha1/load?filename=' + encodeURIComponent(filename), 'GET');
+  if (r.ok) {
+    var content = JSON.stringify(r.data, null, 2);
+    var el = document.getElementById('previewContent');
+    el.value = content;
+    el.readOnly = true;
+    document.getElementById('previewLoading').style.display = 'none';
+    el.style.display = 'block';
+    document.getElementById('previewSaveBtn').style.display = 'none';
+  } else {
+    document.getElementById('previewLoading').textContent = 'Error: ' + (r.data.error || 'failed');
+  }
+}
+
+async function compareSha1History() {
+  var cbs = document.querySelectorAll('.sha1-hist-cb:checked');
+  if (cbs.length !== 2) { showAlert('Please select exactly 2 records to compare'); return; }
+  var files = Array.from(cbs).map(function(cb) { return cb.value; });
+
+  // Load both files
+  var r1 = await api('/sha1/load?filename=' + encodeURIComponent(files[0]), 'GET');
+  var r2 = await api('/sha1/load?filename=' + encodeURIComponent(files[1]), 'GET');
+  if (!r1.ok || !r2.ok) { showAlert('Failed to load files'); return; }
+
+  var dataA = r1.data.results || [];
+  var dataB = r2.data.results || [];
+  var mapA = {}; dataA.forEach(function(item) { mapA[item.filename] = item.sha1.trim(); });
+  var mapB = {}; dataB.forEach(function(item) { mapB[item.filename] = item.sha1.trim(); });
+  var allFiles = new Set([...Object.keys(mapA), ...Object.keys(mapB)]);
+
+  var html = '<div style="margin-bottom:8px;font-size:13px;"><b>A:</b> ' + (r1.data.directory || files[0]) + '<br><b>B:</b> ' + (r2.data.directory || files[1]) + '</div>';
+  html += '<table class="result-table"><tr><th>Filename</th><th>Status</th><th>SHA1 A</th><th>SHA1 B</th></tr>';
+  var same = 0, diff = 0, onlyA = 0, onlyB = 0;
+  Array.from(allFiles).sort().forEach(function(f) {
+    var a = mapA[f] || '', b = mapB[f] || '';
+    var status, color;
+    if (a && b && a === b) { status = '✅ Same'; color = '#27ae60'; same++; }
+    else if (a && b) { status = '❌ Different'; color = '#e74c3c'; diff++; }
+    else if (a && !b) { status = '⚠️ Only in A'; color = '#f39c12'; onlyA++; }
+    else { status = '⚠️ Only in B'; color = '#f39c12'; onlyB++; }
+    html += '<tr><td>' + f + '</td><td style="color:' + color + ';">' + status + '</td>';
+    html += '<td style="font-family:monospace;font-size:10px;">' + (a || '-') + '</td>';
+    html += '<td style="font-family:monospace;font-size:10px;">' + (b || '-') + '</td></tr>';
+  });
+  html += '</table>';
+  html += '<div style="margin-top:8px;">Summary: <span style="color:#27ae60;">' + same + ' same</span>, <span style="color:#e74c3c;">' + diff + ' different</span>, <span style="color:#f39c12;">' + onlyA + ' only A, ' + onlyB + ' only B</span></div>';
+
+  // Show in modal
+  var modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center;';
+  modal.onclick = function(e) { if (e.target === modal) document.body.removeChild(modal); };
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border-radius:8px;width:85%;max-width:900px;max-height:80vh;overflow-y:auto;padding:20px;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+  box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><h3>🔍 SHA1 Compare</h3><button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:#e74c3c;color:#fff;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;">✕</button></div>' + html;
+  modal.appendChild(box);
+  document.body.appendChild(modal);
 }
 
 // ---------------------------------------------------------------------------

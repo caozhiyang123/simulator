@@ -1165,6 +1165,50 @@ def worker_delete():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/sha1/history", methods=["GET"])
+def sha1_history():
+    """List all saved SHA1 computation results."""
+    import json as jm
+    sha1_dir = os.path.join(_base_dir, "sha1")
+    if not os.path.isdir(sha1_dir):
+        return jsonify({"records": []})
+    records = []
+    for fname in sorted(os.listdir(sha1_dir), reverse=True):
+        if not fname.endswith('.json'):
+            continue
+        fpath = os.path.join(sha1_dir, fname)
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                data = jm.load(f)
+            # Extract timestamp from filename: sha1_YYYYMMDD_HHMMSS.json
+            ts_part = fname.replace("sha1_", "").replace(".json", "")
+            records.append({
+                "filename": fname,
+                "directory": data.get("directory", ""),
+                "timestamp": ts_part,
+                "file_count": len(data.get("results", [])),
+            })
+        except Exception:
+            continue
+    return jsonify({"records": records})
+
+
+@app.route("/sha1/load", methods=["GET"])
+def sha1_load():
+    """Load a specific SHA1 result file.
+
+    Query param: ?filename=sha1_20260518_063456.json
+    """
+    import json as jm
+    filename = request.args.get("filename", "")
+    sha1_dir = os.path.join(_base_dir, "sha1")
+    fpath = os.path.join(sha1_dir, filename)
+    if not os.path.isfile(fpath):
+        return jsonify({"error": "File not found"}), 404
+    with open(fpath, "r", encoding="utf-8") as f:
+        return jsonify(jm.load(f))
+
+
 @app.route("/sha1/compute", methods=["POST"])
 def sha1_compute():
     """Compute SHA1 for all JSON files in a directory.
