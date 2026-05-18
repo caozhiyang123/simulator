@@ -10,3 +10,4 @@ worker/build
 worker/dist
 windows
 ubuntu
+master/sha1

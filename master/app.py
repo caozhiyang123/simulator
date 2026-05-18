@@ -1165,6 +1165,46 @@ def worker_delete():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/sha1/compute", methods=["POST"])
+def sha1_compute():
+    """Compute SHA1 for all JSON files in a directory.
+
+    Request body: {"path": "absolute/path/to/directory"}
+    Returns: {"results": [{"filename": str, "sha1": str}], "saved_to": str}
+    """
+    import hashlib as hl
+    data = request.get_json(force=True)
+    dir_path = data.get("path", "").strip()
+    if not dir_path or not os.path.isdir(dir_path):
+        return jsonify({"error": f"Directory not found: {dir_path}"}), 404
+
+    results = []
+    for root, dirs, files in os.walk(dir_path):
+        dirs.sort()
+        for fname in sorted(files):
+            if not fname.lower().endswith('.json'):
+                continue
+            fpath = os.path.join(root, fname)
+            rel_dir = os.path.relpath(root, dir_path)
+            if rel_dir == '.':
+                rel_dir = ''
+            sha1 = hl.sha1(open(fpath, 'rb').read()).hexdigest().upper()
+            results.append({"filename": fname, "subdir": rel_dir.replace("\\", "/"), "sha1": sha1})
+
+    # Save results
+    sha1_dir = os.path.join(_base_dir, "sha1")
+    os.makedirs(sha1_dir, exist_ok=True)
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    save_name = f"sha1_{ts}.json"
+    save_path = os.path.join(sha1_dir, save_name)
+    import json as jm
+    with open(save_path, "w", encoding="utf-8") as f:
+        jm.dump({"directory": dir_path, "results": results}, f, indent=2)
+
+    return jsonify({"results": results, "saved_to": save_name})
+
+
 @app.route("/family/images", methods=["GET"])
 def family_images():
     """List all images in static/family directory."""
