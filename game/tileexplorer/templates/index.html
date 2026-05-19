@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tile Explorer - Triple Match</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #1a1a2e, #16213e); min-height: 100vh; display: flex; flex-direction: column; align-items: center; color: #fff; padding: 20px; }
+h1 { margin-bottom: 8px; font-size: 24px; }
+.info { font-size: 14px; color: #aaa; margin-bottom: 16px; }
+.slots { display: flex; gap: 6px; margin-bottom: 20px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 12px; }
+.slot { width: 60px; height: 60px; border: 2px dashed rgba(255,255,255,0.3); border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; }
+.slot img { width: 50px; height: 50px; object-fit: cover; border-radius: 4px; }
+.board { position: relative; width: 360px; height: 480px; margin: 0 auto; }
+.tile { position: absolute; width: 60px; height: 60px; cursor: pointer; transition: transform 0.2s, opacity 0.3s; border-radius: 6px; overflow: hidden; box-shadow: 3px 3px 0 rgba(255,255,255,0.4), 1px 1px 4px rgba(0,0,0,0.3); }
+.tile:hover { transform: scale(1.05); z-index: 999 !important; }
+.tile img { width: 100%; height: 100%; object-fit: cover; }
+.tile.blocked { opacity: 0.6; cursor: not-allowed; }
+.tile.fly { transition: all 0.4s ease-in-out; }
+.win-msg { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(39,174,96,0.95); padding: 30px 50px; border-radius: 12px; font-size: 24px; z-index: 2000; display: none; }
+.lose-msg { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(231,76,60,0.95); padding: 30px 50px; border-radius: 12px; font-size: 24px; z-index: 2000; display: none; }
+button { padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; background: #4a90d9; color: #fff; margin-top: 12px; }
+button:hover { background: #357abd; }
+</style>
+</head>
+<body>
+
+<h1>🎰 Tile Explorer</h1>
+<div class="info">Level <span id="levelNum">1</span> | Remaining: <span id="remaining">0</span></div>
+
+<div class="slots" id="slots"></div>
+<div class="board" id="board"></div>
+
+<div class="win-msg" id="winMsg">🎉 Level Complete!<br><button onclick="nextLevel()">Next Level</button></div>
+<div class="lose-msg" id="loseMsg">😢 Slots Full!<br><button onclick="restartLevel()">Retry</button></div>
+
+<script>
+let ALL_IMAGES = [];
+let LEVEL_CONFIG = {};
+const MAX_SLOTS = 7;
+let level = 1;
+let tiles = [];
+let slots = [];
+let gameOver = false;
+
+async function loadGameData() {
+  const [imgResp, cfgResp] = await Promise.all([
+    fetch('/api/images'),
+    fetch('/api/config')
+  ]);
+  const imgData = await imgResp.json();
+  const cfgData = await cfgResp.json();
+  ALL_IMAGES = imgData.images.map(f => '/static/' + f);
+  LEVEL_CONFIG = cfgData.levels || {};
+  initLevel();
+}
+
+function getConfig(lvl) {
+  const key = String(lvl);
+  const cfg = LEVEL_CONFIG[key] || {image_count: 2, copies: 3};
+  const numImages = Math.min(cfg.image_count, ALL_IMAGES.length);
+  const copies = Math.ceil(cfg.copies / 3) * 3; // ensure divisible by 3
+  return { numImages, copies };
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function initLevel() {
+  gameOver = false;
+  document.getElementById('winMsg').style.display = 'none';
+  document.getElementById('loseMsg').style.display = 'none';
+  document.getElementById('levelNum').textContent = level;
+
+  const cfg = getConfig(level);
+  tiles = [];
+  slots = [];
+
+  // Create tile data - select random images from ALL_IMAGES
+  const selectedImages = shuffle([...ALL_IMAGES]).slice(0, cfg.numImages);
+  let tileData = [];
+  for (let i = 0; i < selectedImages.length; i++) {
+    for (let j = 0; j < cfg.copies; j++) {
+      tileData.push({ id: tileData.length, imgIdx: i, img: selectedImages[i] });
+    }
+  }
+  shuffle(tileData);
+
+  // Position tiles in stacked layout
+  const boardW = 360, boardH = 480, tileSize = 60;
+  const cols = Math.floor(boardW / (tileSize * 0.7));
+  const rows = Math.ceil(tileData.length / cols);
+
+  tileData.forEach((t, idx) => {
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    const offsetX = (Math.random() * 20 - 10);
+    const offsetY = (Math.random() * 10 - 5);
+    t.x = col * (tileSize * 0.7) + offsetX + 10;
+    t.y = row * (tileSize * 0.6) + offsetY + 10;
+    t.z = idx; // z-index = stack order
+  });
+
+  tiles = tileData;
+  document.getElementById('remaining').textContent = tiles.length;
+  renderBoard();
+  renderSlots();
+}
+
+function renderBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+  tiles.forEach((t, idx) => {
+    const div = document.createElement('div');
+    div.className = 'tile';
+    div.style.left = t.x + 'px';
+    div.style.top = t.y + 'px';
+    div.style.zIndex = t.z;
+    div.innerHTML = '<img src="' + t.img + '">';
+    div.dataset.idx = idx;
+
+    // Check if blocked (another tile significantly overlaps on top)
+    const isBlocked = tiles.some((other, oi) => {
+      if (oi === idx || other.z <= t.z) return false;
+      return Math.abs(other.x - t.x) < 40 && Math.abs(other.y - t.y) < 40;
+    });
+
+    if (isBlocked) {
+      div.classList.add('blocked');
+    } else {
+      div.onclick = () => clickTile(idx);
+    }
+    board.appendChild(div);
+  });
+}
+
+function renderSlots() {
+  const slotsEl = document.getElementById('slots');
+  slotsEl.innerHTML = '';
+  for (let i = 0; i < MAX_SLOTS; i++) {
+    const div = document.createElement('div');
+    div.className = 'slot';
+    if (slots[i]) {
+      div.innerHTML = '<img src="' + slots[i].img + '">';
+    }
+    slotsEl.appendChild(div);
+  }
+}
+
+function clickTile(idx) {
+  if (gameOver) return;
+  const tile = tiles[idx];
+
+  // Add to slots
+  slots.push(tile);
+  tiles.splice(idx, 1);
+
+  // Check for triple match
+  checkTriple();
+
+  document.getElementById('remaining').textContent = tiles.length;
+  renderBoard();
+  renderSlots();
+
+  // Check win/lose
+  if (tiles.length === 0 && slots.length === 0) {
+    document.getElementById('winMsg').style.display = 'block';
+    gameOver = true;
+  } else if (slots.length >= MAX_SLOTS) {
+    document.getElementById('loseMsg').style.display = 'block';
+    gameOver = true;
+  }
+}
+
+function checkTriple() {
+  // Group by image index
+  const counts = {};
+  slots.forEach((s, i) => {
+    if (!counts[s.imgIdx]) counts[s.imgIdx] = [];
+    counts[s.imgIdx].push(i);
+  });
+
+  for (const key in counts) {
+    if (counts[key].length >= 3) {
+      // Remove 3 matching tiles (last 3 of this type)
+      const indices = counts[key].slice(-3);
+      // Remove from slots (reverse order to maintain indices)
+      indices.sort((a, b) => b - a).forEach(i => slots.splice(i, 1));
+      // Re-check in case another triple formed
+      checkTriple();
+      return;
+    }
+  }
+}
+
+function nextLevel() {
+  level++;
+  initLevel();
+}
+
+function restartLevel() {
+  initLevel();
+}
+
+loadGameData();
+</script>
+</body>
+</html>
