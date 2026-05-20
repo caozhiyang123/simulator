@@ -1,244 +1,365 @@
 {
+  "port": 5002,
   "levels": {
     "1": {
-      "image_count": 2,
-      "copies": 3
+      "image_count": 5,
+      "copies": 9,
+      "layers": 6,
+      "shape": "heart"
     },
     "2": {
-      "image_count": 2,
-      "copies": 3
+      "image_count": 5,
+      "copies": 9,
+      "layers": 6,
+      "shape": "apple"
     },
     "3": {
-      "image_count": 2,
-      "copies": 3
+      "image_count": 5,
+      "copies": 9,
+      "layers": 6,
+      "shape": "banana"
     },
     "4": {
-      "image_count": 2,
-      "copies": 3
+      "image_count": 4,
+      "copies": 3,
+      "layers": 1,
+      "shape": "star"
     },
     "5": {
-      "image_count": 2,
-      "copies": 3
+      "image_count": 4,
+      "copies": 3,
+      "layers": 1,
+      "shape": "diamond"
     },
     "6": {
-      "image_count": 2,
-      "copies": 3
+      "image_count": 5,
+      "copies": 3,
+      "layers": 1,
+      "shape": "circle"
     },
     "7": {
-      "image_count": 2,
-      "copies": 3
+      "image_count": 5,
+      "copies": 3,
+      "layers": 1,
+      "shape": "triangle"
     },
     "8": {
-      "image_count": 2,
-      "copies": 3
+      "image_count": 5,
+      "copies": 3,
+      "layers": 1,
+      "shape": "cross"
     },
     "9": {
-      "image_count": 2,
-      "copies": 3
+      "image_count": 5,
+      "copies": 3,
+      "layers": 1,
+      "shape": "arrow"
     },
     "10": {
-      "image_count": 2,
-      "copies": 3
+      "image_count": 5,
+      "copies": 3,
+      "layers": 1,
+      "shape": "moon"
     },
     "11": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 6,
+      "copies": 3,
+      "layers": 2,
+      "shape": "cloud"
     },
     "12": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 6,
+      "copies": 3,
+      "layers": 2,
+      "shape": "tree"
     },
     "13": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 6,
+      "copies": 3,
+      "layers": 2,
+      "shape": "fish"
     },
     "14": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 6,
+      "copies": 3,
+      "layers": 2,
+      "shape": "butterfly"
     },
     "15": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 6,
+      "copies": 3,
+      "layers": 2,
+      "shape": "spiral"
     },
     "16": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 7,
+      "copies": 3,
+      "layers": 2,
+      "shape": "wave"
     },
     "17": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 7,
+      "copies": 3,
+      "layers": 2,
+      "shape": "pyramid"
     },
     "18": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 7,
+      "copies": 3,
+      "layers": 2,
+      "shape": "hexagon"
     },
     "19": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 7,
+      "copies": 3,
+      "layers": 2,
+      "shape": "pentagon"
     },
     "20": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 7,
+      "copies": 3,
+      "layers": 2,
+      "shape": "octagon"
     },
     "21": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 8,
+      "copies": 3,
+      "layers": 2,
+      "shape": "leaf"
     },
     "22": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 8,
+      "copies": 3,
+      "layers": 2,
+      "shape": "flower"
     },
     "23": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 8,
+      "copies": 3,
+      "layers": 2,
+      "shape": "mushroom"
     },
     "24": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 8,
+      "copies": 3,
+      "layers": 2,
+      "shape": "crown"
     },
     "25": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 8,
+      "copies": 3,
+      "layers": 2,
+      "shape": "bell"
     },
     "26": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 9,
+      "copies": 3,
+      "layers": 3,
+      "shape": "house"
     },
     "27": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 9,
+      "copies": 3,
+      "layers": 3,
+      "shape": "car"
     },
     "28": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 9,
+      "copies": 3,
+      "layers": 3,
+      "shape": "boat"
     },
     "29": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 9,
+      "copies": 3,
+      "layers": 3,
+      "shape": "plane"
     },
     "30": {
-      "image_count": 2,
-      "copies": 6
+      "image_count": 9,
+      "copies": 3,
+      "layers": 3,
+      "shape": "rocket"
     },
     "31": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 10,
+      "copies": 3,
+      "layers": 3,
+      "shape": "lightning"
     },
     "32": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 10,
+      "copies": 3,
+      "layers": 3,
+      "shape": "snowflake"
     },
     "33": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 10,
+      "copies": 3,
+      "layers": 3,
+      "shape": "sun"
     },
     "34": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 10,
+      "copies": 3,
+      "layers": 3,
+      "shape": "umbrella"
     },
     "35": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 10,
+      "copies": 3,
+      "layers": 3,
+      "shape": "key"
     },
     "36": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 11,
+      "copies": 3,
+      "layers": 3,
+      "shape": "lock"
     },
     "37": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 11,
+      "copies": 3,
+      "layers": 3,
+      "shape": "music_note"
     },
     "38": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 11,
+      "copies": 3,
+      "layers": 3,
+      "shape": "guitar"
     },
     "39": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 11,
+      "copies": 3,
+      "layers": 3,
+      "shape": "cup"
     },
     "40": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 11,
+      "copies": 3,
+      "layers": 3,
+      "shape": "bottle"
     },
     "41": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 12,
+      "copies": 3,
+      "layers": 4,
+      "shape": "hat"
     },
     "42": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 12,
+      "copies": 3,
+      "layers": 4,
+      "shape": "shoe"
     },
     "43": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 12,
+      "copies": 3,
+      "layers": 4,
+      "shape": "glasses"
     },
     "44": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 12,
+      "copies": 3,
+      "layers": 4,
+      "shape": "book"
     },
     "45": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 12,
+      "copies": 3,
+      "layers": 4,
+      "shape": "pencil"
     },
     "46": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 14,
+      "copies": 3,
+      "layers": 4,
+      "shape": "scissors"
     },
     "47": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 14,
+      "copies": 3,
+      "layers": 4,
+      "shape": "hammer"
     },
     "48": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 14,
+      "copies": 3,
+      "layers": 4,
+      "shape": "wrench"
     },
     "49": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 14,
+      "copies": 3,
+      "layers": 4,
+      "shape": "gear"
     },
     "50": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 14,
+      "copies": 3,
+      "layers": 4,
+      "shape": "flag"
     },
     "51": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 16,
+      "copies": 3,
+      "layers": 4,
+      "shape": "shield"
     },
     "52": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 16,
+      "copies": 3,
+      "layers": 4,
+      "shape": "sword"
     },
     "53": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 16,
+      "copies": 3,
+      "layers": 5,
+      "shape": "trophy"
     },
     "54": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 16,
+      "copies": 3,
+      "layers": 5,
+      "shape": "medal"
     },
     "55": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 18,
+      "copies": 3,
+      "layers": 5,
+      "shape": "gift"
     },
     "56": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 18,
+      "copies": 3,
+      "layers": 5,
+      "shape": "cake"
     },
     "57": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 18,
+      "copies": 3,
+      "layers": 5,
+      "shape": "candy"
     },
     "58": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 20,
+      "copies": 3,
+      "layers": 5,
+      "shape": "cookie"
     },
     "59": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 20,
+      "copies": 3,
+      "layers": 5,
+      "shape": "donut"
     },
     "60": {
-      "image_count": 2,
-      "copies": 9
+      "image_count": 22,
+      "copies": 3,
+      "layers": 5,
+      "shape": "cherry"
     }
   }
 }

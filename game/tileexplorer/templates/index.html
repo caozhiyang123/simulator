@@ -10,10 +10,10 @@ body { font-family: -apple-system, sans-serif; background: linear-gradient(135de
 h1 { margin-bottom: 8px; font-size: 24px; }
 .info { font-size: 14px; color: #aaa; margin-bottom: 16px; }
 .slots { display: flex; gap: 6px; margin-bottom: 20px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 12px; }
-.slot { width: 60px; height: 60px; border: 2px dashed rgba(255,255,255,0.3); border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; }
-.slot img { width: 50px; height: 50px; object-fit: cover; border-radius: 4px; }
-.board { position: relative; width: 360px; height: 480px; margin: 0 auto; }
-.tile { position: absolute; width: 60px; height: 60px; cursor: pointer; transition: transform 0.2s, opacity 0.3s; border-radius: 6px; overflow: hidden; box-shadow: 3px 3px 0 rgba(255,255,255,0.4), 1px 1px 4px rgba(0,0,0,0.3); }
+.slot { width: 50px; height: 50px; border: 2px dashed rgba(255,255,255,0.3); border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; }
+.slot img { width: 42px; height: 42px; object-fit: cover; border-radius: 4px; }
+.board { position: relative; width: 420px; height: 560px; margin: 0 auto; }
+.tile { position: absolute; width: 50px; height: 50px; cursor: pointer; transition: transform 0.2s, opacity 0.3s; border-radius: 6px; overflow: hidden; box-shadow: 2px 2px 0 rgba(255,255,255,0.4), 1px 1px 3px rgba(0,0,0,0.3); }
 .tile:hover { transform: scale(1.05); z-index: 999 !important; }
 .tile img { width: 100%; height: 100%; object-fit: cover; }
 .tile.blocked { opacity: 0.6; cursor: not-allowed; }
@@ -27,7 +27,7 @@ button:hover { background: #357abd; }
 <body>
 
 <h1>🎰 Tile Explorer</h1>
-<div class="info">Level <span id="levelNum">1</span> | Remaining: <span id="remaining">0</span></div>
+<div class="info">Level <span id="levelNum">1</span> | Shape: <span id="shapeName">-</span> | Layers: <span id="layerCount">1</span> | Remaining: <span id="remaining">0</span></div>
 
 <div class="slots" id="slots"></div>
 <div class="board" id="board"></div>
@@ -58,10 +58,110 @@ async function loadGameData() {
 
 function getConfig(lvl) {
   const key = String(lvl);
-  const cfg = LEVEL_CONFIG[key] || {image_count: 2, copies: 3};
+  const cfg = LEVEL_CONFIG[key] || {image_count: 4, copies: 3, layers: 1, shape: 'heart'};
   const numImages = Math.min(cfg.image_count, ALL_IMAGES.length);
-  const copies = Math.ceil(cfg.copies / 3) * 3; // ensure divisible by 3
-  return { numImages, copies };
+  const copies = Math.ceil(cfg.copies / 3) * 3;
+  const shape = cfg.shape || 'heart';
+  const layers = cfg.layers || 1;
+  return { numImages, copies, shape, layers };
+}
+
+// Shape test functions: return true if point (x,y) in [-1,1] is inside the shape
+const SHAPE_TESTS = {
+  heart: (x,y) => { const a=x*x+(y-0.4)*(y-0.4)-0.5; return a*a*a - x*x*(y-0.4)*(y-0.4)*(y-0.4) < 0; },
+  apple: (x,y) => { const r=Math.sqrt(x*x+(y+0.1)*(y+0.1)); return r<0.85; },
+  banana: (x,y) => { const r=Math.sqrt((x+0.3)*(x+0.3)+y*y); const a=Math.atan2(y,x+0.3); return r>0.4&&r<0.9&&a>-0.5&&a<1.5; },
+  star: (x,y) => { const a=Math.atan2(y,x); const r=Math.sqrt(x*x+y*y); return r<0.6+0.3*Math.cos(5*a+Math.PI/2); },
+  diamond: (x,y) => Math.abs(x)+Math.abs(y)<0.9,
+  circle: (x,y) => x*x+y*y<0.81,
+  triangle: (x,y) => y>-0.7&&y<0.8-Math.abs(x)*1.6,
+  cross: (x,y) => Math.abs(x)<0.25||Math.abs(y)<0.25,
+  arrow: (x,y) => (Math.abs(x)<0.18&&y>-0.8&&y<0.2)||(y>=0.2&&Math.abs(x)<(0.9-y)*0.9),
+  moon: (x,y) => { return x*x+y*y<0.75&&(x-0.4)*(x-0.4)+y*y>0.45; },
+  cloud: (x,y) => (x+0.4)*(x+0.4)+(y-0.1)*(y-0.1)<0.2||x*x+(y-0.25)*(y-0.25)<0.3||(x-0.4)*(x-0.4)+(y-0.1)*(y-0.1)<0.2||(x-0.15)*(x-0.15)+(y+0.2)*(y+0.2)<0.16||(x+0.15)*(x+0.15)+(y+0.2)*(y+0.2)<0.16,
+  tree: (x,y) => (Math.abs(x)<0.15&&y<-0.3&&y>-0.9)||(y>=-0.3&&Math.abs(x)<0.7*(0.9-y)/1.2),
+  fish: (x,y) => { const bx=x+0.1; return (bx*bx/0.49+y*y/0.16<1)||(x>0.5&&Math.abs(y)<(x-0.5)*1.5&&x<0.95); },
+  butterfly: (x,y) => ((x+0.5)*(x+0.5)+y*y<0.2)||((x-0.5)*(x-0.5)+y*y<0.2)||(Math.abs(x)<0.1&&Math.abs(y)<0.5),
+  spiral: (x,y) => { const r=Math.sqrt(x*x+y*y); const a=Math.atan2(y,x); const t=(a+Math.PI)/(Math.PI*2)*0.7; return Math.abs(r-t)<0.12||r<0.1; },
+  wave: (x,y) => Math.abs(y-0.4*Math.sin(x*3))<0.22,
+  pyramid: (x,y) => y>-0.8&&y<0.8&&Math.abs(x)<0.75*(0.85-y)/1.6,
+  hexagon: (x,y) => { const ax=Math.abs(x),ay=Math.abs(y); return ax<0.78&&ay<0.68&&ax+ay*0.577<0.88; },
+  pentagon: (x,y) => { const a=Math.atan2(y,x)+Math.PI/2; const r=Math.sqrt(x*x+y*y); const s=0.7/Math.cos(((a%((Math.PI*2)/5))+(Math.PI*2)/5)%((Math.PI*2)/5)-Math.PI/5); return r<Math.min(0.85,Math.abs(s)); },
+  octagon: (x,y) => { const ax=Math.abs(x),ay=Math.abs(y); return ax<0.75&&ay<0.75&&ax+ay<1.05; },
+  leaf: (x,y) => { const r=Math.sqrt(x*x+y*y); const a=Math.atan2(y,x); return r<0.8*Math.pow(Math.abs(Math.sin(a)),0.6)&&r<0.85; },
+  flower: (x,y) => { const r=Math.sqrt(x*x+y*y); const a=Math.atan2(y,x); return r<0.35+0.35*Math.abs(Math.cos(2.5*a)); },
+  mushroom: (x,y) => (x*x+(y-0.2)*(y-0.2)<0.35&&y>-0.1)||(Math.abs(x)<0.18&&y>=-0.9&&y<=-0.1),
+  crown: (x,y) => (y>-0.5&&y<-0.1&&Math.abs(x)<0.7)||(y>=-0.1&&y<0.4+0.25*Math.abs(Math.sin(x*5))&&Math.abs(x)<0.7),
+  bell: (x,y) => { const w=0.15+0.5*(y+0.9)/1.5; return y>-0.9&&y<0.5&&Math.abs(x)<w; },
+  house: (x,y) => (Math.abs(x)<0.55&&y>-0.8&&y<0.1)||(y>=0.1&&y<0.8-Math.abs(x)*1.1&&Math.abs(x)<0.6),
+  car: (x,y) => (Math.abs(x)<0.8&&y>-0.3&&y<0.15)||(Math.abs(x)<0.45&&y>=0.15&&y<0.5),
+  boat: (x,y) => (y<0&&y>-0.5&&Math.abs(x)<0.7+y*0.5)||(Math.abs(x)<0.08&&y>=0&&y<0.7)||(x>0&&x<0.5&&y>0.1&&y<0.6),
+  plane: (x,y) => (Math.abs(x)<0.1&&y>-0.8&&y<0.8)||(Math.abs(x)<0.8&&Math.abs(y-0.1)<0.08)||(Math.abs(x)<0.3&&Math.abs(y+0.6)<0.07),
+  rocket: (x,y) => { const w=y>0.5?0.28*(0.9-y)/0.4:y>-0.5?0.28:0.28+0.18*(-0.5-y)/0.4; return Math.abs(x)<w&&y>-0.9&&y<0.9; },
+  lightning: (x,y) => { const dx=0.15*Math.sin(y*4); return Math.abs(x-dx)<0.18&&y>-0.85&&y<0.85; },
+  snowflake: (x,y) => { const r=Math.sqrt(x*x+y*y); const a=Math.atan2(y,x); return r<0.85&&(r<0.15||Math.abs(Math.sin(3*a))*r<0.18||Math.abs(Math.cos(3*a))*r<0.18); },
+  sun: (x,y) => { const r=Math.sqrt(x*x+y*y); const a=Math.atan2(y,x); return r<0.38||(r<0.82&&Math.cos(8*a)>0.3); },
+  umbrella: (x,y) => (x*x+(y-0.2)*(y-0.2)<0.45&&y>0.2)||(Math.abs(x)<0.06&&y>-0.8&&y<=0.2),
+  key: (x,y) => (x*x+(y-0.5)*(y-0.5)<0.14)||(Math.abs(x)<0.07&&y>-0.8&&y<=0.5)||(x>=0&&x<0.18&&Math.abs(y+0.5)<0.05)||(x>=0&&x<0.14&&Math.abs(y+0.7)<0.05),
+  lock: (x,y) => (Math.abs(x)<0.45&&y>-0.7&&y<0.1)||(x*x+(y-0.2)*(y-0.2)<0.14&&y>0.1),
+  music_note: (x,y) => (x*x+(y+0.5)*(y+0.5)<0.1)||(Math.abs(x-0.1)<0.06&&y>-0.5&&y<0.7)||((x-0.1)*(x-0.1)+(y-0.7)*(y-0.7)<0.03),
+  guitar: (x,y) => (x*x+(y+0.4)*(y+0.4)<0.18)||(Math.abs(x)<0.08&&y>-0.2&&y<0.6)||(x*x+(y-0.65)*(y-0.65)<0.04),
+  cup: (x,y) => (Math.abs(x)<0.35*(1-0.2*(y+0.8))&&y>-0.8&&y<0.4)||((x-0.4)*(x-0.4)+y*y<0.05&&x>0.35),
+  bottle: (x,y) => { const w=y>0.3?0.12:y>0.1?0.12+0.22*(0.3-y)/0.2:0.34; return Math.abs(x)<w&&y>-0.8&&y<0.8; },
+  hat: (x,y) => (Math.abs(x)<0.75&&y>-0.7&&y<-0.5)||(Math.abs(x)<0.28&&y>=-0.5&&y<0.5)||(Math.abs(x)<0.12&&y>=0.5&&y<0.8),
+  shoe: (x,y) => (x>-0.8&&x<0.4&&y>-0.35&&y<0)||(x>=0.1&&x<0.8&&y>=0&&y<0.3),
+  glasses: (x,y) => ((x+0.45)*(x+0.45)+y*y<0.11)||((x-0.45)*(x-0.45)+y*y<0.11)||(Math.abs(x)<0.12&&Math.abs(y)<0.06),
+  book: (x,y) => Math.abs(x)<0.65&&Math.abs(y)<0.5,
+  pencil: (x,y) => { const w=y<-0.6?0.14*(y+0.9)/0.3:0.14; return Math.abs(x)<w&&y>-0.9&&y<0.8; },
+  scissors: (x,y) => ((x+0.25)*(x+0.25)+(y-0.5)*(y-0.5)<0.07)||((x-0.25)*(x-0.25)+(y-0.5)*(y-0.5)<0.07)||(Math.abs(x-0.08*(0.5-y))<0.06&&y>-0.7&&y<0.5)||(Math.abs(x+0.08*(0.5-y))<0.06&&y>-0.7&&y<0.5),
+  hammer: (x,y) => (Math.abs(x)<0.08&&y>-0.8&&y<0.3)||(Math.abs(x)<0.38&&y>=0.3&&y<0.6),
+  wrench: (x,y) => (Math.abs(x)<0.06&&y>-0.5&&y<0.5)||(x*x+(y-0.6)*(y-0.6)<0.08&&x*x+(y-0.6)*(y-0.6)>0.02)||(x*x+(y+0.6)*(y+0.6)<0.08&&x*x+(y+0.6)*(y+0.6)>0.02),
+  gear: (x,y) => { const r=Math.sqrt(x*x+y*y); const a=Math.atan2(y,x); return r<0.5+0.2*Math.cos(8*a)&&r>0.12; },
+  flag: (x,y) => (Math.abs(x+0.6)<0.06&&y>-0.8&&y<0.8)||(x>-0.55&&x<0.7&&y>0&&y<0.65),
+  shield: (x,y) => { const w=0.65*(1-Math.max(0,y+0.2)*0.7); return Math.abs(x)<w&&y>-0.85&&y<0.7; },
+  sword: (x,y) => (Math.abs(x)<0.05&&y>-0.8&&y<0.6)||(Math.abs(x)<0.32&&Math.abs(y+0.1)<0.06)||(Math.abs(x)<0.09&&y>=-0.9&&y<=-0.8),
+  trophy: (x,y) => (x*x+(y-0.35)*(y-0.35)<0.22&&y>0.05)||(Math.abs(x)<0.07&&y>-0.3&&y<=0.05)||(Math.abs(x)<0.32&&y>=-0.5&&y<=-0.3),
+  medal: (x,y) => (x*x+(y+0.2)*(y+0.2)<0.28)||(Math.abs(x)<0.18&&y>0.25&&y<0.8),
+  gift: (x,y) => (Math.abs(x)<0.55&&Math.abs(y)<0.55)||(Math.abs(x)<0.07&&Math.abs(y)<0.65)||(Math.abs(y)<0.07&&Math.abs(x)<0.65),
+  cake: (x,y) => (Math.abs(x)<0.65&&y>-0.6&&y<-0.2)||(Math.abs(x)<0.5&&y>=-0.2&&y<0.2)||(Math.abs(x)<0.35&&y>=0.2&&y<0.5),
+  candy: (x,y) => { const r=Math.sqrt(x*x+y*y); return r<0.38||(Math.abs(y)<0.12&&Math.abs(x)<0.85&&Math.abs(x)>0.3); },
+  cookie: (x,y) => x*x+y*y<0.65,
+  donut: (x,y) => { const r=x*x+y*y; return r<0.65&&r>0.12; },
+  cherry: (x,y) => ((x+0.3)*(x+0.3)+(y+0.2)*(y+0.2)<0.13)||((x-0.3)*(x-0.3)+(y+0.2)*(y+0.2)<0.13)||(Math.abs(x)<0.05&&y>0&&y<0.65),
+  grape: (x,y) => { for(let r=0;r<4;r++) for(let c=0;c<4-r;c++){ const cx=-0.3+c*0.22+r*0.11,cy=-0.5+r*0.28; if((x-cx)*(x-cx)+(y-cy)*(y-cy)<0.035) return true; } return false; },
+  pear: (x,y) => { return x*x*1.2+(y-0.3)*(y-0.3)<0.12||x*x*0.8+(y+0.25)*(y+0.25)*0.6<0.18; },
+  watermelon: (x,y) => x*x+y*y<0.65&&y<0.1,
+  lemon: (x,y) => x*x/0.6+y*y/0.16<1,
+  strawberry: (x,y) => { const w=0.55*(0.9-y)/1.5; return Math.abs(x)<w&&y>-0.6&&y<0.9; },
+  pineapple: (x,y) => (Math.abs(x)<0.32&&y>-0.7&&y<0.3)||(Math.abs(x)<0.18&&y>=0.3&&y<0.85),
+  corn: (x,y) => { const w=0.22+0.04*Math.sin(y*10); return Math.abs(x)<w&&y>-0.8&&y<0.8; },
+  carrot: (x,y) => { const w=0.32*(0.9-y)/1.7; return Math.abs(x)<w&&y>-0.8&&y<0.9; }
+};
+
+// Grid-fill approach: generate grid positions, keep only those inside the shape
+function getShapePositions(shape, count) {
+  const testFn = SHAPE_TESTS[shape] || SHAPE_TESTS['circle'];
+  // Generate candidate grid points inside the shape
+  const candidates = [];
+  const gridSize = Math.ceil(Math.sqrt(count * 4.5)); // oversample for spacing
+  for (let row = 0; row < gridSize; row++) {
+    for (let col = 0; col < gridSize; col++) {
+      const nx = (col / (gridSize - 1)) * 2 - 1; // map to [-1, 1]
+      const ny = (row / (gridSize - 1)) * 2 - 1;
+      if (testFn(nx, ny)) {
+        candidates.push({ x: 0.08 + (col / (gridSize - 1)) * 0.84, y: 0.05 + (row / (gridSize - 1)) * 0.9 });
+      }
+    }
+  }
+  // If not enough candidates, relax and use all
+  if (candidates.length <= count) return candidates;
+  // Evenly sample from candidates
+  const step = candidates.length / count;
+  const positions = [];
+  for (let i = 0; i < count; i++) {
+    positions.push(candidates[Math.floor(i * step)]);
+  }
+  return positions;
 }
 
 function shuffle(arr) {
@@ -79,10 +179,12 @@ function initLevel() {
   document.getElementById('levelNum').textContent = level;
 
   const cfg = getConfig(level);
+  document.getElementById('shapeName').textContent = cfg.shape;
+  document.getElementById('layerCount').textContent = cfg.layers;
   tiles = [];
   slots = [];
 
-  // Create tile data - select random images from ALL_IMAGES
+  // Create tile data - select random images, ensure copies are multiples of 3
   const selectedImages = shuffle([...ALL_IMAGES]).slice(0, cfg.numImages);
   let tileData = [];
   for (let i = 0; i < selectedImages.length; i++) {
@@ -92,20 +194,76 @@ function initLevel() {
   }
   shuffle(tileData);
 
-  // Position tiles in stacked layout
-  const boardW = 360, boardH = 480, tileSize = 60;
-  const cols = Math.floor(boardW / (tileSize * 0.7));
-  const rows = Math.ceil(tileData.length / cols);
+  const totalTiles = tileData.length;
+  const numLayers = cfg.layers;
+  const boardW = 420, boardH = 560, tileSize = 50;
 
-  tileData.forEach((t, idx) => {
-    const col = idx % cols;
-    const row = Math.floor(idx / cols);
-    const offsetX = (Math.random() * 20 - 10);
-    const offsetY = (Math.random() * 10 - 5);
-    t.x = col * (tileSize * 0.7) + offsetX + 10;
-    t.y = row * (tileSize * 0.6) + offsetY + 10;
-    t.z = idx; // z-index = stack order
-  });
+  // Distribute tiles across layers: bottom layer gets most, top gets fewest
+  // Ratio: layer 1 gets ~40%, layer 2 ~30%, layer 3 ~20%, layer 4 ~10%, etc.
+  const layerWeights = [];
+  for (let l = 0; l < numLayers; l++) {
+    layerWeights.push(numLayers - l); // bottom=highest weight
+  }
+  const totalWeight = layerWeights.reduce((a, b) => a + b, 0);
+  const layerCounts = layerWeights.map(w => Math.floor(totalTiles * w / totalWeight));
+  // Distribute remainder to bottom layer
+  let assigned = layerCounts.reduce((a, b) => a + b, 0);
+  layerCounts[0] += totalTiles - assigned;
+  // Ensure each layer count is multiple of 3 for matching
+  for (let l = 0; l < numLayers; l++) {
+    const remainder = layerCounts[l] % 3;
+    if (remainder !== 0) {
+      // Move excess to layer below (or above if bottom)
+      if (l > 0) { layerCounts[l] -= remainder; layerCounts[l-1] += remainder; }
+      else { layerCounts[l] -= remainder; layerCounts[Math.min(l+1, numLayers-1)] += remainder; }
+    }
+  }
+
+  // Assign tiles to layers and position them
+  // KEY: All layers share the same center area. Upper layers are positioned
+  // directly on top of lower layer tiles (same grid, offset slightly).
+  // This ensures lower layers are fully covered by upper layers.
+  let tileIdx = 0;
+  let globalZ = 0;
+
+  // First, generate positions for the BOTTOM layer (largest)
+  const bottomCount = layerCounts[0];
+  const allPositions = getShapePositions(cfg.shape, bottomCount);
+
+  for (let layer = 0; layer < numLayers; layer++) {
+    const count = layerCounts[layer];
+    if (count <= 0) continue;
+    const layerTiles = tileData.slice(tileIdx, tileIdx + count);
+    tileIdx += count;
+
+    // Each layer uses positions from the CENTER of the bottom layer's grid
+    // Upper layers pick from the middle portion of positions
+    let layerPositions;
+    if (layer === 0) {
+      layerPositions = allPositions;
+    } else {
+      // Pick center positions from the bottom layer grid for upper layers
+      // This ensures upper tiles sit directly on top of lower tiles
+      const centerPositions = getShapePositions(cfg.shape, count);
+      layerPositions = centerPositions;
+    }
+
+    const layerOffsetPx = layer * 4; // each layer shifts slightly right+down for 3D depth
+    layerTiles.forEach((t, idx) => {
+      const pos = layerPositions[idx] || {x: Math.random() * 0.8 + 0.1, y: Math.random() * 0.8 + 0.1};
+      // Scale toward center for upper layers so they sit within lower layer bounds
+      const scale = 1 - layer * 0.08;
+      const cx = 0.5, cy = 0.5;
+      const sx = cx + (pos.x - cx) * scale;
+      const sy = cy + (pos.y - cy) * scale;
+      t.x = sx * (boardW - tileSize) + layerOffsetPx;
+      t.y = sy * (boardH - tileSize) - layerOffsetPx;
+      t.x = Math.max(0, Math.min(boardW - tileSize, t.x));
+      t.y = Math.max(0, Math.min(boardH - tileSize, t.y));
+      t.layer = layer;
+      t.z = globalZ++;
+    });
+  }
 
   tiles = tileData;
   document.getElementById('remaining').textContent = tiles.length;
@@ -122,12 +280,18 @@ function renderBoard() {
     div.style.left = t.x + 'px';
     div.style.top = t.y + 'px';
     div.style.zIndex = t.z;
+    // Visual depth: upper layers get shadow offset for 3D effect
+    const layer = t.layer || 0;
+    div.style.boxShadow = `${2+layer*2}px ${2+layer*2}px ${2+layer}px rgba(0,0,0,0.35)`;
+    if (layer > 0) div.style.border = '1px solid rgba(255,255,255,0.15)';
     div.innerHTML = '<img src="' + t.img + '">';
     div.dataset.idx = idx;
 
-    // Check if blocked (another tile significantly overlaps on top)
+    // A tile is blocked if ANY tile on a HIGHER layer overlaps it
     const isBlocked = tiles.some((other, oi) => {
-      if (oi === idx || other.z <= t.z) return false;
+      if (oi === idx) return false;
+      if ((other.layer || 0) <= layer) return false;
+      // Check overlap: tiles overlap if distance < tileSize (50px) in both axes
       return Math.abs(other.x - t.x) < 40 && Math.abs(other.y - t.y) < 40;
     });
 

@@ -9,6 +9,11 @@ app = Flask(__name__)
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "config.json")
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
+# Load config
+with open(CONFIG_PATH, "r", encoding="utf-8") as _f:
+    _config = json.load(_f)
+PORT = _config.get("port", 5002)
+
 
 @app.route("/")
 def index():
@@ -33,5 +38,5 @@ def list_images():
 
 
 if __name__ == "__main__":
-    print("Tile Explorer running on http://127.0.0.1:5002")
-    app.run(host="0.0.0.0", port=5002)
+    print(f"Tile Explorer running on http://127.0.0.1:{PORT}")
+    app.run(host="0.0.0.0", port=PORT)
