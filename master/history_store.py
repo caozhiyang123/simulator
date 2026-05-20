@@ -14,7 +14,34 @@ class HistoryStore:
 
     def __init__(self, data_dir: str = "./data"):
         self._data_dir = data_dir
+        self._current_file = os.path.join(data_dir, "_current_run.json")
         os.makedirs(data_dir, exist_ok=True)
+
+    def save_current(self, model_results: dict) -> None:
+        """Overwrite the current run file (incremental, during simulation).
+
+        This file gets overwritten each time a new model completes.
+        """
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "models": model_results,
+        }
+        with open(self._current_file, "w", encoding="utf-8") as f:
+            json.dump(record, f, ensure_ascii=False, indent=2)
+
+    def finalize_current(self) -> str | None:
+        """Rename _current_run.json to a timestamped file (called when simulation ends).
+
+        Returns:
+            The final filename, or None if no current file exists.
+        """
+        if not os.path.isfile(self._current_file):
+            return None
+        ts = datetime.now(timezone.utc)
+        filename = ts.strftime("%Y%m%d_%H%M%S") + ".json"
+        filepath = os.path.join(self._data_dir, filename)
+        os.rename(self._current_file, filepath)
+        return filename
 
     def save_run(self, model_results: dict) -> str:
         """Save a complete run's aggregated model results.
@@ -51,6 +78,8 @@ class HistoryStore:
         for fname in sorted(os.listdir(self._data_dir), reverse=True):
             if not fname.endswith(".json"):
                 continue
+            if fname.startswith("_"):
+                continue  # Skip _current_run.json
             fpath = os.path.join(self._data_dir, fname)
             try:
                 with open(fpath, "r", encoding="utf-8") as f:

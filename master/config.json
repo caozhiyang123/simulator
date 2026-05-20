@@ -1,4 +1,5 @@
 {
+  "port": 5000,
   "master": {
     "vcpu": 8,
     "percentage": 100

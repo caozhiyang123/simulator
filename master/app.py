@@ -38,7 +38,14 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 CONFIG_PATH = os.environ.get("CONFIG_PATH", os.path.join(_base_dir, "config.json"))
-PORT = int(os.environ.get("MASTER_PORT", "5000"))
+
+# Read port from config.json, fallback to env var, then default 5000
+import json as _json
+_raw_config = {}
+if os.path.isfile(CONFIG_PATH):
+    with open(CONFIG_PATH, "r", encoding="utf-8") as _cf:
+        _raw_config = _json.load(_cf)
+PORT = int(os.environ.get("MASTER_PORT", _raw_config.get("port", 5000)))
 
 # ---------------------------------------------------------------------------
 # Application & component initialisation
@@ -68,6 +75,7 @@ MAX_RETRIES = 3
 RETRY_INTERVAL = 5  # seconds
 _last_saved_status = "idle"
 _has_been_running = False
+_saved_model_keys: set = set()  # Track which models have been saved to avoid duplicates
 
 
 def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name: str = "", interval_count: int | None = None, sim_type: str = "production") -> dict:
@@ -488,21 +496,32 @@ def status():
         "model_results": aggregated_models,
     }
 
-    # Persist results when completed or stopped (save once per state change)
-    global _last_saved_status, _has_been_running
+    # Persist results incrementally: overwrite current run file when new models complete
+    global _last_saved_status, _has_been_running, _saved_model_keys
     if overall_status == "running":
         _has_been_running = True
-    should_save = (
-        overall_status in ("completed", "stopped", "idle")
-        and (_last_saved_status in ("running", "completed") or _has_been_running)
-        and aggregated_models
-    )
-    if should_save:
+
+    # Check if there are new completed models to save
+    if aggregated_models and _has_been_running:
+        current_keys = set(aggregated_models.keys())
+        new_keys = current_keys - _saved_model_keys
+        if new_keys:
+            # Overwrite the "current run" file (not timestamped yet)
+            try:
+                history_store.save_current(aggregated_models)
+                _saved_model_keys = current_keys.copy()
+            except Exception:
+                pass
+
+    # Finalize: when simulation ends, rename current to timestamped
+    if overall_status in ("completed", "stopped", "idle") and _last_saved_status == "running":
         try:
-            history_store.save_run(aggregated_models)
-            _has_been_running = False
+            history_store.finalize_current()
         except Exception:
             pass
+        _has_been_running = False
+        _saved_model_keys = set()
+
     _last_saved_status = overall_status
 
     return jsonify(response)
@@ -595,6 +614,7 @@ def clear_results():
     poller.clear_snapshot()
     _last_saved_status = "idle"
     _has_been_running = False
+    _saved_model_keys = set()
     return jsonify({"status": "ok", "message": "Results cleared"})
 
 
@@ -1325,5 +1345,10 @@ def all_sysinfo():
 # Entry point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    print(f"Master listening on 0.0.0.0:{PORT}")
-    app.run(host="0.0.0.0", port=PORT)
+    import argparse
+    parser = argparse.ArgumentParser(description="Master Simulator Control Panel")
+    parser.add_argument("--port", "-p", type=int, default=PORT, help=f"Port to listen on (default: {PORT})")
+    args = parser.parse_args()
+    run_port = args.port
+    print(f"Master listening on 0.0.0.0:{run_port}")
+    app.run(host="0.0.0.0", port=run_port)
