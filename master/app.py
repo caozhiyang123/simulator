@@ -75,7 +75,7 @@ MAX_RETRIES = 3
 RETRY_INTERVAL = 5  # seconds
 _last_saved_status = "idle"
 _has_been_running = False
-_saved_model_keys: set = set()  # Track which models have been saved to avoid duplicates
+_saved_model_keys: set = set()
 
 
 def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name: str = "", interval_count: int | None = None, sim_type: str = "production") -> dict:
@@ -496,31 +496,27 @@ def status():
         "model_results": aggregated_models,
     }
 
-    # Persist results incrementally: overwrite current run file when new models complete
+    # Persist results incrementally: save when new models complete
     global _last_saved_status, _has_been_running, _saved_model_keys
     if overall_status == "running":
         _has_been_running = True
 
-    # Check if there are new completed models to save
+    # Save whenever new models appear (deduplicated by model key)
     if aggregated_models and _has_been_running:
         current_keys = set(aggregated_models.keys())
         new_keys = current_keys - _saved_model_keys
         if new_keys:
-            # Overwrite the "current run" file (not timestamped yet)
             try:
                 history_store.save_current(aggregated_models)
                 _saved_model_keys = current_keys.copy()
             except Exception:
                 pass
 
-    # Finalize: when simulation ends, rename current to timestamped
+    # Reset tracking when simulation ends (no save needed, already saved incrementally)
     if overall_status in ("completed", "stopped", "idle") and _last_saved_status == "running":
-        try:
-            history_store.finalize_current()
-        except Exception:
-            pass
         _has_been_running = False
         _saved_model_keys = set()
+        history_store.finalize_current()
 
     _last_saved_status = overall_status
 
@@ -615,6 +611,7 @@ def clear_results():
     _last_saved_status = "idle"
     _has_been_running = False
     _saved_model_keys = set()
+    history_store.finalize_current()
     return jsonify({"status": "ok", "message": "Results cleared"})
 
 
