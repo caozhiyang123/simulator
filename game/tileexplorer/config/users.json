@@ -4,13 +4,20 @@
     "password": "21232f297a57a5a743894a0e4a801fc3",
     "role": "admin",
     "unique_code": "8ee3fa17-260a-4ed6-bfd3-6d1c99c6dc23",
-    "current_level": 1
+    "current_level": 2
   },
   {
     "username": "michael",
     "password": "0acf4539a14b3aa27deeb4cbdf6e989f",
     "role": "player",
     "unique_code": "88e90ee9-9d2a-4439-89a8-d0059a582f9a",
+    "current_level": 1
+  },
+  {
+    "username": "aileen",
+    "password": "d7c1af03d5ffcef607d882f0c043682c",
+    "role": "player",
+    "unique_code": "2f2e5852-b963-4417-88d0-352dea8074e4",
     "current_level": 1
   }
 ]

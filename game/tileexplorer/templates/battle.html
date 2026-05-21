@@ -43,6 +43,8 @@ h1 { margin-bottom: 8px; font-size: 24px; }
 .btn { padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; color: #fff; }
 .btn-danger { background: #e74c3c; }
 .btn-danger:hover { background: #c0392b; }
+.undo-btn { width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); color: #fff; font-size: 22px; cursor: pointer; margin-top: 16px; display: flex; align-items: center; justify-content: center; transition: background 0.2s, transform 0.2s; }
+.undo-btn:hover { background: rgba(255,255,255,0.2); transform: scale(1.1); }
 
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 3000; }
 .modal { background: #2c3e50; padding: 30px 40px; border-radius: 12px; text-align: center; max-width: 400px; }
@@ -58,14 +60,34 @@ h1 { margin-bottom: 8px; font-size: 24px; }
 <body>
 
 <h1>🎰 Tile Explorer - Battle</h1>
+<div class="user-bar" style="position:fixed;top:16px;right:24px;display:flex;align-items:center;gap:12px;z-index:9999;">
+  <span style="font-size:14px;color:#ccc;">{{ username }}</span>
+  <button onclick="logout()" style="padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;background:#e74c3c;color:#fff;">Logout</button>
+</div>
+<div style="position:fixed;top:16px;left:24px;z-index:9999;">
+  <button onclick="window.location.href='/'" style="padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);">← Lobby</button>
+</div>
+
+{% if invitation_code %}
+<div id="inviteCodeBar" style="margin-top:4px;padding:8px 16px;background:rgba(255,255,255,0.08);border-radius:8px;display:inline-flex;align-items:center;gap:10px;border:1px solid rgba(255,255,255,0.15);">
+  <span style="font-size:13px;color:#aaa;">Invitation Code:</span>
+  <span id="inviteCodeText" style="font-size:15px;font-weight:bold;color:#f39c12;letter-spacing:1px;">{{ invitation_code }}</span>
+  <button onclick="copyInviteCode()" style="padding:4px 10px;border:none;border-radius:4px;cursor:pointer;font-size:12px;background:#4a90d9;color:#fff;">Copy</button>
+  <span id="copyFeedback" style="font-size:12px;color:#27ae60;display:none;">Copied!</span>
+</div>
+{% endif %}
 
 <div class="battle-container">
   <!-- Player's game area (left) -->
   <div class="game-area player" id="playerArea">
-    <div class="player-name" id="playerName">You</div>
-    <div class="info">Level <span id="playerLevel">1</span> | Remaining: <span id="playerRemaining">0</span></div>
+    <div class="player-name" id="playerName">{{ username }}</div>
+    <div class="info"><span style="font-weight:bold;color:#fff;">{{ username }}</span> | Level <span id="playerLevel">1</span> | Remaining: <span id="playerRemaining">0</span></div>
     <div class="slots" id="playerSlots"></div>
     <div class="board" id="playerBoard"></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:16px;">
+      <button class="undo-btn" id="undoBtn" onclick="undoTile()" title="Undo last tile">↩</button>
+      <span id="undoCount" style="font-size:13px;color:#aaa;">3</span>
+    </div>
   </div>
 
   <!-- Opponent's game area (right) -->
@@ -80,7 +102,7 @@ h1 { margin-bottom: 8px; font-size: 24px; }
 </div>
 
 <!-- Room Owner Controls -->
-<div class="controls" id="ownerControls" style="display:none;">
+<div class="controls" id="ownerControls" style="{% if is_owner %}display:block{% else %}display:none{% endif %}">
   <h3>Room Controls</h3>
   <div class="control-row">
     <label>
@@ -92,6 +114,16 @@ h1 { margin-bottom: 8px; font-size: 24px; }
       Require invitation code for spectators
     </label>
     <button class="btn btn-danger" id="btnDeleteRoom">Delete Room</button>
+  </div>
+</div>
+
+<!-- Ad Modal -->
+<div class="modal-overlay" id="adOverlay" style="display:none;"></div>
+<div class="modal-overlay" id="adModal" style="display:none;">
+  <div class="modal">
+    <h2>📺 Watch ad to unlock undo</h2>
+    <p id="adTimer" style="font-size:32px;font-weight:bold;margin:12px 0;">3</p>
+    <p id="adStatus" style="color:#ccc;font-size:13px;">Playing ad...</p>
   </div>
 </div>
 
@@ -120,8 +152,35 @@ const MAX_SLOTS = 7;
 
 let socket = null;
 let heartbeatInterval = null;
-let isOwner = false;
+let isOwner = {{ 'true' if is_owner else 'false' }};
 let gameStarted = false;
+let playerState = { tiles: [], slots: [] };
+var undoRemaining = 3;
+var undoMaxPerRound = 3;
+var adDuration = 3;
+var adProviderUrl = '';
+var adRewardCount = 1;
+
+// Load undo/ad config
+fetch('/api/config')
+  .then(function(resp) { return resp.json(); })
+  .then(function(cfg) {
+    undoMaxPerRound = cfg.undo_max_per_round || 3;
+    undoRemaining = undoMaxPerRound;
+    updateUndoDisplay();
+  }).catch(function() {});
+fetch('/api/ads-config')
+  .then(function(resp) { return resp.json(); })
+  .then(function(cfg) {
+    adDuration = cfg.ad_duration_seconds || 3;
+    adProviderUrl = cfg.ad_provider_url || '';
+    adRewardCount = cfg.undo_reward_count || 1;
+  }).catch(function() {});
+
+function updateUndoDisplay() {
+  var el = document.getElementById('undoCount');
+  if (el) el.textContent = undoRemaining;
+}
 
 // Truncate username to 20 chars with ellipsis
 function truncateUsername(name) {
@@ -181,12 +240,65 @@ function renderSlots(slotsEl, slots) {
 // Handle tile click on player's board
 function onTileClick(tileId) {
   if (!socket || !gameStarted) return;
+
+  // Client-side guard: don't send if slots are full (Req 2.2)
+  if (playerState.slots && playerState.slots.length >= MAX_SLOTS) return;
+
+  // Client-side guard: don't send if tile is blocked (Req 2.3)
+  const tile = playerState.tiles ? playerState.tiles.find(t => t.id === tileId) : null;
+  if (!tile) return;
+  const layer = tile.layer || 0;
+  const isBlocked = playerState.tiles.some(other => {
+    if (other.id === tileId) return false;
+    if ((other.layer || 0) <= layer) return false;
+    return Math.abs(other.x - tile.x) < 40 && Math.abs(other.y - tile.y) < 40;
+  });
+  if (isBlocked) return;
+
   socket.emit('tile_action', { type: 'select_tile', tile_id: tileId });
+}
+
+// Undo last tile from slots back to board
+function undoTile() {
+  if (!socket || !gameStarted) return;
+  if (!playerState.slots || playerState.slots.length === 0) return;
+
+  if (undoRemaining > 0) {
+    undoRemaining--;
+    updateUndoDisplay();
+    socket.emit('tile_action', { type: 'undo_tile' });
+  } else {
+    showAdModal();
+  }
+}
+
+function showAdModal() {
+  document.getElementById('adOverlay').style.display = 'flex';
+  document.getElementById('adModal').style.display = 'flex';
+  var remaining = adDuration;
+  document.getElementById('adTimer').textContent = remaining;
+  document.getElementById('adStatus').textContent = 'Playing ad...';
+
+  var adInterval = setInterval(function() {
+    remaining--;
+    document.getElementById('adTimer').textContent = remaining;
+    if (remaining <= 0) {
+      clearInterval(adInterval);
+      undoRemaining = adRewardCount;
+      updateUndoDisplay();
+      document.getElementById('adStatus').textContent = 'Ad complete! Undo unlocked.';
+      setTimeout(function() {
+        document.getElementById('adOverlay').style.display = 'none';
+        document.getElementById('adModal').style.display = 'none';
+      }, 800);
+    }
+  }, 1000);
 }
 
 // Update player's game area with state data
 function updatePlayerState(state) {
   if (!state) return;
+  playerState = state;
   document.getElementById('playerLevel').textContent = state.level || 1;
   document.getElementById('playerRemaining').textContent = state.remaining || 0;
   renderBoard(document.getElementById('playerBoard'), state.tiles, true);
@@ -207,8 +319,26 @@ function updateOpponentState(state) {
 
 // Connect to WebSocket
 function connectSocket() {
+  // Load reconnect config first, then create socket
+  fetch('/api/config')
+    .then(resp => resp.json())
+    .then(cfg => {
+      var maxAttempts = cfg.reconnect_max_attempts || 3;
+      var intervalMs = (cfg.reconnect_interval_seconds || 3) * 1000;
+      createSocket(maxAttempts, intervalMs);
+    })
+    .catch(() => {
+      createSocket(3, 3000);
+    });
+}
+
+function createSocket(maxAttempts, intervalMs) {
   socket = io({
-    query: { room_code: ROOM_CODE, role: 'player' }
+    query: { room_code: ROOM_CODE, role: 'player' },
+    reconnection: true,
+    reconnectionAttempts: maxAttempts,
+    reconnectionDelay: intervalMs,
+    reconnectionDelayMax: intervalMs
   });
 
   socket.on('connect', () => {
@@ -219,6 +349,11 @@ function connectSocket() {
   socket.on('disconnect', () => {
     console.log('Disconnected from battle room');
     stopHeartbeat();
+  });
+
+  // Listen on the Manager for reconnect_failed
+  socket.io.on('reconnect_failed', () => {
+    window.location.href = '/login';
   });
 
   socket.on('waiting_for_opponent', () => {
@@ -273,6 +408,13 @@ function connectSocket() {
   socket.on('room_closed', (data) => {
     // Show room closed modal
     const reason = (data && data.reason) ? data.reason : 'This room has been closed.';
+    document.getElementById('closedReason').textContent = reason;
+    document.getElementById('closedModal').style.display = 'flex';
+  });
+
+  socket.on('room_deleted', (data) => {
+    // Room was deleted by the owner — show modal and redirect to lobby
+    const reason = (data && data.reason) ? data.reason : 'The room has been deleted by the owner.';
     document.getElementById('closedReason').textContent = reason;
     document.getElementById('closedModal').style.display = 'flex';
   });
@@ -339,6 +481,42 @@ document.getElementById('btnDeleteRoom').addEventListener('click', () => {
     }
   });
 });
+
+// Logout
+function logout() {
+  fetch('/auth/logout', { method: 'POST' }).then(() => {
+    window.location.href = '/login';
+  });
+}
+
+// Copy invitation code to clipboard
+function copyInviteCode() {
+  var code = document.getElementById('inviteCodeText');
+  if (!code) return;
+  var text = code.textContent;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => {
+      showCopyFeedback();
+    });
+  } else {
+    // Fallback for older browsers
+    var textarea = document.createElement('textarea');
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    showCopyFeedback();
+  }
+}
+
+function showCopyFeedback() {
+  var fb = document.getElementById('copyFeedback');
+  if (fb) {
+    fb.style.display = 'inline';
+    setTimeout(() => { fb.style.display = 'none'; }, 2000);
+  }
+}
 
 // Initialize
 connectSocket();

@@ -460,6 +460,8 @@ class GameStateManager:
         action_type = action.get("type")
         if action_type == "select_tile":
             self._apply_select_tile(state, action)
+        elif action_type == "undo_tile":
+            self._apply_undo_tile(state)
         else:
             raise ValueError(f"Unknown action type: {action_type}")
 
@@ -472,7 +474,8 @@ class GameStateManager:
     def _apply_select_tile(self, state: dict, action: dict) -> None:
         """Move a tile from the board to slots, check triple match.
 
-        A tile is selectable only if no higher-layer tile overlaps it.
+        A tile is selectable only if no higher-layer tile overlaps it
+        and slots are not already full.
         """
         tile_id = action.get("tile_id")
         if tile_id is None:
@@ -480,6 +483,10 @@ class GameStateManager:
 
         tiles = state["tiles"]
         slots = state["slots"]
+
+        # Reject if slots are already full (Req 2.2)
+        if len(slots) >= MAX_SLOTS:
+            raise ValueError("Slots are full, cannot select more tiles")
 
         # Find the tile
         tile_idx = None
@@ -505,11 +512,15 @@ class GameStateManager:
                     and abs(other["y"] - tile["y"]) < 40):
                 raise ValueError(f"Tile {tile_id} is blocked")
 
-        # Move tile to slots
+        # Move tile to slots (preserve original position for undo)
         slot_tile = {
             "id": tile["id"],
             "imgIdx": tile["imgIdx"],
             "img": tile["img"],
+            "orig_x": tile["x"],
+            "orig_y": tile["y"],
+            "orig_layer": tile.get("layer", 0),
+            "orig_z": tile.get("z", 0),
         }
         slots.append(slot_tile)
         tiles.pop(tile_idx)
@@ -525,6 +536,36 @@ class GameStateManager:
             state["game_over"] = True
         elif len(slots) >= MAX_SLOTS:
             state["game_over"] = True
+
+    def _apply_undo_tile(self, state: dict) -> None:
+        """Undo the last tile placement: move last slot tile back to board.
+
+        Restores the tile to its original position (x, y, layer, z).
+        Only works if there are tiles in the slots.
+        """
+        slots = state["slots"]
+        tiles = state["tiles"]
+
+        if not slots:
+            raise ValueError("No tiles in slots to undo")
+
+        # Pop the last tile from slots
+        slot_tile = slots.pop()
+
+        # Restore tile to board with original position
+        restored_tile = {
+            "id": slot_tile["id"],
+            "imgIdx": slot_tile["imgIdx"],
+            "img": slot_tile["img"],
+            "x": slot_tile.get("orig_x", 0),
+            "y": slot_tile.get("orig_y", 0),
+            "layer": slot_tile.get("orig_layer", 0),
+            "z": slot_tile.get("orig_z", 0),
+        }
+        tiles.append(restored_tile)
+
+        # Update remaining count
+        state["remaining"] = len(tiles)
 
     def _check_triple(self, slots: list[dict]) -> None:
         """Remove groups of 3 matching tiles from slots (recursive)."""

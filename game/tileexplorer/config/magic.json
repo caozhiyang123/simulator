@@ -1,0 +1,29 @@
+{
+  "target_mode": {
+    "two_players": "auto",
+    "multi_players": "drag"
+  },
+  "magic_types": {
+    "smoke": {
+      "name": "Smoke",
+      "emoji": "🌫️",
+      "description": "Covers opponent tiles with smoke, making them invisible",
+      "grid_count": 5,
+      "duration_seconds": 3
+    },
+    "bomb": {
+      "name": "Bomb",
+      "emoji": "💣",
+      "description": "Randomly covers opponent tiles with bombs, blocking interaction",
+      "grid_count": 5,
+      "duration_seconds": 3
+    },
+    "flower": {
+      "name": "Flower",
+      "emoji": "🌸",
+      "description": "Randomly covers opponent tiles with flowers, blocking interaction",
+      "grid_count": 5,
+      "duration_seconds": 3
+    }
+  }
+}

@@ -1,8 +1,11 @@
 {
   "port": 5002,
-  "idle_warning_seconds": 10,
-  "idle_clear_seconds": 60,
+  "idle_warning_seconds": 60,
+  "idle_clear_seconds": 120,
   "room_auto_close_seconds": 60,
+  "reconnect_max_attempts": 1,
+  "reconnect_interval_seconds": 3,
+  "undo_max_per_round": 3,
   "levels": {
     "1": {
       "image_count": 5,

@@ -29,18 +29,41 @@ h1 { margin-bottom: 8px; font-size: 24px; }
 .idle-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2999; display: none; }
 button { padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; background: #4a90d9; color: #fff; margin-top: 12px; }
 button:hover { background: #357abd; }
+.undo-btn { width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); color: #fff; font-size: 22px; cursor: pointer; margin-top: 16px; display: flex; align-items: center; justify-content: center; transition: background 0.2s, transform 0.2s; }
+.undo-btn:hover { background: rgba(255,255,255,0.2); transform: scale(1.1); }
 </style>
 </head>
 <body>
 
 <h1>🎰 Tile Explorer</h1>
-<div class="info">Level <span id="levelNum">1</span> | Remaining: <span id="remaining">0</span></div>
+<div class="user-bar" style="position:fixed;top:16px;right:24px;display:flex;align-items:center;gap:12px;z-index:9999;">
+  <span style="font-size:14px;color:#ccc;">{{ username }}</span>
+  <button onclick="logout()" style="padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;background:#e74c3c;color:#fff;">Logout</button>
+</div>
+<div style="position:fixed;top:16px;left:24px;z-index:9999;">
+  <button onclick="window.location.href='/'" style="padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);">← Lobby</button>
+</div>
+<div class="info"><span style="font-weight:bold;color:#fff;">{{ username }}</span> | Level <span id="levelNum">1</span> | Remaining: <span id="remaining">0</span></div>
 
 <div class="slots" id="slots"></div>
 <div class="board" id="board"></div>
 
+<!-- Undo button with counter -->
+<div style="display:flex;align-items:center;gap:10px;margin-top:16px;">
+  <button class="undo-btn" id="undoBtn" onclick="undoTile()" title="Undo last tile">↩</button>
+  <span id="undoCount" style="font-size:13px;color:#aaa;">3</span>
+</div>
+
 <div class="win-msg" id="winMsg">🎉 Level Complete!<br><button onclick="nextLevel()">Next Level</button></div>
 <div class="lose-msg" id="loseMsg">😢 Slots Full!<br><button onclick="restartLevel()">Retry</button></div>
+
+<!-- Ad modal -->
+<div class="idle-overlay" id="adOverlay" style="display:none;"></div>
+<div class="idle-modal" id="adModal" style="display:none;">
+  <p>📺 Watch ad to unlock undo</p>
+  <p id="adTimer" style="font-size:24px;font-weight:bold;margin:12px 0;">3</p>
+  <p id="adStatus" style="font-size:12px;color:#aaa;">Playing ad...</p>
+</div>
 
 <!-- Idle warning modal -->
 <div class="idle-overlay" id="idleOverlay"></div>
@@ -60,61 +83,102 @@ let currentLevel = 1;
 let heartbeatInterval = null;
 
 // Connect to WebSocket in single-player mode (no room_code)
-const socket = io();
+var socket = null;
+var undoRemaining = 3;
+var undoMaxPerRound = 3;
+var adDuration = 3;
+var adProviderUrl = '';
+var adRewardCount = 1;
 
-// --- WebSocket Event Handlers ---
+// Load undo and ad config
+fetch('/api/config')
+  .then(function(resp) { return resp.json(); })
+  .then(function(cfg) {
+    undoMaxPerRound = cfg.undo_max_per_round || 3;
+    undoRemaining = undoMaxPerRound;
+    updateUndoDisplay();
+    var maxAttempts = cfg.reconnect_max_attempts || 3;
+    var intervalMs = (cfg.reconnect_interval_seconds || 3) * 1000;
+    initSocket(maxAttempts, intervalMs);
+  })
+  .catch(function() {
+    initSocket(3, 3000);
+  });
 
-socket.on('connect', function() {
-  // Server will automatically emit state_update with recovered or new state
-  startHeartbeat();
-});
+fetch('/api/ads-config')
+  .then(function(resp) { return resp.json(); })
+  .then(function(cfg) {
+    adDuration = cfg.ad_duration_seconds || 3;
+    adProviderUrl = cfg.ad_provider_url || '';
+    adRewardCount = cfg.undo_reward_count || 1;
+  })
+  .catch(function() {});
 
-socket.on('disconnect', function() {
-  stopHeartbeat();
-});
+function updateUndoDisplay() {
+  document.getElementById('undoCount').textContent = undoRemaining;
+}
 
-socket.on('state_update', function(data) {
-  // Update game state from server
-  tiles = data.tiles || [];
-  slots = data.slots || [];
-  currentLevel = data.level || 1;
-  gameOver = data.game_over || false;
+function initSocket(maxAttempts, intervalMs) {
+  socket = io({
+    reconnection: true,
+    reconnectionAttempts: maxAttempts,
+    reconnectionDelay: intervalMs,
+    reconnectionDelayMax: intervalMs
+  });
 
-  document.getElementById('levelNum').textContent = currentLevel;
-  document.getElementById('remaining').textContent = tiles.length;
+  socket.on('connect', function() {
+    startHeartbeat();
+  });
 
-  renderBoard();
-  renderSlots();
+  socket.on('disconnect', function() {
+    stopHeartbeat();
+  });
 
-  // Show win/lose messages based on state
-  if (gameOver && tiles.length === 0 && slots.length === 0) {
-    document.getElementById('winMsg').style.display = 'block';
-    document.getElementById('loseMsg').style.display = 'none';
-  } else if (gameOver && slots.length >= MAX_SLOTS) {
-    document.getElementById('loseMsg').style.display = 'block';
-    document.getElementById('winMsg').style.display = 'none';
-  } else {
-    document.getElementById('winMsg').style.display = 'none';
-    document.getElementById('loseMsg').style.display = 'none';
-  }
-});
+  // Listen on the Manager for reconnect_failed
+  socket.io.on('reconnect_failed', function() {
+    window.location.href = '/login';
+  });
 
-socket.on('idle_warning', function(data) {
-  // Show idle warning modal
-  document.getElementById('idleOverlay').style.display = 'block';
-  document.getElementById('idleModal').style.display = 'block';
-});
+  socket.on('state_update', function(data) {
+    tiles = data.tiles || [];
+    slots = data.slots || [];
+    currentLevel = data.level || 1;
+    gameOver = data.game_over || false;
 
-socket.on('idle_clear', function(data) {
-  // Session was cleared due to inactivity — show message then reload
-  hideIdleModal();
-  alert('Your session was cleared due to inactivity. The game will restart at your saved level.');
-  window.location.reload();
-});
+    document.getElementById('levelNum').textContent = currentLevel;
+    document.getElementById('remaining').textContent = tiles.length;
 
-socket.on('error', function(data) {
-  console.error('Server error:', data.message);
-});
+    renderBoard();
+    renderSlots();
+
+    if (gameOver && tiles.length === 0 && slots.length === 0) {
+      document.getElementById('winMsg').style.display = 'block';
+      document.getElementById('loseMsg').style.display = 'none';
+    } else if (gameOver && slots.length >= MAX_SLOTS) {
+      document.getElementById('loseMsg').style.display = 'block';
+      document.getElementById('winMsg').style.display = 'none';
+    } else {
+      document.getElementById('winMsg').style.display = 'none';
+      document.getElementById('loseMsg').style.display = 'none';
+    }
+  });
+
+  socket.on('idle_warning', function(data) {
+    document.getElementById('idleOverlay').style.display = 'block';
+    document.getElementById('idleModal').style.display = 'block';
+  });
+
+  socket.on('idle_clear', function(data) {
+    hideIdleModal();
+    alert('Your session was cleared due to inactivity. The game will restart at your saved level.');
+    window.location.reload();
+  });
+
+  socket.on('error', function(data) {
+    console.error('Server error:', data.message);
+  });
+}
+
 
 // --- Heartbeat ---
 
@@ -196,8 +260,18 @@ function renderSlots() {
 
 function clickTile(idx) {
   if (gameOver) return;
+  if (slots.length >= MAX_SLOTS) return; // Slots full — ignore click (Req 2.2)
   const tile = tiles[idx];
   if (!tile) return;
+
+  // Client-side blocked check (Req 2.3)
+  const layer = tile.layer || 0;
+  const isBlocked = tiles.some(function(other, oi) {
+    if (oi === idx) return false;
+    if ((other.layer || 0) <= layer) return false;
+    return Math.abs(other.x - tile.x) < 40 && Math.abs(other.y - tile.y) < 40;
+  });
+  if (isBlocked) return;
 
   // Send tile action to server — server will respond with state_update
   socket.emit('tile_action', { type: 'select_tile', tile_id: tile.id });
@@ -210,8 +284,55 @@ function nextLevel() {
 }
 
 function restartLevel() {
-  // Reload the page to reconnect — server will reinitialize at saved level.
-  window.location.reload();
+  // Emit restart_game to clear server state and reinitialize (Req 2.1)
+  socket.emit('restart_game', {});
+  // Reset undo count for new round
+  undoRemaining = undoMaxPerRound;
+  updateUndoDisplay();
+}
+
+function undoTile() {
+  if (gameOver) return;
+  if (slots.length === 0) return;
+
+  if (undoRemaining > 0) {
+    undoRemaining--;
+    updateUndoDisplay();
+    socket.emit('tile_action', { type: 'undo_tile' });
+  } else {
+    // Show ad to unlock undo
+    showAdModal();
+  }
+}
+
+function showAdModal() {
+  document.getElementById('adOverlay').style.display = 'block';
+  document.getElementById('adModal').style.display = 'block';
+  var remaining = adDuration;
+  document.getElementById('adTimer').textContent = remaining;
+  document.getElementById('adStatus').textContent = 'Playing ad...';
+
+  var adInterval = setInterval(function() {
+    remaining--;
+    document.getElementById('adTimer').textContent = remaining;
+    if (remaining <= 0) {
+      clearInterval(adInterval);
+      // Ad complete — reward undo
+      undoRemaining = adRewardCount;
+      updateUndoDisplay();
+      document.getElementById('adStatus').textContent = 'Ad complete! Undo unlocked.';
+      setTimeout(function() {
+        document.getElementById('adOverlay').style.display = 'none';
+        document.getElementById('adModal').style.display = 'none';
+      }, 800);
+    }
+  }, 1000);
+}
+
+function logout() {
+  fetch('/auth/logout', { method: 'POST' }).then(function() {
+    window.location.href = '/login';
+  });
 }
 </script>
 </body>

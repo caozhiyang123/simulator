@@ -161,6 +161,11 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
         role = request.args.get("role", "player")
 
         if not room_code:
+            # Check if this is a lobby-only connection
+            if role == "lobby":
+                # Lobby connections don't need game state
+                return True
+
             # Single-player mode: recover or initialize game state
             sid = request.sid
             # Track unique_code -> sid for idle notifications
@@ -418,6 +423,33 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
         if unique_code:
             idle_timer_manager.reset_timer(unique_code)
 
+    @socketio.on("restart_game")
+    def handle_restart_game(data=None):  # noqa: ARG001
+        """Handle restart game request (Retry button).
+
+        Clears the existing game state and reinitializes a new game
+        at the player's current saved level (Req 2.1).
+        """
+        username = session.get("username")
+        unique_code = session.get("unique_code")
+
+        if not username or not unique_code:
+            emit("error", {"message": "Not authenticated"})
+            return
+
+        # Clear existing game state (single-player only, room_code=None)
+        game_state_manager.clear_state(unique_code, None)
+
+        # Reinitialize at player's saved level
+        saved_level = user_manager.get_current_level(username)
+        new_state = game_state_manager.init_game_state(
+            unique_code, saved_level, None
+        )
+        emit("state_update", _build_state_view(new_state))
+
+        # Reset idle timer
+        idle_timer_manager.reset_timer(unique_code)
+
     @socketio.on("join_lobby")
     def handle_join_lobby(data=None):  # noqa: ARG001
         """Handle lobby join — add client to 'lobby' room for updates."""
@@ -482,12 +514,78 @@ def kick_spectators(socketio, room_manager, room_code, reason=None):
     conn["spectators"] = {}
 
 
+def handle_room_deleted(socketio, game_state_manager, room_code):
+    """Handle room deletion: notify all members and clear game state.
+
+    Emits room_deleted to all connected players and spectators,
+    clears their game state for this room, and cleans up connection
+    tracking.
+
+    Args:
+        socketio: The Flask-SocketIO instance.
+        game_state_manager: GameStateManager instance.
+        room_code: The room's unique code.
+    """
+    conn = _room_connections.get(room_code)
+    if not conn:
+        # Even without connection tracking, emit to the SocketIO room
+        socketio.emit(
+            "room_deleted",
+            {"reason": "The room has been deleted by the owner."},
+            to=room_code,
+        )
+        return
+
+    # Notify and clean up player 2
+    player2_sid = conn.get("player2_sid")
+    player2_unique_code = conn.get("player2_unique_code")
+    if player2_sid:
+        socketio.emit(
+            "room_deleted",
+            {"reason": "The room has been deleted by the owner."},
+            to=player2_sid,
+        )
+        _sid_to_room.pop(player2_sid, None)
+
+    # Clear game state for player 2
+    if player2_unique_code:
+        game_state_manager.clear_state(player2_unique_code, room_code)
+        _unique_code_to_sid.pop(player2_unique_code, None)
+
+    # Notify and clean up owner
+    owner_sid = conn.get("owner_sid")
+    owner_unique_code = conn.get("owner_unique_code")
+    if owner_sid:
+        _sid_to_room.pop(owner_sid, None)
+
+    # Clear game state for owner
+    if owner_unique_code:
+        game_state_manager.clear_state(owner_unique_code, room_code)
+        _unique_code_to_sid.pop(owner_unique_code, None)
+
+    # Notify and clean up spectators
+    spectators = dict(conn.get("spectators", {}))
+    for sid in spectators:
+        socketio.emit(
+            "room_deleted",
+            {"reason": "The room has been deleted by the owner."},
+            to=sid,
+        )
+        _sid_to_room.pop(sid, None)
+
+    # Remove room connection tracking
+    _room_connections.pop(room_code, None)
+
+
 def _handle_single_player_connect(unique_code, username,
                                   game_state_manager, user_manager):
     """Handle single-player WebSocket connection with state recovery.
 
     On connect without a room_code (Req 8.3, 8.5, 8.6):
-    - If existing state found, emit state_update with recovered state
+    - If existing state found and game is NOT over, emit state_update
+      with recovered state
+    - If existing state found and game IS over, clear and reinitialize
+      at player's saved level (Req 2.1)
     - If no state exists, initialize at player's saved level
     - If state is corrupted, discard and reinitialize
 
@@ -501,8 +599,17 @@ def _handle_single_player_connect(unique_code, username,
     state = game_state_manager.get_game_state(unique_code, None)
 
     if state is not None:
-        # Recovered existing state — emit to player
-        emit("state_update", _build_state_view(state))
+        # If game is over, clear and reinitialize (Req 2.1 — Retry reconnect)
+        if state.get("game_over", False):
+            game_state_manager.clear_state(unique_code, None)
+            saved_level = user_manager.get_current_level(username)
+            new_state = game_state_manager.init_game_state(
+                unique_code, saved_level, None
+            )
+            emit("state_update", _build_state_view(new_state))
+        else:
+            # Recovered existing in-progress state — emit to player
+            emit("state_update", _build_state_view(state))
     else:
         # No state exists — initialize at player's saved level
         saved_level = user_manager.get_current_level(username)
@@ -533,7 +640,10 @@ def _recover_multiplayer_state(unique_code, room_code,
 
 
 def _start_game(room_code, conn, game_state_manager, user_manager):
-    """Initialize game states for both players and emit game_start.
+    """Initialize or recover game states for both players and emit game_start.
+
+    If both players already have existing (non-game-over) state for this
+    room, recover and emit those states instead of reinitializing.
 
     Args:
         room_code: The room's unique code.
@@ -546,20 +656,33 @@ def _start_game(room_code, conn, game_state_manager, user_manager):
     player2_username = conn["player2_username"]
     player2_unique_code = conn["player2_unique_code"]
 
-    # Get each player's current level
-    owner_level = user_manager.get_current_level(owner_username)
-    player2_level = user_manager.get_current_level(player2_username)
-
-    # Use the lower level for fair competition (both start at same level)
-    game_level = min(owner_level, player2_level)
-
-    # Initialize game states for both players
-    owner_state = game_state_manager.init_game_state(
-        owner_unique_code, game_level, room_code
+    # Try to recover existing game states (reconnect/refresh scenario)
+    owner_state = game_state_manager.get_game_state(
+        owner_unique_code, room_code
     )
-    player2_state = game_state_manager.init_game_state(
-        player2_unique_code, game_level, room_code
+    player2_state = game_state_manager.get_game_state(
+        player2_unique_code, room_code
     )
+
+    # If both have valid in-progress states, recover them
+    if (owner_state is not None
+            and not owner_state.get("game_over", False)
+            and player2_state is not None
+            and not player2_state.get("game_over", False)):
+        # Recover existing game — don't reinitialize
+        pass
+    else:
+        # One or both states missing/finished — initialize fresh game
+        owner_level = user_manager.get_current_level(owner_username)
+        player2_level = user_manager.get_current_level(player2_username)
+        game_level = min(owner_level, player2_level)
+
+        owner_state = game_state_manager.init_game_state(
+            owner_unique_code, game_level, room_code
+        )
+        player2_state = game_state_manager.init_game_state(
+            player2_unique_code, game_level, room_code
+        )
 
     # Build read-only views (exclude unique_code for privacy)
     owner_view = _build_state_view(owner_state)

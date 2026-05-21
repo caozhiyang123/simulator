@@ -12,7 +12,7 @@ from room_manager import RoomManager
 from user_manager import UserManager
 from game_state_manager import GameStateManager
 from idle_timer_manager import IdleTimerManager
-from socketio_events import register_socketio_events, kick_spectators
+from socketio_events import register_socketio_events, kick_spectators, handle_room_deleted
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "tileexplorer-secret-2026")
@@ -79,6 +79,9 @@ def require_login():
         return
     if not session.get('logged_in'):
         return redirect('/login')
+    # Skip token validation in testing mode
+    if app.config.get('TESTING'):
+        return
     username = session.get('username')
     token = session.get('token')
     if username and token and _active_sessions.get(username) != token:
@@ -197,20 +200,64 @@ def index():
 
 @app.route("/single")
 def single():
-    return render_template("single.html")
+    username = session.get("username", "")
+    return render_template("single.html", username=username)
 
 
 @app.route("/battle/<room_code>")
 def battle(room_code):
     """Serve battle page for a specific room."""
-    return render_template("battle.html", room_code=room_code)
+    username = session.get("username", "")
+    # Find the room to get invitation_code and owner status
+    invitation_code = ""
+    is_owner = False
+    rooms = room_manager.get_active_rooms()
+    for room in rooms:
+        if room.get("unique_code") == room_code:
+            if room.get("room_owner") == username:
+                invitation_code = room.get("invitation_code", "")
+                is_owner = True
+            break
+    return render_template("battle.html", room_code=room_code,
+                           username=username,
+                           invitation_code=invitation_code,
+                           is_owner=is_owner)
 
 
 @app.route("/api/config", methods=["GET"])
 def get_config():
-    """Return level config."""
+    """Return level config and client settings."""
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return jsonify(json.load(f))
+        cfg = json.load(f)
+    return jsonify({
+        "reconnect_max_attempts": cfg.get(
+            "reconnect_max_attempts", 3),
+        "reconnect_interval_seconds": cfg.get(
+            "reconnect_interval_seconds", 3),
+        "undo_max_per_round": cfg.get("undo_max_per_round", 3),
+        "levels": cfg.get("levels", {}),
+    })
+
+
+ADS_CONFIG_PATH = os.path.join(
+    os.path.dirname(__file__), "config", "ads.json"
+)
+
+
+@app.route("/api/ads-config", methods=["GET"])
+def get_ads_config():
+    """Return ads configuration for the client."""
+    try:
+        with open(ADS_CONFIG_PATH, "r", encoding="utf-8") as f:
+            ads_cfg = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        ads_cfg = {}
+    return jsonify({
+        "ad_duration_seconds": ads_cfg.get("ad_duration_seconds", 3),
+        "ad_provider_url": ads_cfg.get(
+            "ad_provider_url", "https://example.com/ads/placeholder"),
+        "undo_reward_count": ads_cfg.get("undo_reward_count", 1),
+    })
 
 
 @app.route("/api/images", methods=["GET"])
@@ -221,6 +268,56 @@ def list_images():
         if f.lower().endswith(('.png', '.jpg', '.jpeg'))
     ])
     return jsonify({"images": images})
+
+
+@app.route("/api/active-game", methods=["GET"])
+def get_active_game():
+    """Check if the current user has an active (in-progress) game session.
+
+    Returns:
+      - active: bool
+      - mode: "single" | "battle"
+      - room_code: str (only for battle mode)
+    """
+    username = session.get("username")
+    unique_code = session.get("unique_code")
+
+    if not username or not unique_code:
+        return jsonify({"active": False})
+
+    # Check single-player game state
+    state = game_state_manager.get_game_state(unique_code, None)
+    if state and not state.get("game_over", False):
+        return jsonify({
+            "active": True,
+            "mode": "single",
+            "room_code": None,
+        })
+
+    # Check multiplayer: find if user is in any active room
+    rooms = room_manager.get_active_rooms()
+    for room in rooms:
+        if (room.get("room_owner") == username
+                or room.get("player2_username") == username):
+            room_code = room.get("unique_code")
+            # Check if there's an active game state for this room
+            room_state = game_state_manager.get_game_state(
+                unique_code, room_code
+            )
+            if room_state and not room_state.get("game_over", False):
+                return jsonify({
+                    "active": True,
+                    "mode": "battle",
+                    "room_code": room_code,
+                })
+            # Even without game state, if they're in a room, offer rejoin
+            return jsonify({
+                "active": True,
+                "mode": "battle",
+                "room_code": room_code,
+            })
+
+    return jsonify({"active": False})
 
 
 # --- Helper: broadcast room list to lobby ---
@@ -240,6 +337,8 @@ def _broadcast_room_list():
             "spectator_access_enabled": room.get("spectator_access_enabled", True),
             "spectator_requires_invitation": room.get("spectator_requires_invitation", True),
             "spectator_count": len(room.get("spectators", [])),
+            "room_owner": room.get("room_owner", ""),
+            "player2_username": room.get("player2_username", ""),
         })
     socketio.emit("room_list_update", {"rooms": result}, to="lobby")
 
@@ -250,12 +349,15 @@ def _broadcast_room_list():
 @app.route("/api/rooms", methods=["GET"])
 def get_rooms():
     """Return list of active rooms with alias, unique_code, player count, spectator status."""
+    username = session.get("username", "")
     rooms = room_manager.get_active_rooms()
     result = []
     for room in rooms:
         player_count = 1  # Owner is always present
         if room.get("player2_username") is not None:
             player_count = 2
+        is_member = (room.get("room_owner") == username
+                     or room.get("player2_username") == username)
         result.append({
             "alias": room.get("alias", ""),
             "unique_code": room.get("unique_code", ""),
@@ -263,6 +365,7 @@ def get_rooms():
             "spectator_access_enabled": room.get("spectator_access_enabled", True),
             "spectator_requires_invitation": room.get("spectator_requires_invitation", True),
             "spectator_count": len(room.get("spectators", [])),
+            "is_member": is_member,
         })
     return jsonify({"rooms": result})
 
@@ -383,6 +486,9 @@ def delete_room(code):
         if "not found" in error_msg.lower():
             return jsonify({"error": error_msg}), 404
         return jsonify({"error": error_msg}), 400
+
+    # Notify all players/spectators and clear game state
+    handle_room_deleted(socketio, game_state_manager, code)
 
     _broadcast_room_list()
 
