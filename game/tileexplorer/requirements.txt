@@ -1,0 +1,5 @@
+flask
+flask-socketio
+hypothesis
+pytest
+pytest-flask

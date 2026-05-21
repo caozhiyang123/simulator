@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tile Explorer - Login</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, sans-serif;
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.login-container {
+  background: rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 40px;
+  width: 360px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.login-container h1 {
+  text-align: center;
+  margin-bottom: 8px;
+  font-size: 28px;
+}
+.login-container p {
+  text-align: center;
+  color: #aaa;
+  margin-bottom: 24px;
+  font-size: 14px;
+}
+.form-group {
+  margin-bottom: 16px;
+}
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #ccc;
+}
+.form-group input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.05);
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.3s;
+}
+.form-group input:focus {
+  border-color: #4a90d9;
+}
+.login-btn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #4a90d9, #357abd);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: opacity 0.3s;
+}
+.login-btn:hover { opacity: 0.9; }
+.login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.error-msg {
+  color: #e74c3c;
+  text-align: center;
+  margin-top: 12px;
+  font-size: 13px;
+  min-height: 18px;
+}
+.success-msg {
+  color: #2ecc71;
+  text-align: center;
+  margin-top: 12px;
+  font-size: 13px;
+  min-height: 18px;
+}
+.toggle-link {
+  text-align: center;
+  margin-top: 16px;
+}
+.toggle-link a {
+  color: #4a90d9;
+  font-size: 13px;
+  text-decoration: none;
+  transition: color 0.3s;
+}
+.toggle-link a:hover {
+  color: #6ab0f3;
+  text-decoration: underline;
+}
+</style>
+</head>
+<body>
+<div class="login-container">
+  <h1>🎰 Tile Explorer</h1>
+  <p id="formTitle">Please login to continue</p>
+
+  <!-- Login Form -->
+  <div id="loginForm">
+    <div class="form-group">
+      <label>Username</label>
+      <input type="text" id="username" placeholder="Enter username" maxlength="32" autofocus>
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="password" placeholder="Enter password" maxlength="32">
+    </div>
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">Login</button>
+  </div>
+
+  <!-- Registration Form -->
+  <div id="registerForm" style="display:none;">
+    <div class="form-group">
+      <label>Admin Username</label>
+      <input type="text" id="regAdminUsername" placeholder="Enter admin username" maxlength="32">
+    </div>
+    <div class="form-group">
+      <label>Admin Password</label>
+      <input type="password" id="regAdminPassword" placeholder="Enter admin password" maxlength="32">
+    </div>
+    <div class="form-group">
+      <label>New Username</label>
+      <input type="text" id="regNewUsername" placeholder="Enter new username" maxlength="32">
+    </div>
+    <div class="form-group">
+      <label>New Password</label>
+      <input type="password" id="regNewPassword" placeholder="Enter new password" maxlength="32">
+    </div>
+    <button class="login-btn" id="registerBtn" onclick="doRegister()">Register</button>
+  </div>
+
+  <div class="error-msg" id="errorMsg"></div>
+  <div class="toggle-link">
+    <a href="#" id="toggleMode" onclick="toggleFormMode(event)">Need to register a new user?</a>
+  </div>
+</div>
+
+<script>
+let isRegisterMode = false;
+
+function toggleFormMode(event) {
+  if (event) event.preventDefault();
+  isRegisterMode = !isRegisterMode;
+  const loginForm = document.getElementById('loginForm');
+  const registerForm = document.getElementById('registerForm');
+  const toggleLink = document.getElementById('toggleMode');
+  const formTitle = document.getElementById('formTitle');
+  const errorMsg = document.getElementById('errorMsg');
+
+  errorMsg.textContent = '';
+  errorMsg.className = 'error-msg';
+
+  if (isRegisterMode) {
+    loginForm.style.display = 'none';
+    registerForm.style.display = 'block';
+    toggleLink.textContent = 'Back to login';
+    formTitle.textContent = 'Register a new user';
+  } else {
+    loginForm.style.display = 'block';
+    registerForm.style.display = 'none';
+    toggleLink.textContent = 'Need to register a new user?';
+    formTitle.textContent = 'Please login to continue';
+  }
+}
+
+document.getElementById('password').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('username').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') document.getElementById('password').focus();
+});
+
+async function doLogin() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const errorMsg = document.getElementById('errorMsg');
+  const btn = document.getElementById('loginBtn');
+
+  if (!username || !password) {
+    errorMsg.textContent = 'Please enter username and password';
+    return;
+  }
+
+  btn.disabled = true;
+  errorMsg.textContent = '';
+
+  try {
+    const resp = await fetch('/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, password})
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      window.location.href = '/';
+    } else {
+      errorMsg.textContent = data.error || 'Login failed';
+    }
+  } catch(e) {
+    errorMsg.textContent = 'Network error';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function doRegister() {
+  const adminUsername = document.getElementById('regAdminUsername').value.trim();
+  const adminPassword = document.getElementById('regAdminPassword').value;
+  const newUsername = document.getElementById('regNewUsername').value.trim();
+  const newPassword = document.getElementById('regNewPassword').value;
+  const errorMsg = document.getElementById('errorMsg');
+  const btn = document.getElementById('registerBtn');
+
+  // Client-side validation: all fields must have at least 1 non-whitespace character
+  const emptyFields = [];
+  if (!adminUsername) emptyFields.push('Admin Username');
+  if (!adminPassword.trim()) emptyFields.push('Admin Password');
+  if (!newUsername) emptyFields.push('New Username');
+  if (!newPassword.trim()) emptyFields.push('New Password');
+  if (emptyFields.length > 0) {
+    errorMsg.className = 'error-msg';
+    errorMsg.textContent = 'Required: ' + emptyFields.join(', ');
+    return;
+  }
+
+  btn.disabled = true;
+  errorMsg.textContent = '';
+
+  try {
+    const resp = await fetch('/auth/register', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        admin_username: adminUsername,
+        admin_password: adminPassword,
+        new_username: newUsername,
+        new_password: newPassword
+      })
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      errorMsg.className = 'success-msg';
+      errorMsg.textContent = 'User "' + data.username + '" registered successfully!';
+      setTimeout(function() {
+        toggleFormMode();
+      }, 3000);
+    } else {
+      errorMsg.className = 'error-msg';
+      errorMsg.textContent = data.error || 'Registration failed';
+    }
+  } catch(e) {
+    errorMsg.className = 'error-msg';
+    errorMsg.textContent = 'Network error';
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

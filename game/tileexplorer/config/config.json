@@ -1,5 +1,8 @@
 {
   "port": 5002,
+  "idle_warning_seconds": 10,
+  "idle_clear_seconds": 60,
+  "room_auto_close_seconds": 60,
   "levels": {
     "1": {
       "image_count": 5,

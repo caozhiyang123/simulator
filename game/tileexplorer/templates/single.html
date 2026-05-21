@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tile Explorer - Triple Match</title>
+<style>
+:root {
+  --tile-depth-border: 3px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #1a1a2e, #16213e); min-height: 100vh; display: flex; flex-direction: column; align-items: center; color: #fff; padding: 20px; }
+h1 { margin-bottom: 8px; font-size: 24px; }
+.info { font-size: 14px; color: #aaa; margin-bottom: 16px; }
+.slots { display: flex; gap: 6px; margin-bottom: 20px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 12px; }
+.slot { width: 50px; height: 50px; border: 2px dashed rgba(255,255,255,0.3); border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; }
+.slot img { width: 42px; height: 42px; object-fit: cover; border-radius: 4px; }
+.board { position: relative; width: 420px; height: 560px; margin: 0 auto; }
+.tile { position: absolute; width: 50px; height: 50px; cursor: pointer; transition: transform 0.2s, opacity 0.3s; border-radius: 6px; overflow: hidden; box-shadow: 2px 2px 0 rgba(255,255,255,0.4), 1px 1px 3px rgba(0,0,0,0.3); border-bottom: var(--tile-depth-border) solid #FFFFFF; border-right: var(--tile-depth-border) solid #FFFFFF; }
+.tile:hover { transform: scale(1.05); z-index: 999 !important; }
+.tile img { width: 100%; height: 100%; object-fit: cover; }
+.tile.blocked { opacity: 0.6; cursor: not-allowed; }
+.tile.fly { transition: all 0.4s ease-in-out; }
+.win-msg { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(39,174,96,0.95); padding: 30px 50px; border-radius: 12px; font-size: 24px; z-index: 2000; display: none; }
+.lose-msg { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(231,76,60,0.95); padding: 30px 50px; border-radius: 12px; font-size: 24px; z-index: 2000; display: none; }
+.idle-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(52,73,94,0.97); padding: 30px 50px; border-radius: 12px; font-size: 20px; z-index: 3000; display: none; text-align: center; border: 2px solid #f39c12; }
+.idle-modal button { margin-top: 16px; padding: 10px 28px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; background: #f39c12; color: #fff; }
+.idle-modal button:hover { background: #e67e22; }
+.idle-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2999; display: none; }
+button { padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; background: #4a90d9; color: #fff; margin-top: 12px; }
+button:hover { background: #357abd; }
+</style>
+</head>
+<body>
+
+<h1>🎰 Tile Explorer</h1>
+<div class="info">Level <span id="levelNum">1</span> | Remaining: <span id="remaining">0</span></div>
+
+<div class="slots" id="slots"></div>
+<div class="board" id="board"></div>
+
+<div class="win-msg" id="winMsg">🎉 Level Complete!<br><button onclick="nextLevel()">Next Level</button></div>
+<div class="lose-msg" id="loseMsg">😢 Slots Full!<br><button onclick="restartLevel()">Retry</button></div>
+
+<!-- Idle warning modal -->
+<div class="idle-overlay" id="idleOverlay"></div>
+<div class="idle-modal" id="idleModal">
+  <p>⏰ You have been idle.</p>
+  <p>Continue playing?</p>
+  <button onclick="continuePlaying()">Continue</button>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const MAX_SLOTS = 7;
+let tiles = [];
+let slots = [];
+let gameOver = false;
+let currentLevel = 1;
+let heartbeatInterval = null;
+
+// Connect to WebSocket in single-player mode (no room_code)
+const socket = io();
+
+// --- WebSocket Event Handlers ---
+
+socket.on('connect', function() {
+  // Server will automatically emit state_update with recovered or new state
+  startHeartbeat();
+});
+
+socket.on('disconnect', function() {
+  stopHeartbeat();
+});
+
+socket.on('state_update', function(data) {
+  // Update game state from server
+  tiles = data.tiles || [];
+  slots = data.slots || [];
+  currentLevel = data.level || 1;
+  gameOver = data.game_over || false;
+
+  document.getElementById('levelNum').textContent = currentLevel;
+  document.getElementById('remaining').textContent = tiles.length;
+
+  renderBoard();
+  renderSlots();
+
+  // Show win/lose messages based on state
+  if (gameOver && tiles.length === 0 && slots.length === 0) {
+    document.getElementById('winMsg').style.display = 'block';
+    document.getElementById('loseMsg').style.display = 'none';
+  } else if (gameOver && slots.length >= MAX_SLOTS) {
+    document.getElementById('loseMsg').style.display = 'block';
+    document.getElementById('winMsg').style.display = 'none';
+  } else {
+    document.getElementById('winMsg').style.display = 'none';
+    document.getElementById('loseMsg').style.display = 'none';
+  }
+});
+
+socket.on('idle_warning', function(data) {
+  // Show idle warning modal
+  document.getElementById('idleOverlay').style.display = 'block';
+  document.getElementById('idleModal').style.display = 'block';
+});
+
+socket.on('idle_clear', function(data) {
+  // Session was cleared due to inactivity — show message then reload
+  hideIdleModal();
+  alert('Your session was cleared due to inactivity. The game will restart at your saved level.');
+  window.location.reload();
+});
+
+socket.on('error', function(data) {
+  console.error('Server error:', data.message);
+});
+
+// --- Heartbeat ---
+
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatInterval = setInterval(function() {
+    socket.emit('heartbeat', {});
+  }, 30000); // Every 30 seconds
+}
+
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+}
+
+// --- Idle Modal ---
+
+function continuePlaying() {
+  socket.emit('continue_playing', {});
+  hideIdleModal();
+}
+
+function hideIdleModal() {
+  document.getElementById('idleOverlay').style.display = 'none';
+  document.getElementById('idleModal').style.display = 'none';
+}
+
+// --- Rendering ---
+
+function renderBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+  tiles.forEach(function(t, idx) {
+    const div = document.createElement('div');
+    div.className = 'tile';
+    div.style.left = t.x + 'px';
+    div.style.top = t.y + 'px';
+    div.style.zIndex = t.z;
+    // Visual depth: upper layers get shadow offset for 3D effect
+    const layer = t.layer || 0;
+    div.style.boxShadow = (2 + layer * 2) + 'px ' + (2 + layer * 2) + 'px ' + (2 + layer) + 'px rgba(0,0,0,0.35)';
+    if (layer > 0) { div.style.borderTop = '1px solid rgba(255,255,255,0.15)'; div.style.borderLeft = '1px solid rgba(255,255,255,0.15)'; }
+    div.innerHTML = '<img src="' + t.img + '">';
+    div.dataset.idx = idx;
+
+    // A tile is blocked if ANY tile on a HIGHER layer overlaps it
+    const isBlocked = tiles.some(function(other, oi) {
+      if (oi === idx) return false;
+      if ((other.layer || 0) <= layer) return false;
+      // Check overlap: tiles overlap if distance < tileSize (50px) in both axes
+      return Math.abs(other.x - t.x) < 40 && Math.abs(other.y - t.y) < 40;
+    });
+
+    if (isBlocked) {
+      div.classList.add('blocked');
+    } else {
+      div.onclick = function() { clickTile(idx); };
+    }
+    board.appendChild(div);
+  });
+}
+
+function renderSlots() {
+  const slotsEl = document.getElementById('slots');
+  slotsEl.innerHTML = '';
+  for (let i = 0; i < MAX_SLOTS; i++) {
+    const div = document.createElement('div');
+    div.className = 'slot';
+    if (slots[i]) {
+      div.innerHTML = '<img src="' + slots[i].img + '">';
+    }
+    slotsEl.appendChild(div);
+  }
+}
+
+// --- Tile Actions ---
+
+function clickTile(idx) {
+  if (gameOver) return;
+  const tile = tiles[idx];
+  if (!tile) return;
+
+  // Send tile action to server — server will respond with state_update
+  socket.emit('tile_action', { type: 'select_tile', tile_id: tile.id });
+}
+
+function nextLevel() {
+  // Server has already advanced the player's level on win.
+  // Reload the page to reconnect and get new state at the next level.
+  window.location.reload();
+}
+
+function restartLevel() {
+  // Reload the page to reconnect — server will reinitialize at saved level.
+  window.location.reload();
+}
+</script>
+</body>
+</html>
