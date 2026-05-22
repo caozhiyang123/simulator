@@ -1,16 +1,1 @@
-[
-  {
-    "alias": "admin",
-    "unique_code": "ITCZLCDF",
-    "invitation_code": "JCR8QT69",
-    "room_owner": "admin",
-    "room_owner_unique_code": "8ee3fa17-260a-4ed6-bfd3-6d1c99c6dc23",
-    "player2_username": null,
-    "player2_unique_code": null,
-    "spectator_access_enabled": true,
-    "spectator_requires_invitation": true,
-    "spectators": [],
-    "created_at": "2026-05-21T07:34:00.321664+00:00",
-    "last_activity": "2026-05-21T07:34:03.954643+00:00"
-  }
-]
+[]

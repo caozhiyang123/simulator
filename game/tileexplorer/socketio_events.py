@@ -212,6 +212,12 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
             # Add as spectator
             conn["spectators"][sid] = username
             _sid_to_room[sid] = (room_code, "spectator")
+            # Notify all room members that a spectator joined
+            spectator_list = list(conn["spectators"].values())
+            emit("spectator_joined", {
+                "username": username,
+                "spectators": spectator_list,
+            }, to=room_code)
             # Update last_activity on join
             _update_room_last_activity(room_code)
             return True
@@ -469,6 +475,120 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
         if unique_code:
             idle_timer_manager.reset_timer(unique_code)
 
+    @socketio.on("magic_attack")
+    def handle_magic_attack(data=None):  # noqa: ARG001
+        """Handle magic attack from a player.
+
+        The magic type is determined by the server (pending_magic in
+        game state). Validates charges, decrements, and emits
+        magic_effect to the target opponent.
+        """
+        sid = request.sid
+        username = session.get("username")
+        unique_code = session.get("unique_code")
+
+        if not username or not unique_code:
+            emit("error", {"message": "Not authenticated"})
+            return
+
+        # Must be in a room
+        if sid not in _sid_to_room:
+            emit("error", {"message": "Not in a room"})
+            return
+
+        room_code, role = _sid_to_room[sid]
+        if role == "spectator":
+            emit("error", {"message": "Spectators cannot attack"})
+            return
+
+        # Get the pending magic type before consuming it
+        current_state = game_state_manager.get_game_state(
+            unique_code, room_code
+        )
+        if not current_state:
+            emit("error", {"message": "No game state"})
+            return
+
+        magic_type = current_state.get("pending_magic")
+        if not magic_type:
+            emit("error", {"message": "No pending magic"})
+            return
+
+        # Validate and decrement magic charge via game state
+        try:
+            game_state_manager.apply_tile_action(
+                unique_code, room_code, {"type": "use_magic"}
+            )
+        except ValueError as e:
+            emit("error", {"message": str(e)})
+            return
+
+        # Determine target opponent
+        conn = _room_connections.get(room_code)
+        if not conn:
+            return
+
+        opponent_sid = None
+        opponent_unique_code = None
+        if role == "owner" and conn["player2_sid"]:
+            opponent_sid = conn["player2_sid"]
+            opponent_unique_code = conn["player2_unique_code"]
+        elif role == "player2" and conn["owner_sid"]:
+            opponent_sid = conn["owner_sid"]
+            opponent_unique_code = conn["owner_unique_code"]
+
+        if opponent_sid and opponent_unique_code:
+            # Get opponent's game state to pick affected tiles
+            opponent_state = game_state_manager.get_game_state(
+                opponent_unique_code, room_code
+            )
+            affected_tile_ids = []
+            if opponent_state:
+                import random as _rnd
+                import json as _json
+                import os as _os
+
+                # Load magic config for grid_count
+                magic_cfg_path = _os.path.join(
+                    _os.path.dirname(__file__), "config", "magic.json"
+                )
+                grid_count = 5
+                try:
+                    with open(magic_cfg_path, "r", encoding="utf-8") as _f:
+                        _mcfg = _json.load(_f)
+                    mt = _mcfg.get("magic_types", {}).get(magic_type, {})
+                    grid_count = mt.get("grid_count", 5)
+                except (OSError, _json.JSONDecodeError):
+                    pass
+
+                opp_tiles = opponent_state.get("tiles", [])
+                if opp_tiles:
+                    count = min(grid_count, len(opp_tiles))
+                    chosen = _rnd.sample(opp_tiles, count)
+                    affected_tile_ids = [t["id"] for t in chosen]
+
+            emit("magic_effect", {
+                "magic_type": magic_type,
+                "from": username,
+                "affected_tile_ids": affected_tile_ids,
+            }, to=opponent_sid)
+
+            # Also notify the attacker with the same tile IDs
+            emit("magic_effect_sent", {
+                "magic_type": magic_type,
+                "affected_tile_ids": affected_tile_ids,
+            })
+
+        # Emit updated state to the attacker (charges decremented)
+        updated_state = game_state_manager.get_game_state(
+            unique_code, room_code
+        )
+        if updated_state:
+            emit("state_update", _build_state_view(updated_state))
+
+        # Reset idle timer
+        idle_timer_manager.reset_timer(unique_code)
+
     # Start background task for room auto-close monitoring
     def _background_monitor():
         """Background task that checks room auto-close every 5 seconds."""
@@ -714,6 +834,8 @@ def _build_state_view(state: dict) -> dict:
         "level": state.get("level", 1),
         "remaining": state.get("remaining", 0),
         "game_over": state.get("game_over", False),
+        "magic_charges": state.get("magic_charges", 0),
+        "pending_magic": state.get("pending_magic"),
     }
 
 

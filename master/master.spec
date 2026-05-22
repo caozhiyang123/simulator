@@ -19,7 +19,7 @@ a = Analysis(
         ('progress_store.py', '.'),
         ('history_store.py', '.'),
     ],
-    hiddenimports=['psutil'],
+    hiddenimports=['psutil', 'pypdf'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

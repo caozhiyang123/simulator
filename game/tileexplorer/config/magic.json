@@ -9,21 +9,33 @@
       "emoji": "🌫️",
       "description": "Covers opponent tiles with smoke, making them invisible",
       "grid_count": 5,
-      "duration_seconds": 3
+      "duration_seconds": 3,
+      "weight": 0.8,
+      "effect_path": "/static/magic/effect/smoke/smoke",
+      "effect_frames": 26,
+      "effect_ext": ".png"
     },
     "bomb": {
       "name": "Bomb",
       "emoji": "💣",
       "description": "Randomly covers opponent tiles with bombs, blocking interaction",
       "grid_count": 5,
-      "duration_seconds": 3
+      "duration_seconds": 3,
+      "weight": 0.1,
+      "effect_path": "/static/magic/effect/bomb/bomb",
+      "effect_frames": 5,
+      "effect_ext": ".png"
     },
     "flower": {
       "name": "Flower",
       "emoji": "🌸",
       "description": "Randomly covers opponent tiles with flowers, blocking interaction",
       "grid_count": 5,
-      "duration_seconds": 3
+      "duration_seconds": 3,
+      "weight": 0.1,
+      "effect_path": null,
+      "effect_frames": 0,
+      "effect_ext": ".png"
     }
   }
 }

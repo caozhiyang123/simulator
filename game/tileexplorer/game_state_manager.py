@@ -454,14 +454,19 @@ class GameStateManager:
         state = self._states.get(key)
         if state is None:
             raise ValueError("No active game state found")
-        if state["game_over"]:
-            raise ValueError("Game is already over")
 
         action_type = action.get("type")
+
+        # Allow undo even when game_over (slots full), but block other actions
+        if state["game_over"] and action_type != "undo_tile":
+            raise ValueError("Game is already over")
+
         if action_type == "select_tile":
             self._apply_select_tile(state, action)
         elif action_type == "undo_tile":
             self._apply_undo_tile(state)
+        elif action_type == "use_magic":
+            self._apply_use_magic(state, action)
         else:
             raise ValueError(f"Unknown action type: {action_type}")
 
@@ -526,7 +531,14 @@ class GameStateManager:
         tiles.pop(tile_idx)
 
         # Check for triple match
-        self._check_triple(slots)
+        matches = self._check_triple(slots)
+
+        # Award random magic for each triple match
+        if matches > 0:
+            state["magic_charges"] = state.get("magic_charges", 0) + matches
+            # Assign a random magic type using weighted selection from config
+            assigned = self._pick_weighted_magic()
+            state["pending_magic"] = assigned
 
         # Update remaining count
         state["remaining"] = len(tiles)
@@ -537,11 +549,52 @@ class GameStateManager:
         elif len(slots) >= MAX_SLOTS:
             state["game_over"] = True
 
+    def _pick_weighted_magic(self) -> str:
+        """Pick a magic type using weighted random selection from config.
+
+        Reads magic.json weights. Falls back to uniform random if
+        config is unavailable.
+        """
+        magic_cfg_path = os.path.join(
+            os.path.dirname(__file__), "config", "magic.json"
+        )
+        try:
+            with open(magic_cfg_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            types = cfg.get("magic_types", {})
+            if not types:
+                return random.choice(["smoke", "bomb", "flower"])
+
+            # Build weighted list
+            entries = []
+            for key, val in types.items():
+                weight = val.get("weight", 0)
+                if weight > 0:
+                    entries.append((key, weight))
+
+            if not entries:
+                return random.choice(["smoke", "bomb", "flower"])
+
+            # Weighted selection: cumulative ranges
+            r = random.random()
+            cumulative = 0.0
+            for key, weight in entries:
+                cumulative += weight
+                if r < cumulative:
+                    return key
+
+            # Fallback to last entry (handles floating point edge case)
+            return entries[-1][0]
+
+        except (OSError, json.JSONDecodeError):
+            return random.choice(["smoke", "bomb", "flower"])
+
     def _apply_undo_tile(self, state: dict) -> None:
         """Undo the last tile placement: move last slot tile back to board.
 
         Restores the tile to its original position (x, y, layer, z).
         Only works if there are tiles in the slots.
+        If game was over due to slots being full, resets game_over.
         """
         slots = state["slots"]
         tiles = state["tiles"]
@@ -567,8 +620,32 @@ class GameStateManager:
         # Update remaining count
         state["remaining"] = len(tiles)
 
-    def _check_triple(self, slots: list[dict]) -> None:
-        """Remove groups of 3 matching tiles from slots (recursive)."""
+        # If game was over due to slots full, reset game_over
+        if state.get("game_over") and len(slots) < MAX_SLOTS:
+            state["game_over"] = False
+
+    def _apply_use_magic(self, state: dict, action: dict) -> None:
+        """Use a magic charge. Decrements magic_charges and clears pending.
+
+        The actual effect (smoke/bomb/flower on opponent) is handled
+        by the socketio event layer which forwards to the opponent.
+        """
+        charges = state.get("magic_charges", 0)
+        if charges <= 0:
+            raise ValueError("No magic charges available")
+
+        pending = state.get("pending_magic")
+        if not pending:
+            raise ValueError("No pending magic to use")
+
+        state["magic_charges"] = charges - 1
+        state["pending_magic"] = None
+
+    def _check_triple(self, slots: list[dict]) -> int:
+        """Remove groups of 3 matching tiles from slots (recursive).
+
+        Returns the number of triple matches removed.
+        """
         counts: dict[int, list[int]] = {}
         for i, s in enumerate(slots):
             img_idx = s["imgIdx"]
@@ -583,8 +660,9 @@ class GameStateManager:
                 for i in to_remove:
                     slots.pop(i)
                 # Re-check in case another triple formed
-                self._check_triple(slots)
-                return
+                return 1 + self._check_triple(slots)
+
+        return 0
 
     def persist_state(self, unique_code: str,
                       room_code: str | None) -> None:

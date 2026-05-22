@@ -77,6 +77,12 @@ h1 { margin-bottom: 8px; font-size: 24px; }
 </div>
 {% endif %}
 
+<!-- Spectator list (left side) -->
+<div id="spectatorPanel" style="position:fixed;top:80px;left:16px;z-index:100;display:none;">
+  <div style="font-size:12px;color:#888;margin-bottom:6px;">Spectators</div>
+  <div id="spectatorList" style="display:flex;flex-direction:column;gap:4px;"></div>
+</div>
+
 <div class="battle-container">
   <!-- Player's game area (left) -->
   <div class="game-area player" id="playerArea">
@@ -87,6 +93,8 @@ h1 { margin-bottom: 8px; font-size: 24px; }
     <div style="display:flex;align-items:center;gap:10px;margin-top:16px;">
       <button class="undo-btn" id="undoBtn" onclick="undoTile()" title="Undo last tile">↩</button>
       <span id="undoCount" style="font-size:13px;color:#aaa;">3</span>
+      <button class="undo-btn" id="magicBtn" onclick="useMagicAttack()" title="Magic Attack" style="font-size:18px;">✨</button>
+      <span id="magicCount" style="font-size:13px;color:#aaa;">0</span>
     </div>
   </div>
 
@@ -116,6 +124,8 @@ h1 { margin-bottom: 8px; font-size: 24px; }
     <button class="btn btn-danger" id="btnDeleteRoom">Delete Room</button>
   </div>
 </div>
+
+<!-- Magic effect is applied directly, no selection menu needed -->
 
 <!-- Ad Modal -->
 <div class="modal-overlay" id="adOverlay" style="display:none;"></div>
@@ -153,6 +163,7 @@ const MAX_SLOTS = 7;
 let socket = null;
 let heartbeatInterval = null;
 let isOwner = {{ 'true' if is_owner else 'false' }};
+let isSpectator = {{ 'true' if is_spectator else 'false' }};
 let gameStarted = false;
 let playerState = { tiles: [], slots: [] };
 var undoRemaining = 3;
@@ -189,6 +200,24 @@ function truncateUsername(name) {
   return name;
 }
 
+// Update spectator list panel
+function updateSpectatorList(spectators) {
+  var panel = document.getElementById('spectatorPanel');
+  var list = document.getElementById('spectatorList');
+  if (!spectators || spectators.length === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'block';
+  list.innerHTML = '';
+  spectators.forEach(function(name) {
+    var el = document.createElement('div');
+    el.style.cssText = 'font-size:12px;color:#ccc;padding:3px 8px;background:rgba(255,255,255,0.08);border-radius:4px;';
+    el.textContent = truncateUsername(name);
+    list.appendChild(el);
+  });
+}
+
 // Render a game board (tiles array) into a board element
 function renderBoard(boardEl, tiles, clickable) {
   boardEl.innerHTML = '';
@@ -197,6 +226,7 @@ function renderBoard(boardEl, tiles, clickable) {
   tiles.forEach((t, idx) => {
     const div = document.createElement('div');
     div.className = 'tile';
+    div.dataset.tileId = t.id;
     div.style.left = t.x + 'px';
     div.style.top = t.y + 'px';
     div.style.zIndex = t.z || 0;
@@ -295,13 +325,136 @@ function showAdModal() {
   }, 1000);
 }
 
+// --- Magic Attack ---
+var magicConfig = {};
+var magicEmojis = { smoke: '🌫️', bomb: '💣', flower: '🌸' };
+var defaultMagicIcon = '✨';
+
+fetch('/api/magic-config')
+  .then(function(resp) { return resp.json(); })
+  .then(function(cfg) { magicConfig = cfg; })
+  .catch(function() {});
+
+function updateMagicDisplay() {
+  var el = document.getElementById('magicCount');
+  var btn = document.getElementById('magicBtn');
+  var charges = playerState.magic_charges || 0;
+  var pending = playerState.pending_magic;
+
+  if (el) el.textContent = charges;
+
+  if (btn) {
+    if (pending && charges > 0) {
+      // Show the assigned magic emoji on the button
+      btn.textContent = magicEmojis[pending] || defaultMagicIcon;
+    } else {
+      // No magic available — show default icon
+      btn.textContent = defaultMagicIcon;
+    }
+  }
+}
+
+function useMagicAttack() {
+  if (!socket || !gameStarted) return;
+  if ((playerState.magic_charges || 0) <= 0) return;
+  if (!playerState.pending_magic) return;
+  socket.emit('magic_attack', {});
+}
+
+function applyMagicEffect(boardId, emoji, affectedTileIds, duration) {
+  // Overlay specific tiles (by ID) on the specified board with magic effects
+  var board = document.getElementById(boardId);
+  var tileElements = board.querySelectorAll('.tile');
+  if (tileElements.length === 0 || affectedTileIds.length === 0) return;
+
+  // Determine if we have PNG sequence frames for this magic type
+  var currentMagicType = null;
+  var magicEmojisReverse = { '🌫️': 'smoke', '💣': 'bomb', '🌸': 'flower' };
+  currentMagicType = magicEmojisReverse[emoji] || null;
+
+  var cfg = null;
+  if (currentMagicType && magicConfig.magic_types) {
+    cfg = magicConfig.magic_types[currentMagicType];
+  }
+
+  var hasFrames = cfg && cfg.effect_path && cfg.effect_frames > 0;
+
+  // Build a set of affected IDs for quick lookup
+  var idSet = {};
+  affectedTileIds.forEach(function(id) { idSet[id] = true; });
+
+  // Find tile elements that match the affected IDs
+  var overlays = [];
+  tileElements.forEach(function(tileEl) {
+    var tileId = tileEl.dataset.tileId;
+    if (tileId !== undefined && idSet[parseInt(tileId)]) {
+      var overlay = document.createElement('div');
+      overlay.style.cssText = 'position:absolute;width:50px;height:50px;display:flex;align-items:center;justify-content:center;border-radius:6px;z-index:1000;pointer-events:all;overflow:hidden;';
+      overlay.style.left = tileEl.style.left;
+      overlay.style.top = tileEl.style.top;
+
+      if (hasFrames) {
+        // Use PNG sequence frame
+        var img = document.createElement('img');
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+        img.src = cfg.effect_path + '1' + cfg.effect_ext;
+        overlay.appendChild(img);
+      } else {
+        // Fallback to emoji
+        overlay.style.background = 'rgba(0,0,0,0.6)';
+        overlay.style.fontSize = '28px';
+        overlay.textContent = emoji;
+      }
+
+      overlay.className = 'magic-overlay';
+      board.appendChild(overlay);
+      overlays.push(overlay);
+    }
+  });
+
+  // Animate PNG sequence frames
+  if (hasFrames && overlays.length > 0) {
+    var totalFrames = cfg.effect_frames;
+    var frameDuration = (duration * 1000) / totalFrames;
+    var frameIndex = 1;
+
+    var animInterval = setInterval(function() {
+      frameIndex++;
+      if (frameIndex > totalFrames) {
+        frameIndex = 1; // Loop
+      }
+      var src = cfg.effect_path + frameIndex + cfg.effect_ext;
+      overlays.forEach(function(ov) {
+        var img = ov.querySelector('img');
+        if (img) img.src = src;
+      });
+    }, frameDuration);
+
+    // Stop animation and remove after duration
+    setTimeout(function() {
+      clearInterval(animInterval);
+      overlays.forEach(function(el) {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      });
+    }, duration * 1000);
+  } else {
+    // Remove after duration (emoji fallback)
+    setTimeout(function() {
+      overlays.forEach(function(el) {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      });
+    }, duration * 1000);
+  }
+}
+
 // Update player's game area with state data
 function updatePlayerState(state) {
   if (!state) return;
   playerState = state;
+  updateMagicDisplay();
   document.getElementById('playerLevel').textContent = state.level || 1;
   document.getElementById('playerRemaining').textContent = state.remaining || 0;
-  renderBoard(document.getElementById('playerBoard'), state.tiles, true);
+  renderBoard(document.getElementById('playerBoard'), state.tiles, !isSpectator);
   renderSlots(document.getElementById('playerSlots'), state.slots);
 }
 
@@ -333,8 +486,9 @@ function connectSocket() {
 }
 
 function createSocket(maxAttempts, intervalMs) {
+  var connectRole = {{ 'true' if is_spectator else 'false' }} ? 'spectator' : 'player';
   socket = io({
-    query: { room_code: ROOM_CODE, role: 'player' },
+    query: { room_code: ROOM_CODE, role: connectRole },
     reconnection: true,
     reconnectionAttempts: maxAttempts,
     reconnectionDelay: intervalMs,
@@ -369,6 +523,12 @@ function createSocket(maxAttempts, intervalMs) {
     if (data && data.username) {
       document.getElementById('opponentName').textContent = truncateUsername(data.username);
     }
+  });
+
+  socket.on('spectator_joined', (data) => {
+    // Update spectator list display
+    var spectators = data.spectators || [];
+    updateSpectatorList(spectators);
   });
 
   socket.on('game_start', (data) => {
@@ -421,6 +581,26 @@ function createSocket(maxAttempts, intervalMs) {
 
   socket.on('spectator_kicked', (data) => {
     window.location.href = '/';
+  });
+
+  socket.on('magic_effect', (data) => {
+    // Opponent used magic on us — show visual effect on our board
+    const magicType = data.magic_type;
+    const cfg = magicConfig.magic_types ? magicConfig.magic_types[magicType] : null;
+    const duration = cfg ? cfg.duration_seconds : 3;
+    const emoji = cfg ? cfg.emoji : '✨';
+    const affectedIds = data.affected_tile_ids || [];
+    applyMagicEffect('playerBoard', emoji, affectedIds, duration);
+  });
+
+  socket.on('magic_effect_sent', (data) => {
+    // We sent magic to opponent — show effect on opponent's board in our view
+    const magicType = data.magic_type;
+    const cfg = magicConfig.magic_types ? magicConfig.magic_types[magicType] : null;
+    const duration = cfg ? cfg.duration_seconds : 3;
+    const emoji = cfg ? cfg.emoji : '✨';
+    const affectedIds = data.affected_tile_ids || [];
+    applyMagicEffect('opponentBoard', emoji, affectedIds, duration);
   });
 
   socket.on('error', (data) => {

@@ -208,20 +208,24 @@ def single():
 def battle(room_code):
     """Serve battle page for a specific room."""
     username = session.get("username", "")
-    # Find the room to get invitation_code and owner status
+    # Find the room to get invitation_code, owner status, and spectator status
     invitation_code = ""
     is_owner = False
+    is_spectator = False
     rooms = room_manager.get_active_rooms()
     for room in rooms:
         if room.get("unique_code") == room_code:
             if room.get("room_owner") == username:
                 invitation_code = room.get("invitation_code", "")
                 is_owner = True
+            elif username in room.get("spectators", []):
+                is_spectator = True
             break
     return render_template("battle.html", room_code=room_code,
                            username=username,
                            invitation_code=invitation_code,
-                           is_owner=is_owner)
+                           is_owner=is_owner,
+                           is_spectator=is_spectator)
 
 
 @app.route("/api/config", methods=["GET"])
@@ -258,6 +262,22 @@ def get_ads_config():
             "ad_provider_url", "https://example.com/ads/placeholder"),
         "undo_reward_count": ads_cfg.get("undo_reward_count", 1),
     })
+
+
+MAGIC_CONFIG_PATH = os.path.join(
+    os.path.dirname(__file__), "config", "magic.json"
+)
+
+
+@app.route("/api/magic-config", methods=["GET"])
+def get_magic_config():
+    """Return magic attack configuration for the client."""
+    try:
+        with open(MAGIC_CONFIG_PATH, "r", encoding="utf-8") as f:
+            magic_cfg = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        magic_cfg = {}
+    return jsonify(magic_cfg)
 
 
 @app.route("/api/images", methods=["GET"])

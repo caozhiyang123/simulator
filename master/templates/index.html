@@ -344,7 +344,7 @@
           <h2>🔑 SHA1 - Group A</h2>
           <label>Directory Path</label>
           <div style="display:flex;gap:4px;align-items:flex-end;margin-bottom:8px;">
-            <input type="text" id="sha1DirA" placeholder="e.g. E:\path\to\json\files" style="flex:1;margin-bottom:0;">
+            <input type="text" id="sha1DirA" placeholder="e.g. E:\path\to\json\files or C:\path\to\file.pdf" style="flex:1;margin-bottom:0;">
             <button class="btn-warning" style="flex:none;height:34px;" onclick="browseDirFor('sha1DirA')">📁 Dir</button>
             <button class="btn-primary" style="flex:none;height:34px;" onclick="computeSha1('A')">Compute</button>
           </div>
@@ -355,7 +355,7 @@
           <h2>🔑 SHA1 - Group B</h2>
           <label>Directory Path</label>
           <div style="display:flex;gap:4px;align-items:flex-end;margin-bottom:8px;">
-            <input type="text" id="sha1DirB" placeholder="e.g. E:\path\to\other\files" style="flex:1;margin-bottom:0;">
+            <input type="text" id="sha1DirB" placeholder="e.g. E:\path\to\other\files or C:\path\to\file.pdf" style="flex:1;margin-bottom:0;">
             <button class="btn-warning" style="flex:none;height:34px;" onclick="browseDirFor('sha1DirB')">📁 Dir</button>
             <button class="btn-primary" style="flex:none;height:34px;" onclick="computeSha1('B')">Compute</button>
           </div>
@@ -2201,14 +2201,16 @@ async function computeSha1(group) {
   var dirInput = document.getElementById('sha1Dir' + group);
   var resultEl = document.getElementById('sha1Result' + group);
   var dir = dirInput.value.trim();
-  if (!dir) { showAlert('Please enter a directory path'); return; }
+  if (!dir) { showAlert('Please enter a directory path or PDF file path'); return; }
   resultEl.innerHTML = '<span style="color:#888;">Computing...</span>';
   var r = await api('/sha1/compute', 'POST', {path: dir});
   if (!r.ok) { resultEl.innerHTML = '<span style="color:#e74c3c;">Error: ' + (r.data.error || 'failed') + '</span>'; return; }
   var results = r.data.results || [];
+  var source = r.data.source || 'directory';
   if (group === 'A') sha1DataA = results;
   else sha1DataB = results;
-  var html = '<div style="margin-bottom:4px;color:#888;">Found ' + results.length + ' files (saved: ' + r.data.saved_to + ')</div>';
+  var sourceLabel = source === 'pdf' ? '📄 PDF' : '📁 Directory';
+  var html = '<div style="margin-bottom:4px;color:#888;">' + sourceLabel + ' - Found ' + results.length + ' files (saved: ' + r.data.saved_to + ')</div>';
   html += '<table class="result-table"><tr><th>File</th><th>SHA1</th></tr>';
   results.forEach(function(item) {
     html += '<tr><td>' + item.filename + '</td><td style="font-family:monospace;font-size:11px;">' + item.sha1 + '</td></tr>';

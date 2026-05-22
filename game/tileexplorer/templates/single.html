@@ -292,8 +292,8 @@ function restartLevel() {
 }
 
 function undoTile() {
-  if (gameOver) return;
   if (slots.length === 0) return;
+  // Allow undo even when game_over (slots full) — server handles validation
 
   if (undoRemaining > 0) {
     undoRemaining--;

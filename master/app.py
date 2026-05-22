@@ -1228,15 +1228,35 @@ def sha1_load():
 
 @app.route("/sha1/compute", methods=["POST"])
 def sha1_compute():
-    """Compute SHA1 for all JSON files in a directory.
+    """Compute SHA1 for all JSON files in a directory, or extract SHA1 from a PDF.
 
-    Request body: {"path": "absolute/path/to/directory"}
-    Returns: {"results": [{"filename": str, "sha1": str}], "saved_to": str}
+    Request body: {"path": "absolute/path/to/directory_or_pdf"}
+    If path points to a .pdf file, extract SHA1 entries from the PDF content.
+    Returns: {"results": [{"filename": str, "sha1": str}], "saved_to": str, "source": "directory"|"pdf"}
     """
     import hashlib as hl
     data = request.get_json(force=True)
     dir_path = data.get("path", "").strip()
-    if not dir_path or not os.path.isdir(dir_path):
+
+    if not dir_path:
+        return jsonify({"error": "Path is required"}), 400
+
+    # Remove invisible Unicode characters (e.g. \u202a, \u200b from copy-paste)
+    import re as _re
+    dir_path = _re.sub(r'[\u200b\u200c\u200d\u200e\u200f\u202a\u202b\u202c\u202d\u202e\ufeff\u2060\u2061\u2062\u2063\u2064\u2066\u2067\u2068\u2069\u00a0]', '', dir_path)
+    dir_path = dir_path.strip()
+
+    # Normalize path for Windows compatibility
+    dir_path = os.path.normpath(dir_path)
+
+    # Check if path is a PDF file
+    if dir_path.lower().endswith('.pdf'):
+        if os.path.isfile(dir_path):
+            return _compute_sha1_from_pdf(dir_path)
+        else:
+            return jsonify({"error": f"PDF file not found: {dir_path}"}), 404
+
+    if not os.path.isdir(dir_path):
         return jsonify({"error": f"Directory not found: {dir_path}"}), 404
 
     results = []
@@ -1263,7 +1283,90 @@ def sha1_compute():
     with open(save_path, "w", encoding="utf-8") as f:
         jm.dump({"directory": dir_path, "results": results}, f, indent=2)
 
-    return jsonify({"results": results, "saved_to": save_name})
+    return jsonify({"results": results, "saved_to": save_name, "source": "directory"})
+
+
+def _compute_sha1_from_pdf(pdf_path: str):
+    """Extract SHA1 entries from a PDF file.
+
+    Looks for lines matching pattern: filename.json,SHA-1,<hex_hash>
+    """
+    import json as jm
+    from datetime import datetime, timezone
+
+    try:
+        import pypdf
+    except ImportError:
+        try:
+            import PyPDF2 as pypdf
+        except ImportError:
+            return jsonify({"error": "PDF library not installed. Please install pypdf: pip install pypdf"}), 500
+
+    try:
+        text = ""
+        with open(pdf_path, "rb") as f:
+            reader = pypdf.PdfReader(f)
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+    except Exception as exc:
+        return jsonify({"error": f"Failed to read PDF: {exc}"}), 500
+
+    # Parse SHA1 entries from PDF text
+    # PDF contains a table with columns: File Name, Version, Location, Function, Digital Signature Type, Digital Signature
+    # After text extraction, columns may be separated by spaces, tabs, or other whitespace
+    import re
+    results = []
+
+    # Pattern 1: filename.json/jar followed by SHA-1 and a 40-char hex string
+    # Handles comma-separated: filename.json,SHA-1,HEXHASH
+    # Handles space-separated (from table extraction): filename.json ... SHA-1 ... HEXHASH
+    pattern = re.compile(
+        r'([A-Za-z0-9_\-\.]+\.(?:json|jar))\s*[,\s]\s*(?:N/A|v[\d\.]+)?\s*[,\s]\s*(?:Server|Client)?\s*[,\s]\s*(?:Game\s*(?:Configuration|Logic))?\s*[,\s]\s*SHA-?1\s*[,\s]\s*([0-9A-Fa-f]{40})',
+        re.IGNORECASE
+    )
+    for match in pattern.finditer(text):
+        filename = match.group(1)
+        sha1_hash = match.group(2).upper()
+        results.append({"filename": filename, "sha1": sha1_hash})
+
+    # If pattern 1 didn't match, try a simpler pattern
+    if not results:
+        # Simpler: just find filename followed eventually by SHA-1 and hex hash on same line or nearby
+        pattern2 = re.compile(
+            r'([A-Za-z0-9_\-\.]+\.(?:json|jar))\b.*?SHA-?1\s*[,\s]*([0-9A-Fa-f]{40})',
+            re.IGNORECASE
+        )
+        for match in pattern2.finditer(text):
+            filename = match.group(1)
+            sha1_hash = match.group(2).upper()
+            results.append({"filename": filename, "sha1": sha1_hash})
+
+    # If still no results, try finding SHA-1 hash near filenames across lines
+    if not results:
+        # Find all filenames and all hashes, then pair them by order
+        filenames = re.findall(r'([A-Za-z0-9_\-\.]+\.(?:json|jar))\b', text)
+        hashes = re.findall(r'\b([0-9A-Fa-f]{40})\b', text)
+        if filenames and hashes and len(filenames) == len(hashes):
+            for fname, h in zip(filenames, hashes):
+                results.append({"filename": fname, "sha1": h.upper()})
+
+    if not results:
+        # Return extracted text snippet for debugging
+        text_preview = text[:500].replace('\n', '\\n') if text else "(empty)"
+        return jsonify({"error": f"No SHA1 entries found in PDF. Extracted text preview: {text_preview}"}), 400
+
+    # Save results
+    sha1_dir = os.path.join(_base_dir, "sha1")
+    os.makedirs(sha1_dir, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    save_name = f"sha1_{ts}.json"
+    save_path = os.path.join(sha1_dir, save_name)
+    with open(save_path, "w", encoding="utf-8") as f:
+        jm.dump({"directory": pdf_path, "results": results}, f, indent=2)
+
+    return jsonify({"results": results, "saved_to": save_name, "source": "pdf"})
 
 
 @app.route("/family/images", methods=["GET"])
