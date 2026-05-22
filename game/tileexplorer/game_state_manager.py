@@ -563,7 +563,8 @@ class GameStateManager:
                 cfg = json.load(f)
             types = cfg.get("magic_types", {})
             if not types:
-                return random.choice(["smoke", "bomb", "flower"])
+                return random.choice(list(types.keys()) or
+                                     ["smoke", "bomb", "flower", "letter"])
 
             # Build weighted list
             entries = []
@@ -573,7 +574,7 @@ class GameStateManager:
                     entries.append((key, weight))
 
             if not entries:
-                return random.choice(["smoke", "bomb", "flower"])
+                return random.choice(list(types.keys()))
 
             # Weighted selection: cumulative ranges
             r = random.random()
@@ -587,7 +588,7 @@ class GameStateManager:
             return entries[-1][0]
 
         except (OSError, json.JSONDecodeError):
-            return random.choice(["smoke", "bomb", "flower"])
+            return random.choice(["smoke", "bomb", "flower", "letter"])
 
     def _apply_undo_tile(self, state: dict) -> None:
         """Undo the last tile placement: move last slot tile back to board.
@@ -625,10 +626,10 @@ class GameStateManager:
             state["game_over"] = False
 
     def _apply_use_magic(self, state: dict, action: dict) -> None:
-        """Use a magic charge. Decrements magic_charges and clears pending.
+        """Use a magic charge. Decrements magic_charges.
 
-        The actual effect (smoke/bomb/flower on opponent) is handled
-        by the socketio event layer which forwards to the opponent.
+        After use, if charges remain, assigns a new random pending magic
+        so the player can continue using their accumulated charges.
         """
         charges = state.get("magic_charges", 0)
         if charges <= 0:
@@ -636,10 +637,20 @@ class GameStateManager:
 
         pending = state.get("pending_magic")
         if not pending:
-            raise ValueError("No pending magic to use")
+            # Assign a new magic if charges exist but pending was cleared
+            pending = self._pick_weighted_magic()
+            state["pending_magic"] = pending
 
         state["magic_charges"] = charges - 1
-        state["pending_magic"] = None
+
+        # If charges remain, assign next magic; otherwise clear
+        if state["magic_charges"] > 0:
+            state["pending_magic"] = self._pick_weighted_magic()
+        else:
+            state["pending_magic"] = None
+
+        # Store the used magic type for the event handler to read
+        state["_last_used_magic"] = pending
 
     def _check_triple(self, slots: list[dict]) -> int:
         """Remove groups of 3 matching tiles from slots (recursive).

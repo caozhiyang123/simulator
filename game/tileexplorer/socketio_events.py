@@ -501,7 +501,7 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
             emit("error", {"message": "Spectators cannot attack"})
             return
 
-        # Get the pending magic type before consuming it
+        # Get the current state to validate charges exist
         current_state = game_state_manager.get_game_state(
             unique_code, room_code
         )
@@ -509,9 +509,8 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
             emit("error", {"message": "No game state"})
             return
 
-        magic_type = current_state.get("pending_magic")
-        if not magic_type:
-            emit("error", {"message": "No pending magic"})
+        if current_state.get("magic_charges", 0) <= 0:
+            emit("error", {"message": "No magic charges available"})
             return
 
         # Validate and decrement magic charge via game state
@@ -521,6 +520,15 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
             )
         except ValueError as e:
             emit("error", {"message": str(e)})
+            return
+
+        # Read the magic type that was used
+        updated_state = game_state_manager.get_game_state(
+            unique_code, room_code
+        )
+        magic_type = updated_state.get("_last_used_magic") if updated_state else None
+        if not magic_type:
+            emit("error", {"message": "Magic use failed"})
             return
 
         # Determine target opponent
@@ -580,9 +588,6 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
             })
 
         # Emit updated state to the attacker (charges decremented)
-        updated_state = game_state_manager.get_game_state(
-            unique_code, room_code
-        )
         if updated_state:
             emit("state_update", _build_state_view(updated_state))
 

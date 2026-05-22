@@ -327,7 +327,7 @@ function showAdModal() {
 
 // --- Magic Attack ---
 var magicConfig = {};
-var magicEmojis = { smoke: '🌫️', bomb: '💣', flower: '🌸' };
+var magicEmojis = { smoke: '🌫️', bomb: '💣', flower: '🌸', letter: '✉️' };
 var defaultMagicIcon = '✨';
 
 fetch('/api/magic-config')
@@ -369,7 +369,7 @@ function applyMagicEffect(boardId, emoji, affectedTileIds, duration) {
 
   // Determine if we have PNG sequence frames for this magic type
   var currentMagicType = null;
-  var magicEmojisReverse = { '🌫️': 'smoke', '💣': 'bomb', '🌸': 'flower' };
+  var magicEmojisReverse = { '🌫️': 'smoke', '💣': 'bomb', '🌸': 'flower', '✉️': 'letter' };
   currentMagicType = magicEmojisReverse[emoji] || null;
 
   var cfg = null;
@@ -378,6 +378,7 @@ function applyMagicEffect(boardId, emoji, affectedTileIds, duration) {
   }
 
   var hasFrames = cfg && cfg.effect_path && cfg.effect_frames > 0;
+  var isStaticImage = hasFrames && cfg.effect_frames === 1;
 
   // Build a set of affected IDs for quick lookup
   var idSet = {};
@@ -394,10 +395,16 @@ function applyMagicEffect(boardId, emoji, affectedTileIds, duration) {
       overlay.style.top = tileEl.style.top;
 
       if (hasFrames) {
-        // Use PNG sequence frame
+        // Use PNG image
         var img = document.createElement('img');
         img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
-        img.src = cfg.effect_path + '1' + cfg.effect_ext;
+        if (isStaticImage) {
+          // Single static image (no number suffix)
+          img.src = cfg.effect_path + cfg.effect_ext;
+        } else {
+          // Sequence animation starts at frame 1
+          img.src = cfg.effect_path + '1' + cfg.effect_ext;
+        }
         overlay.appendChild(img);
       } else {
         // Fallback to emoji
@@ -412,8 +419,8 @@ function applyMagicEffect(boardId, emoji, affectedTileIds, duration) {
     }
   });
 
-  // Animate PNG sequence frames
-  if (hasFrames && overlays.length > 0) {
+  // Animate PNG sequence frames (only for multi-frame effects)
+  if (hasFrames && !isStaticImage && overlays.length > 0) {
     var totalFrames = cfg.effect_frames;
     var frameDuration = (duration * 1000) / totalFrames;
     var frameIndex = 1;
