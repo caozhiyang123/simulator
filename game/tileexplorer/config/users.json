@@ -5,7 +5,7 @@
     "role": "admin",
     "unique_code": "8ee3fa17-260a-4ed6-bfd3-6d1c99c6dc23",
     "current_level": 3,
-    "coins": 55
+    "coins": 20
   },
   {
     "username": "michael",
@@ -20,7 +20,7 @@
     "password": "d7c1af03d5ffcef607d882f0c043682c",
     "role": "player",
     "unique_code": "2f2e5852-b963-4417-88d0-352dea8074e4",
-    "current_level": 3,
-    "coins": 95
+    "current_level": 4,
+    "coins": 100
   }
 ]

@@ -262,6 +262,7 @@ def get_config():
         "reconnect_interval_seconds": cfg.get(
             "reconnect_interval_seconds", 3),
         "undo_max_per_round": cfg.get("undo_max_per_round", 3),
+        "tile_size": cfg.get("tile_size", 80),
         "levels": cfg.get("levels", {}),
     })
 

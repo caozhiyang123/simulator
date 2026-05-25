@@ -6,6 +6,7 @@
   "reconnect_max_attempts": 1,
   "reconnect_interval_seconds": 3,
   "undo_max_per_round": 3,
+  "tile_size": 80,
   "levels": {
     "1": {
       "image_count": 5,

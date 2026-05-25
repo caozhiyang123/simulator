@@ -15,11 +15,23 @@ from datetime import datetime, timezone
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "config.json")
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
-# Board dimensions (matching the client-side constants)
+# Board dimensions
 BOARD_W = 600
 BOARD_H = 800
-TILE_SIZE = 80
 MAX_SLOTS = 7
+
+
+def _get_tile_size(config_path: str = CONFIG_PATH) -> int:
+    """Load tile_size from config.json, default 80."""
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        return cfg.get("tile_size", 80)
+    except (OSError, json.JSONDecodeError):
+        return 80
+
+
+TILE_SIZE = _get_tile_size()
 
 
 # Shape test functions ported from single.html JavaScript.
@@ -457,8 +469,8 @@ class GameStateManager:
 
         action_type = action.get("type")
 
-        # Allow undo even when game_over (slots full), but block other actions
-        if state["game_over"] and action_type != "undo_tile":
+        # Allow undo and magic even when game_over (slots full)
+        if state["game_over"] and action_type not in ("undo_tile", "use_magic"):
             raise ValueError("Game is already over")
 
         if action_type == "select_tile":
@@ -512,9 +524,9 @@ class GameStateManager:
                 continue
             if other.get("layer", 0) <= tile_layer:
                 continue
-            # Check overlap: distance < 64px in both axes
-            if (abs(other["x"] - tile["x"]) < 64
-                    and abs(other["y"] - tile["y"]) < 64):
+            # Check overlap: distance < tile_size in both axes
+            if (abs(other["x"] - tile["x"]) < TILE_SIZE
+                    and abs(other["y"] - tile["y"]) < TILE_SIZE):
                 raise ValueError(f"Tile {tile_id} is blocked")
 
         # Move tile to slots (preserve original position for undo)

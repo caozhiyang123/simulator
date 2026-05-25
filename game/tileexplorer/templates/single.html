@@ -6,7 +6,7 @@
 <title>Tile Explorer - Triple Match</title>
 <style>
 :root {
-  --tile-depth-border: 3px;
+  --tile-depth-border: 5px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #1a1a2e, #16213e); min-height: 100vh; display: flex; flex-direction: column; align-items: center; color: #fff; padding: 10px; }
@@ -90,6 +90,7 @@ var undoMaxPerRound = 3;
 var adDuration = 3;
 var adProviderUrl = '';
 var adRewardCount = 1;
+var TILE_SIZE = 80;
 
 // Load undo and ad config
 fetch('/api/config')
@@ -97,6 +98,7 @@ fetch('/api/config')
   .then(function(cfg) {
     undoMaxPerRound = cfg.undo_max_per_round || 3;
     undoRemaining = undoMaxPerRound;
+    TILE_SIZE = cfg.tile_size || 80;
     updateUndoDisplay();
     var maxAttempts = cfg.reconnect_max_attempts || 3;
     var intervalMs = (cfg.reconnect_interval_seconds || 3) * 1000;
@@ -231,8 +233,8 @@ function renderBoard() {
     const isBlocked = tiles.some(function(other, oi) {
       if (oi === idx) return false;
       if ((other.layer || 0) <= layer) return false;
-      // Check overlap: tiles overlap if distance < tileSize (80px) in both axes
-      return Math.abs(other.x - t.x) < 64 && Math.abs(other.y - t.y) < 64;
+      // Check overlap: tiles overlap if distance < tileSize in both axes
+      return Math.abs(other.x - t.x) < TILE_SIZE && Math.abs(other.y - t.y) < TILE_SIZE;
     });
 
     if (isBlocked) {
@@ -270,7 +272,7 @@ function clickTile(idx) {
   const isBlocked = tiles.some(function(other, oi) {
     if (oi === idx) return false;
     if ((other.layer || 0) <= layer) return false;
-    return Math.abs(other.x - tile.x) < 64 && Math.abs(other.y - tile.y) < 64;
+    return Math.abs(other.x - tile.x) < TILE_SIZE && Math.abs(other.y - tile.y) < TILE_SIZE;
   });
   if (isBlocked) return;
 

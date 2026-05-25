@@ -150,8 +150,8 @@ class TestApplyTileAction:
                     continue
                 if other.get("layer", 0) <= layer:
                     continue
-                if (abs(other["x"] - tile["x"]) < 64
-                        and abs(other["y"] - tile["y"]) < 64):
+                if (abs(other["x"] - tile["x"]) < 80
+                        and abs(other["y"] - tile["y"]) < 80):
                     blocked = True
                     break
             if not blocked:
@@ -193,8 +193,8 @@ class TestApplyTileAction:
                     continue
                 if other.get("layer", 0) <= layer:
                     continue
-                if (abs(other["x"] - tile["x"]) < 64
-                        and abs(other["y"] - tile["y"]) < 64):
+                if (abs(other["x"] - tile["x"]) < 80
+                        and abs(other["y"] - tile["y"]) < 80):
                     blocked_tile = tile
                     break
             if blocked_tile:
@@ -269,8 +269,8 @@ class TestApplyTileAction:
                             continue
                         if other.get("layer", 0) <= t.get("layer", 0):
                             continue
-                        if (abs(other["x"] - t["x"]) < 64
-                                and abs(other["y"] - t["y"]) < 64):
+                        if (abs(other["x"] - t["x"]) < 80
+                                and abs(other["y"] - t["y"]) < 80):
                             blocked = True
                             break
                     if not blocked:

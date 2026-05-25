@@ -65,123 +65,6 @@
     "total_win": 0
   },
   {
-    "session_id": "d4abe6f8-6fde-46a6-a6e4-9433b9b32e00",
-    "username": "testuser",
-    "unique_code": "test-uuid-1234",
-    "level": 1,
-    "coins": 100,
-    "balance_before_login": 100,
-    "balance_after_login": 100,
-    "level_before_login": 1,
-    "level_after_login": 1,
-    "total_spend": 0,
-    "total_win": 0
-  },
-  {
-    "session_id": "34fe4d7d-d987-46ef-9f13-c76025b38299",
-    "username": "testuser",
-    "unique_code": "test-uuid-1234",
-    "level": 1,
-    "coins": 100,
-    "balance_before_login": 100,
-    "balance_after_login": 100,
-    "level_before_login": 1,
-    "level_after_login": 1,
-    "total_spend": 0,
-    "total_win": 0
-  },
-  {
-    "session_id": "c695c612-d9ff-4532-8c64-3e92bc2f907f",
-    "username": "testuser",
-    "unique_code": "test-uuid-1234",
-    "level": 1,
-    "coins": 100,
-    "balance_before_login": 100,
-    "balance_after_login": 100,
-    "level_before_login": 1,
-    "level_after_login": 1,
-    "total_spend": 0,
-    "total_win": 0
-  },
-  {
-    "session_id": "f4b2a3f1-48e8-4559-9047-efc4d0fbb15a",
-    "username": "testuser2",
-    "unique_code": "test-uuid-5678",
-    "level": 1,
-    "coins": 100,
-    "balance_before_login": 100,
-    "balance_after_login": 100,
-    "level_before_login": 1,
-    "level_after_login": 1,
-    "total_spend": 0,
-    "total_win": 0
-  },
-  {
-    "session_id": "9667c528-e60d-4762-84c3-e60a915fbaf7",
-    "username": "testuser",
-    "unique_code": "test-uuid-1234",
-    "level": 1,
-    "coins": 100,
-    "balance_before_login": 100,
-    "balance_after_login": 100,
-    "level_before_login": 1,
-    "level_after_login": 1,
-    "total_spend": 0,
-    "total_win": 0
-  },
-  {
-    "session_id": "1ac6cc47-cbe4-46a8-9232-21b64d9d4306",
-    "username": "testuser",
-    "unique_code": "test-uuid-1234",
-    "level": 1,
-    "coins": 100,
-    "balance_before_login": 100,
-    "balance_after_login": 100,
-    "level_before_login": 1,
-    "level_after_login": 1,
-    "total_spend": 0,
-    "total_win": 0
-  },
-  {
-    "session_id": "4d1d8ec4-dba9-415f-9cfc-4925e35606e6",
-    "username": "testuser",
-    "unique_code": "test-uuid-1234",
-    "level": 1,
-    "coins": 100,
-    "balance_before_login": 100,
-    "balance_after_login": 100,
-    "level_before_login": 1,
-    "level_after_login": 1,
-    "total_spend": 0,
-    "total_win": 0
-  },
-  {
-    "session_id": "32e6e8e2-d707-4ef9-a528-a7116493cd45",
-    "username": "testuser",
-    "unique_code": "test-uuid-1234",
-    "level": 1,
-    "coins": 100,
-    "balance_before_login": 100,
-    "balance_after_login": 100,
-    "level_before_login": 1,
-    "level_after_login": 1,
-    "total_spend": 0,
-    "total_win": 0
-  },
-  {
-    "session_id": "83183414-8efd-428c-af1c-caf19739ed0d",
-    "username": "testuser",
-    "unique_code": "test-uuid-1234",
-    "level": 1,
-    "coins": 100,
-    "balance_before_login": 100,
-    "balance_after_login": 100,
-    "level_before_login": 1,
-    "level_after_login": 1,
-    "total_spend": 0,
-    "total_win": 0
-  },
-  {
     "session_id": "973217fa-db16-436f-bdf2-3641ff3f271a",
     "username": "aileen",
     "unique_code": "2f2e5852-b963-4417-88d0-352dea8074e4",
@@ -195,7 +78,7 @@
     "total_win": 0
   },
   {
-    "session_id": "41ce9a59-31c7-439f-a748-2f0ee3e678d7",
+    "session_id": "0b0eea4e-aead-4780-b7e5-e4e0b3e63c07",
     "username": "testuser",
     "unique_code": "test-uuid-1234",
     "level": 1,
@@ -208,7 +91,7 @@
     "total_win": 0
   },
   {
-    "session_id": "5feb1433-01a0-493c-86ea-46b999adf25e",
+    "session_id": "5aebb1d1-ea5e-4bd7-b642-c9b76bb630e8",
     "username": "testuser",
     "unique_code": "test-uuid-1234",
     "level": 1,
@@ -221,7 +104,7 @@
     "total_win": 0
   },
   {
-    "session_id": "69f8d514-c07d-4b83-863e-39b577725ec0",
+    "session_id": "6d203612-7292-425c-a627-3ca216bae848",
     "username": "testuser",
     "unique_code": "test-uuid-1234",
     "level": 1,
@@ -234,7 +117,7 @@
     "total_win": 0
   },
   {
-    "session_id": "d09a1ab5-8f64-460d-b8a2-47c3d6d694e9",
+    "session_id": "55044c96-3c0e-4270-9b77-fbec297e0726",
     "username": "testuser2",
     "unique_code": "test-uuid-5678",
     "level": 1,
@@ -247,7 +130,7 @@
     "total_win": 0
   },
   {
-    "session_id": "8c91ab28-7ee4-4ac7-a0c2-f4d6e8efaa44",
+    "session_id": "b5450bef-221f-4921-9b2d-d516364f9145",
     "username": "testuser",
     "unique_code": "test-uuid-1234",
     "level": 1,
@@ -260,7 +143,7 @@
     "total_win": 0
   },
   {
-    "session_id": "e0c03257-b6a0-4093-b326-64b00abd6eeb",
+    "session_id": "65a248e2-7fb5-44a4-83a9-2eeb859ac9a1",
     "username": "testuser",
     "unique_code": "test-uuid-1234",
     "level": 1,
@@ -273,7 +156,7 @@
     "total_win": 0
   },
   {
-    "session_id": "0affcf23-0a65-447c-adef-afe4b63c2417",
+    "session_id": "40caec05-b8c7-4ce7-ab7e-4a1682f06249",
     "username": "testuser",
     "unique_code": "test-uuid-1234",
     "level": 1,
@@ -286,7 +169,7 @@
     "total_win": 0
   },
   {
-    "session_id": "cf0d70af-97f3-40f4-8bcf-12c3e466fbf4",
+    "session_id": "bc532366-6c42-4ea4-929d-8d8ee3bafa4e",
     "username": "testuser",
     "unique_code": "test-uuid-1234",
     "level": 1,
@@ -299,7 +182,124 @@
     "total_win": 0
   },
   {
-    "session_id": "c529b7ea-3c60-47a7-9c31-ea23f91c4a91",
+    "session_id": "0c89a6e5-e5d5-4f9a-89e8-aa7b528d240e",
+    "username": "testuser",
+    "unique_code": "test-uuid-1234",
+    "level": 1,
+    "coins": 100,
+    "balance_before_login": 100,
+    "balance_after_login": 100,
+    "level_before_login": 1,
+    "level_after_login": 1,
+    "total_spend": 0,
+    "total_win": 0
+  },
+  {
+    "session_id": "a7995201-ca13-4bc8-9234-2e1b4e2276e9",
+    "username": "testuser",
+    "unique_code": "test-uuid-1234",
+    "level": 1,
+    "coins": 100,
+    "balance_before_login": 100,
+    "balance_after_login": 100,
+    "level_before_login": 1,
+    "level_after_login": 1,
+    "total_spend": 0,
+    "total_win": 0
+  },
+  {
+    "session_id": "0b6e08b7-4a1d-44c5-80a2-db2f9635dece",
+    "username": "testuser",
+    "unique_code": "test-uuid-1234",
+    "level": 1,
+    "coins": 100,
+    "balance_before_login": 100,
+    "balance_after_login": 100,
+    "level_before_login": 1,
+    "level_after_login": 1,
+    "total_spend": 0,
+    "total_win": 0
+  },
+  {
+    "session_id": "5070600c-203f-4a6e-b3b4-885be4e1aa59",
+    "username": "testuser",
+    "unique_code": "test-uuid-1234",
+    "level": 1,
+    "coins": 100,
+    "balance_before_login": 100,
+    "balance_after_login": 100,
+    "level_before_login": 1,
+    "level_after_login": 1,
+    "total_spend": 0,
+    "total_win": 0
+  },
+  {
+    "session_id": "066a7361-239a-4640-8511-12d055c4924b",
+    "username": "testuser2",
+    "unique_code": "test-uuid-5678",
+    "level": 1,
+    "coins": 100,
+    "balance_before_login": 100,
+    "balance_after_login": 100,
+    "level_before_login": 1,
+    "level_after_login": 1,
+    "total_spend": 0,
+    "total_win": 0
+  },
+  {
+    "session_id": "6429326f-0e15-4c78-bcf1-452eab2426e7",
+    "username": "testuser",
+    "unique_code": "test-uuid-1234",
+    "level": 1,
+    "coins": 100,
+    "balance_before_login": 100,
+    "balance_after_login": 100,
+    "level_before_login": 1,
+    "level_after_login": 1,
+    "total_spend": 0,
+    "total_win": 0
+  },
+  {
+    "session_id": "402548c2-e536-47cd-8908-ceff9b1feec1",
+    "username": "testuser",
+    "unique_code": "test-uuid-1234",
+    "level": 1,
+    "coins": 100,
+    "balance_before_login": 100,
+    "balance_after_login": 100,
+    "level_before_login": 1,
+    "level_after_login": 1,
+    "total_spend": 0,
+    "total_win": 0
+  },
+  {
+    "session_id": "353d9d48-6971-4f29-860d-e8157ff81fe0",
+    "username": "testuser",
+    "unique_code": "test-uuid-1234",
+    "level": 1,
+    "coins": 100,
+    "balance_before_login": 100,
+    "balance_after_login": 100,
+    "level_before_login": 1,
+    "level_after_login": 1,
+    "total_spend": 0,
+    "total_win": 0
+  },
+  {
+    "session_id": "f8a50d83-5e2a-420a-a676-774d9a446ff6",
+    "username": "testuser",
+    "unique_code": "test-uuid-1234",
+    "level": 1,
+    "coins": 100,
+    "balance_before_login": 100,
+    "balance_after_login": 100,
+    "level_before_login": 1,
+    "level_after_login": 1,
+    "total_spend": 0,
+    "total_win": 0
+  },
+  {
+    "session_id": "e30957db-c750-48d4-8330-04450bf1bdb8",
     "username": "testuser",
     "unique_code": "test-uuid-1234",
     "level": 1,
