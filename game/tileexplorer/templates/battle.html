@@ -27,7 +27,7 @@ h1 { margin-bottom: 4px; font-size: 24px; }
 .tile { position: absolute; width: 80px; height: 80px; cursor: pointer; transition: transform 0.2s, opacity 0.3s; border-radius: 12px; overflow: hidden; box-shadow: 2px 2px 0 rgba(255,255,255,0.4), 1px 1px 3px rgba(0,0,0,0.3); border-bottom: var(--tile-depth-border) solid #FFFFFF; border-right: var(--tile-depth-border) solid #FFFFFF; }
 .tile:hover { transform: scale(1.05); z-index: 999 !important; }
 .tile img { width: 100%; height: 100%; object-fit: cover; }
-.tile.blocked { opacity: 0.6; cursor: not-allowed; }
+.tile.blocked { cursor: not-allowed; }
 
 .opponent .tile { cursor: default; }
 .opponent .tile:hover { transform: none; }
@@ -247,7 +247,7 @@ function renderBoard(boardEl, tiles, clickable) {
     const isBlocked = tiles.some((other, oi) => {
       if (oi === idx) return false;
       if ((other.layer || 0) <= layer) return false;
-      return Math.abs(other.x - t.x) < 80 && Math.abs(other.y - t.y) < 80;
+      return Math.abs(other.x - t.x) < 64 && Math.abs(other.y - t.y) < 64;
     });
 
     if (isBlocked) {
@@ -287,7 +287,7 @@ function onTileClick(tileId) {
   const isBlocked = playerState.tiles.some(other => {
     if (other.id === tileId) return false;
     if ((other.layer || 0) <= layer) return false;
-    return Math.abs(other.x - tile.x) < 80 && Math.abs(other.y - tile.y) < 80;
+    return Math.abs(other.x - tile.x) < 64 && Math.abs(other.y - tile.y) < 64;
   });
   if (isBlocked) return;
 
@@ -396,7 +396,7 @@ function applyMagicEffect(boardId, emoji, affectedTileIds, duration) {
     var tileId = tileEl.dataset.tileId;
     if (tileId !== undefined && idSet[parseInt(tileId)]) {
       var overlay = document.createElement('div');
-      overlay.style.cssText = 'position:absolute;width:100px;height:100px;display:flex;align-items:center;justify-content:center;border-radius:12px;z-index:1000;pointer-events:all;overflow:hidden;';
+      overlay.style.cssText = 'position:absolute;width:80px;height:80px;display:flex;align-items:center;justify-content:center;border-radius:12px;z-index:1000;pointer-events:all;overflow:hidden;';
       overlay.style.left = tileEl.style.left;
       overlay.style.top = tileEl.style.top;
 

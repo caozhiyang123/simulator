@@ -2,7 +2,7 @@
   "fight": {
     "text": "Fight!",
     "blink_count": 3,
-    "blink_interval_ms": 300,
+    "blink_interval_ms": 500,
     "font_size": "72px",
     "font_weight": "bold",
     "color": "#FFD700",

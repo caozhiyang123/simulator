@@ -328,8 +328,8 @@ class TestPreservationValidTileAction:
                     continue
                 if other.get("layer", 0) <= layer:
                     continue
-                if (abs(other["x"] - tile["x"]) < 80
-                        and abs(other["y"] - tile["y"]) < 80):
+                if (abs(other["x"] - tile["x"]) < 64
+                        and abs(other["y"] - tile["y"]) < 64):
                     blocked = True
                     break
             if not blocked:
@@ -346,8 +346,8 @@ class TestPreservationValidTileAction:
                     continue
                 if other.get("layer", 0) <= layer:
                     continue
-                if (abs(other["x"] - tile["x"]) < 80
-                        and abs(other["y"] - tile["y"]) < 80):
+                if (abs(other["x"] - tile["x"]) < 64
+                        and abs(other["y"] - tile["y"]) < 64):
                     return tile
         return None
 
@@ -620,8 +620,8 @@ class TestPreservationMultiplayerBroadcast:
                     continue
                 if other.get("layer", 0) <= layer:
                     continue
-                if (abs(other["x"] - tile["x"]) < 80
-                        and abs(other["y"] - tile["y"]) < 80):
+                if (abs(other["x"] - tile["x"]) < 64
+                        and abs(other["y"] - tile["y"]) < 64):
                     blocked = True
                     break
             if not blocked:
