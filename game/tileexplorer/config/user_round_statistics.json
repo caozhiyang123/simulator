@@ -1,0 +1,26 @@
+[
+  {
+    "round_id": "3a71083e-b373-4cf6-8bd0-2ac7dacac208",
+    "username": "admin",
+    "unique_code": "8ee3fa17-260a-4ed6-bfd3-6d1c99c6dc23",
+    "level": 2,
+    "coins": 95,
+    "balance_before": 100,
+    "balance_after": 95,
+    "total_spend": 5,
+    "total_win": 0,
+    "room_id": null
+  },
+  {
+    "round_id": "41bdb8d7-c826-4cb0-9662-d49a3937a577",
+    "username": "admin",
+    "unique_code": "8ee3fa17-260a-4ed6-bfd3-6d1c99c6dc23",
+    "level": 3,
+    "coins": 85,
+    "balance_before": 90,
+    "balance_after": 85,
+    "total_spend": 5,
+    "total_win": 0,
+    "room_id": null
+  }
+]

@@ -16,9 +16,9 @@ CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "config.json")
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 # Board dimensions (matching the client-side constants)
-BOARD_W = 420
-BOARD_H = 560
-TILE_SIZE = 50
+BOARD_W = 600
+BOARD_H = 800
+TILE_SIZE = 80
 MAX_SLOTS = 7
 
 
@@ -512,9 +512,9 @@ class GameStateManager:
                 continue
             if other.get("layer", 0) <= tile_layer:
                 continue
-            # Check overlap: distance < 40px in both axes
-            if (abs(other["x"] - tile["x"]) < 40
-                    and abs(other["y"] - tile["y"]) < 40):
+            # Check overlap: distance < 64px in both axes
+            if (abs(other["x"] - tile["x"]) < 64
+                    and abs(other["y"] - tile["y"]) < 64):
                 raise ValueError(f"Tile {tile_id} is blocked")
 
         # Move tile to slots (preserve original position for undo)

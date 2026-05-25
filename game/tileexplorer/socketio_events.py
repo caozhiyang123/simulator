@@ -26,7 +26,8 @@ _unique_code_to_sid: dict[str, str] = {}
 
 
 def register_socketio_events(socketio, room_manager, game_state_manager,
-                             user_manager, idle_timer_manager):
+                             user_manager, idle_timer_manager,
+                             statistics_manager=None):
     """Register all SocketIO event handlers.
 
     Args:
@@ -35,6 +36,7 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
         game_state_manager: GameStateManager instance for game state init.
         user_manager: UserManager instance for user level data.
         idle_timer_manager: IdleTimerManager instance for idle tracking.
+        statistics_manager: StatisticsManager instance for round/session stats.
     """
 
     def _update_room_last_activity(room_code):
@@ -425,6 +427,156 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
                 new_level = min(60, current_level + 1)
                 user_manager.update_level(username, new_level)
 
+            # Award coins for battle win
+            if room_code and room_code in _room_connections:
+                import json as _json
+                import os as _os
+                _gs_path = _os.path.join(
+                    _os.path.dirname(__file__),
+                    "config", "game_setting.json"
+                )
+                _reward = 10
+                try:
+                    with open(_gs_path, "r", encoding="utf-8") as _f:
+                        _gs = _json.load(_f)
+                    _reward = _gs.get("battle_win_reward", 10)
+                except (OSError, _json.JSONDecodeError):
+                    pass
+
+                balance_before = user_manager.get_coins(username)
+                user_manager.add_coins(username, _reward)
+                balance_after = user_manager.get_coins(username)
+
+                # Record round statistics for winner
+                if statistics_manager:
+                    round_id = statistics_manager.get_or_create_room_round_id(
+                        room_code
+                    )
+                    statistics_manager.record_round(
+                        round_id=round_id,
+                        username=username,
+                        unique_code=unique_code,
+                        level=current_level,
+                        coins=balance_after,
+                        balance_before=balance_before,
+                        balance_after=balance_after,
+                        total_spend=0,
+                        total_win=_reward,
+                        room_id=room_code,
+                    )
+                    # Record session win
+                    session_id = session.get("session_id")
+                    if session_id:
+                        statistics_manager.record_session_win(
+                            session_id, _reward
+                        )
+
+                # Emit game_won to winner, game_lost to loser
+                emit("game_won", {"reward": _reward})
+
+                conn = _room_connections[room_code]
+                opponent_sid = None
+                opponent_username = None
+                opponent_unique_code = None
+                if role == "owner" and conn["player2_sid"]:
+                    opponent_sid = conn["player2_sid"]
+                    opponent_username = conn["player2_username"]
+                    opponent_unique_code = conn["player2_unique_code"]
+                elif role == "player2" and conn["owner_sid"]:
+                    opponent_sid = conn["owner_sid"]
+                    opponent_username = conn["owner_username"]
+                    opponent_unique_code = conn["owner_unique_code"]
+                if opponent_sid:
+                    emit("game_lost", {}, to=opponent_sid)
+
+                    # Record round statistics for loser
+                    if statistics_manager and opponent_username and opponent_unique_code:
+                        loser_coins = user_manager.get_coins(opponent_username)
+                        statistics_manager.record_round(
+                            round_id=round_id,
+                            username=opponent_username,
+                            unique_code=opponent_unique_code,
+                            level=current_level,
+                            coins=loser_coins,
+                            balance_before=loser_coins,
+                            balance_after=loser_coins,
+                            total_spend=0,
+                            total_win=0,
+                            room_id=room_code,
+                        )
+
+                # Clear the room round_id so next game gets a fresh one
+                if statistics_manager:
+                    statistics_manager.clear_room_round_id(room_code)
+
+            else:
+                # Single-player game over (win)
+                if statistics_manager:
+                    round_id = statistics_manager.generate_id()
+                    coins_after = user_manager.get_coins(username)
+                    # In single-player, cost was already deducted before game start
+                    # total_spend=5, total_win=0
+                    import json as _json
+                    import os as _os
+                    _gs_path = _os.path.join(
+                        _os.path.dirname(__file__),
+                        "config", "game_setting.json"
+                    )
+                    _cost = 5
+                    try:
+                        with open(_gs_path, "r", encoding="utf-8") as _f:
+                            _gs = _json.load(_f)
+                        _cost = _gs.get("single_mode_cost", 5)
+                    except (OSError, _json.JSONDecodeError):
+                        pass
+
+                    statistics_manager.record_round(
+                        round_id=round_id,
+                        username=username,
+                        unique_code=unique_code,
+                        level=current_level,
+                        coins=coins_after,
+                        balance_before=coins_after + _cost,
+                        balance_after=coins_after,
+                        total_spend=_cost,
+                        total_win=0,
+                        room_id=None,
+                    )
+
+        # Handle game_over that is NOT a win (single-player loss)
+        elif (updated_state.get("game_over") is True
+              and not room_code):
+            # Single-player loss — still record the round
+            if statistics_manager:
+                import json as _json
+                import os as _os
+                _gs_path = _os.path.join(
+                    _os.path.dirname(__file__),
+                    "config", "game_setting.json"
+                )
+                _cost = 5
+                try:
+                    with open(_gs_path, "r", encoding="utf-8") as _f:
+                        _gs = _json.load(_f)
+                    _cost = _gs.get("single_mode_cost", 5)
+                except (OSError, _json.JSONDecodeError):
+                    pass
+
+                current_level = updated_state.get("level", 1)
+                round_id = statistics_manager.generate_id()
+                coins_after = user_manager.get_coins(username)
+                statistics_manager.record_round(
+                    round_id=round_id,
+                    username=username,
+                    unique_code=unique_code,
+                    level=current_level,
+                    coins=coins_after,
+                    balance_before=coins_after + _cost,
+                    balance_after=coins_after,
+                    total_spend=_cost,
+                    total_win=0,
+                    room_id=None,
+                )
         # Reset idle timer on activity
         if unique_code:
             idle_timer_manager.reset_timer(unique_code)

@@ -313,8 +313,8 @@ class TestBug2ClientSlotsFullGuard:
             is_blocked = any(
                 other["id"] != tile["id"]
                 and other.get("layer", 0) > tile_layer
-                and abs(other["x"] - tile["x"]) < 40
-                and abs(other["y"] - tile["y"]) < 40
+                and abs(other["x"] - tile["x"]) < 80
+                and abs(other["y"] - tile["y"]) < 80
                 for other in tiles
             )
             if not is_blocked:

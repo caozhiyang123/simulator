@@ -9,14 +9,14 @@
   --tile-depth-border: 3px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #1a1a2e, #16213e); min-height: 100vh; display: flex; flex-direction: column; align-items: center; color: #fff; padding: 20px; }
-h1 { margin-bottom: 8px; font-size: 24px; }
-.info { font-size: 14px; color: #aaa; margin-bottom: 16px; }
-.slots { display: flex; gap: 6px; margin-bottom: 20px; padding: 10px; background: rgba(255,255,255,0.1); border-radius: 12px; }
-.slot { width: 50px; height: 50px; border: 2px dashed rgba(255,255,255,0.3); border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; }
-.slot img { width: 42px; height: 42px; object-fit: cover; border-radius: 4px; }
-.board { position: relative; width: 420px; height: 560px; margin: 0 auto; }
-.tile { position: absolute; width: 50px; height: 50px; cursor: pointer; transition: transform 0.2s, opacity 0.3s; border-radius: 6px; overflow: hidden; box-shadow: 2px 2px 0 rgba(255,255,255,0.4), 1px 1px 3px rgba(0,0,0,0.3); border-bottom: var(--tile-depth-border) solid #FFFFFF; border-right: var(--tile-depth-border) solid #FFFFFF; }
+body { font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #1a1a2e, #16213e); min-height: 100vh; display: flex; flex-direction: column; align-items: center; color: #fff; padding: 10px; }
+h1 { margin-bottom: 4px; font-size: 24px; }
+.info { font-size: 14px; color: #aaa; margin-bottom: 8px; }
+.slots { display: flex; gap: 6px; margin-bottom: 8px; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 12px; }
+.slot { width: 80px; height: 80px; border: 2px dashed rgba(255,255,255,0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; }
+.slot img { width: 68px; height: 68px; object-fit: cover; border-radius: 6px; }
+.board { position: relative; width: 600px; height: 800px; margin: 0 auto; }
+.tile { position: absolute; width: 80px; height: 80px; cursor: pointer; transition: transform 0.2s, opacity 0.3s; border-radius: 12px; overflow: hidden; box-shadow: 2px 2px 0 rgba(255,255,255,0.4), 1px 1px 3px rgba(0,0,0,0.3); border-bottom: var(--tile-depth-border) solid #FFFFFF; border-right: var(--tile-depth-border) solid #FFFFFF; }
 .tile:hover { transform: scale(1.05); z-index: 999 !important; }
 .tile img { width: 100%; height: 100%; object-fit: cover; }
 .tile.blocked { opacity: 0.6; cursor: not-allowed; }
@@ -37,6 +37,7 @@ button:hover { background: #357abd; }
 
 <h1>🎰 Tile Explorer</h1>
 <div class="user-bar" style="position:fixed;top:16px;right:24px;display:flex;align-items:center;gap:12px;z-index:9999;">
+  <span id="coinDisplay" style="display:inline-flex;align-items:center;gap:4px;font-size:14px;color:#FFD700;"><img src="/static/icon/coins.png" style="width:20px;height:20px;vertical-align:middle;"> --</span>
   <span style="font-size:14px;color:#ccc;">{{ username }}</span>
   <button onclick="logout()" style="padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;background:#e74c3c;color:#fff;">Logout</button>
 </div>
@@ -230,8 +231,8 @@ function renderBoard() {
     const isBlocked = tiles.some(function(other, oi) {
       if (oi === idx) return false;
       if ((other.layer || 0) <= layer) return false;
-      // Check overlap: tiles overlap if distance < tileSize (50px) in both axes
-      return Math.abs(other.x - t.x) < 40 && Math.abs(other.y - t.y) < 40;
+      // Check overlap: tiles overlap if distance < tileSize (80px) in both axes
+      return Math.abs(other.x - t.x) < 64 && Math.abs(other.y - t.y) < 64;
     });
 
     if (isBlocked) {
@@ -269,7 +270,7 @@ function clickTile(idx) {
   const isBlocked = tiles.some(function(other, oi) {
     if (oi === idx) return false;
     if ((other.layer || 0) <= layer) return false;
-    return Math.abs(other.x - tile.x) < 40 && Math.abs(other.y - tile.y) < 40;
+    return Math.abs(other.x - tile.x) < 64 && Math.abs(other.y - tile.y) < 64;
   });
   if (isBlocked) return;
 
@@ -328,6 +329,15 @@ function showAdModal() {
     }
   }, 1000);
 }
+
+// Load coins
+fetch('/api/coins')
+  .then(function(resp) { return resp.json(); })
+  .then(function(data) {
+    var el = document.getElementById('coinDisplay');
+    if (el && data.coins !== undefined) el.innerHTML = '<img src="/static/icon/coins.png" style="width:20px;height:20px;vertical-align:middle;"> ' + data.coins;
+  })
+  .catch(function() {});
 
 function logout() {
   fetch('/auth/logout', { method: 'POST' }).then(function() {

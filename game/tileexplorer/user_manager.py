@@ -74,6 +74,62 @@ class UserManager:
                 return
         # User not found — no-op (shouldn't happen in normal flow)
 
+    def get_coins(self, username: str) -> int:
+        """Get player's current coin balance.
+
+        Returns initial_coins from game_setting.json if not set.
+        """
+        users = self._load_users()
+        for user in users:
+            if user["username"] == username:
+                if "coins" in user:
+                    return user["coins"]
+                # Initialize coins from game_setting
+                initial = self._get_initial_coins()
+                user["coins"] = initial
+                self._save_users(users)
+                return initial
+        return self._get_initial_coins()
+
+    def add_coins(self, username: str, amount: int) -> int:
+        """Add coins to player's balance. Returns new balance."""
+        users = self._load_users()
+        for user in users:
+            if user["username"] == username:
+                current = user.get("coins", self._get_initial_coins())
+                user["coins"] = current + amount
+                self._save_users(users)
+                return user["coins"]
+        return 0
+
+    def deduct_coins(self, username: str, amount: int) -> bool:
+        """Deduct coins from player's balance.
+
+        Returns True if successful, False if insufficient balance.
+        """
+        users = self._load_users()
+        for user in users:
+            if user["username"] == username:
+                current = user.get("coins", self._get_initial_coins())
+                if current < amount:
+                    return False
+                user["coins"] = current - amount
+                self._save_users(users)
+                return True
+        return False
+
+    def _get_initial_coins(self) -> int:
+        """Load initial coins from game_setting.json."""
+        setting_path = os.path.join(
+            os.path.dirname(self._users_path), "game_setting.json"
+        )
+        try:
+            with open(setting_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            return cfg.get("initial_coins", 100)
+        except (OSError, json.JSONDecodeError):
+            return 100
+
     def _load_users(self) -> list[dict]:
         """Load users from users.json.
 

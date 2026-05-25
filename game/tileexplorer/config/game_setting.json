@@ -1,0 +1,6 @@
+{
+  "initial_coins": 100,
+  "battle_win_reward": 10,
+  "single_mode_cost": 5,
+  "ad_coin_reward": 5
+}

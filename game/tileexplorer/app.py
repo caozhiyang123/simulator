@@ -12,6 +12,7 @@ from room_manager import RoomManager
 from user_manager import UserManager
 from game_state_manager import GameStateManager
 from idle_timer_manager import IdleTimerManager
+from statistics_manager import StatisticsManager
 from socketio_events import register_socketio_events, kick_spectators, handle_room_deleted
 
 app = Flask(__name__)
@@ -27,10 +28,12 @@ room_manager = RoomManager()
 user_manager = UserManager()
 game_state_manager = GameStateManager()
 idle_timer_manager = IdleTimerManager()
+statistics_manager = StatisticsManager()
 
 # Register WebSocket event handlers
 register_socketio_events(socketio, room_manager, game_state_manager,
-                         user_manager, idle_timer_manager)
+                         user_manager, idle_timer_manager,
+                         statistics_manager)
 
 # Start idle timer background monitoring on startup
 idle_timer_manager.start_monitoring()
@@ -113,12 +116,32 @@ def auth_login():
             session['role'] = u.get("role", "worker")
             session['token'] = token
             session['unique_code'] = unique_code
+
+            # Start session statistics tracking
+            session_id = str(uuid.uuid4())
+            session['session_id'] = session_id
+            coins = user_manager.get_coins(username)
+            level = user_manager.get_current_level(username)
+            statistics_manager.start_session(
+                session_id, username, unique_code, coins, level
+            )
+
             return jsonify({"status": "ok", "username": username})
     return jsonify({"error": "Invalid username or password"}), 401
 
 
 @app.route("/auth/logout", methods=["POST"])
 def auth_logout():
+    # End session statistics tracking
+    session_id = session.get('session_id')
+    username = session.get('username')
+    unique_code = session.get('unique_code')
+    if session_id and username and unique_code:
+        coins = user_manager.get_coins(username)
+        level = user_manager.get_current_level(username)
+        statistics_manager.end_session(
+            session_id, username, unique_code, coins, level
+        )
     session.clear()
     return jsonify({"status": "ok"})
 
@@ -288,6 +311,86 @@ def list_images():
         if f.lower().endswith(('.png', '.jpg', '.jpeg'))
     ])
     return jsonify({"images": images})
+
+
+GAME_SETTING_PATH = os.path.join(
+    os.path.dirname(__file__), "config", "game_setting.json"
+)
+FLASH_CONFIG_PATH = os.path.join(
+    os.path.dirname(__file__), "config", "flash.json"
+)
+
+
+@app.route("/api/game-setting", methods=["GET"])
+def get_game_setting():
+    """Return game settings (coins, costs, rewards)."""
+    try:
+        with open(GAME_SETTING_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        cfg = {}
+    return jsonify(cfg)
+
+
+@app.route("/api/flash-config", methods=["GET"])
+def get_flash_config():
+    """Return flash animation config."""
+    try:
+        with open(FLASH_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        cfg = {}
+    return jsonify(cfg)
+
+
+@app.route("/api/coins", methods=["GET"])
+def get_coins():
+    """Return current user's coin balance."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "Not authenticated"}), 401
+    coins = user_manager.get_coins(username)
+    return jsonify({"coins": coins})
+
+
+@app.route("/api/coins/watch-ad", methods=["POST"])
+def watch_ad_for_coins():
+    """Reward coins for watching an ad."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "Not authenticated"}), 401
+    try:
+        with open(GAME_SETTING_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        cfg = {}
+    reward = cfg.get("ad_coin_reward", 5)
+    new_balance = user_manager.add_coins(username, reward)
+    return jsonify({"coins": new_balance, "reward": reward})
+
+
+@app.route("/api/coins/deduct-single", methods=["POST"])
+def deduct_single_mode_cost():
+    """Deduct coins for entering single-player mode."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "Not authenticated"}), 401
+    try:
+        with open(GAME_SETTING_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        cfg = {}
+    cost = cfg.get("single_mode_cost", 5)
+    success = user_manager.deduct_coins(username, cost)
+    if not success:
+        return jsonify({"error": "Insufficient coins", "coins": user_manager.get_coins(username)}), 400
+
+    # Record session spend immediately when coins are deducted
+    session_id = session.get("session_id")
+    if session_id:
+        statistics_manager.record_session_spend(session_id, cost)
+
+    return jsonify({"coins": user_manager.get_coins(username)})
 
 
 @app.route("/api/active-game", methods=["GET"])

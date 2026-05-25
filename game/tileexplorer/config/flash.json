@@ -1,0 +1,29 @@
+{
+  "fight": {
+    "text": "Fight!",
+    "blink_count": 3,
+    "blink_interval_ms": 300,
+    "font_size": "72px",
+    "font_weight": "bold",
+    "color": "#FFD700",
+    "text_shadow": "0 0 20px #FF4500, 0 0 40px #FF4500, 2px 2px 4px #000"
+  },
+  "game_over": {
+    "text": "Game Over!",
+    "blink_count": 3,
+    "blink_interval_ms": 300,
+    "font_size": "64px",
+    "font_weight": "bold",
+    "color": "#E74C3C",
+    "text_shadow": "0 0 20px #C0392B, 0 0 40px #C0392B, 2px 2px 4px #000"
+  },
+  "congratulation": {
+    "text": "Congratulation!",
+    "blink_count": 3,
+    "blink_interval_ms": 300,
+    "font_size": "60px",
+    "font_weight": "bold",
+    "color": "#27AE60",
+    "text_shadow": "0 0 20px #2ECC71, 0 0 40px #2ECC71, 2px 2px 4px #000"
+  }
+}

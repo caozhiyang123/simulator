@@ -1,5 +1,6 @@
 {
   "ad_duration_seconds": 3,
   "ad_provider_url": "https://example.com/ads/placeholder",
-  "undo_reward_count": 1
+  "undo_reward_count": 1,
+  "coin_reward": 5
 }

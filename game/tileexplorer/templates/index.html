@@ -279,6 +279,7 @@ h1 {
 
 <!-- User info bar (top-right) -->
 <header class="user-bar" role="banner">
+  <span id="coinDisplay" style="display:inline-flex;align-items:center;gap:4px;font-size:14px;color:#FFD700;"><img src="/static/icon/coins.png" style="width:20px;height:20px;vertical-align:middle;"> --</span>
   <span class="username" id="displayUsername" aria-label="Logged in user"></span>
   <button class="btn-logout" id="btnLogout" aria-label="Logout">Logout</button>
 </header>
@@ -296,7 +297,7 @@ h1 {
 
   <!-- Row 2: Game mode selection -->
   <div class="actions-row">
-    <a href="/single" class="mode-card" role="button" aria-label="Single Player">
+    <a href="#" class="mode-card" role="button" aria-label="Single Player" id="btnSinglePlayer" onclick="enterSingleMode(event)">
       <img class="mode-img" src="/static/player/1player.PNG" alt="Single Player">
       <span class="mode-label">Single Player</span>
     </a>
@@ -449,6 +450,59 @@ h1 {
 
   // Initial load
   fetchRooms();
+
+  // --- Load coins ---
+  var playerCoins = 0;
+  function loadCoins() {
+    fetch('/api/coins')
+      .then(function(resp) { return resp.json(); })
+      .then(function(data) {
+        if (data.coins !== undefined) {
+          playerCoins = data.coins;
+          document.getElementById('coinDisplay').innerHTML = '<img src="/static/icon/coins.png" style="width:20px;height:20px;vertical-align:middle;"> ' + data.coins;
+        }
+      })
+      .catch(function() {});
+  }
+  loadCoins();
+
+  // --- Single mode cost check ---
+  var singleModeCost = 5;
+  fetch('/api/game-setting')
+    .then(function(resp) { return resp.json(); })
+    .then(function(cfg) { singleModeCost = cfg.single_mode_cost || 5; })
+    .catch(function() {});
+
+  window.enterSingleMode = function(e) {
+    e.preventDefault();
+    if (playerCoins < singleModeCost) {
+      if (confirm('Insufficient coins (' + playerCoins + '). Watch an ad to earn ' + singleModeCost + ' coins?')) {
+        fetch('/api/coins/watch-ad', { method: 'POST' })
+          .then(function(resp) { return resp.json(); })
+          .then(function(data) {
+            if (data.coins !== undefined) {
+              playerCoins = data.coins;
+              document.getElementById('coinDisplay').innerHTML = '<img src="/static/icon/coins.png" style="width:20px;height:20px;vertical-align:middle;"> ' + data.coins;
+              showToast('Earned ' + (data.reward || singleModeCost) + ' coins!');
+            }
+          })
+          .catch(function() { showToast('Failed to watch ad.'); });
+      }
+      return;
+    }
+    // Deduct cost and enter
+    fetch('/api/coins/deduct-single', { method: 'POST' })
+      .then(function(resp) { return resp.json().then(function(d) { return { ok: resp.ok, data: d }; }); })
+      .then(function(result) {
+        if (result.ok) {
+          window.location.href = '/single';
+        } else {
+          showToast(result.data.error || 'Insufficient coins');
+          loadCoins();
+        }
+      })
+      .catch(function() { showToast('Network error.'); });
+  };
 
   // --- Check for active game session ---
   var rejoinUrl = null;
