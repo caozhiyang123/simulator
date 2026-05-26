@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minesweeper</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #1a1a2e, #16213e); min-height: 100vh; display: flex; flex-direction: column; align-items: center; color: #fff; padding: 10px; }
+h1 { margin-bottom: 8px; font-size: 24px; }
+.info { font-size: 14px; color: #aaa; margin-bottom: 12px; }
+.board { display: grid; gap: 2px; margin: 0 auto; }
+.cell { width: 36px; height: 36px; background: #3a4a5c; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; font-weight: bold; transition: background 0.1s; user-select: none; }
+.cell:hover { background: #4a5a6c; }
+.cell.revealed { background: #2c3e50; cursor: default; }
+.cell.mine { background: #e74c3c; }
+.cell.flagged { background: #f39c12; }
+.cell.revealed.n1 { color: #3498db; }
+.cell.revealed.n2 { color: #27ae60; }
+.cell.revealed.n3 { color: #e74c3c; }
+.cell.revealed.n4 { color: #8e44ad; }
+.cell.revealed.n5 { color: #e67e22; }
+.cell.revealed.n6 { color: #1abc9c; }
+.cell.revealed.n7 { color: #2c3e50; }
+.cell.revealed.n8 { color: #7f8c8d; }
+.controls { margin-top: 16px; display: flex; gap: 12px; align-items: center; }
+.controls button { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; background: #4a90d9; color: #fff; }
+.controls button:hover { background: #357abd; }
+.game-msg { margin-top: 16px; font-size: 20px; font-weight: bold; display: none; }
+.game-msg.win { color: #27ae60; }
+.game-msg.lose { color: #e74c3c; }
+</style>
+</head>
+<body>
+
+<div class="user-bar" style="position:fixed;top:16px;right:24px;display:flex;align-items:center;gap:12px;z-index:9999;">
+  <span id="coinDisplay" style="display:inline-flex;align-items:center;gap:4px;font-size:14px;color:#FFD700;"><img src="/static/icon/coins.png" style="width:20px;height:20px;vertical-align:middle;"> --</span>
+  <span style="font-size:14px;color:#ccc;">{{ username }}</span>
+  <button onclick="logout()" style="padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;background:#e74c3c;color:#fff;">Logout</button>
+</div>
+<div style="position:fixed;top:16px;left:24px;z-index:9999;">
+  <button onclick="window.location.href='/'" style="padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);">← Lobby</button>
+</div>
+
+<h1>💣 Minesweeper</h1>
+<div class="info">Level <span id="levelNum">1</span> | Mines: <span id="mineCount">10</span> | Flags: <span id="flagCount">0</span></div>
+
+<div class="board" id="board"></div>
+
+<div class="game-msg win" id="winMsg">🎉 You Win!</div>
+<div class="game-msg lose" id="loseMsg">💥 Game Over!</div>
+
+<div class="controls">
+  <button onclick="newGame()">New Game</button>
+  <button onclick="window.location.href='/'">Back to Lobby</button>
+</div>
+
+<script>
+var ROWS = 9, COLS = 9, MINES = 10;
+var board = [], revealed = [], flagged = [], gameOver = false, gameWon = false;
+var level = 1;
+
+function initBoard() {
+  board = []; revealed = []; flagged = [];
+  gameOver = false; gameWon = false;
+  document.getElementById('winMsg').style.display = 'none';
+  document.getElementById('loseMsg').style.display = 'none';
+
+  // Scale difficulty with level
+  ROWS = Math.min(9 + Math.floor(level / 5), 16);
+  COLS = Math.min(9 + Math.floor(level / 5), 16);
+  MINES = Math.min(10 + level * 2, Math.floor(ROWS * COLS * 0.25));
+  document.getElementById('levelNum').textContent = level;
+  document.getElementById('mineCount').textContent = MINES;
+  document.getElementById('flagCount').textContent = 0;
+
+  for (var r = 0; r < ROWS; r++) {
+    board[r] = []; revealed[r] = []; flagged[r] = [];
+    for (var c = 0; c < COLS; c++) {
+      board[r][c] = 0; revealed[r][c] = false; flagged[r][c] = false;
+    }
+  }
+  // Place mines
+  var placed = 0;
+  while (placed < MINES) {
+    var r = Math.floor(Math.random() * ROWS);
+    var c = Math.floor(Math.random() * COLS);
+    if (board[r][c] !== -1) { board[r][c] = -1; placed++; }
+  }
+  // Calculate numbers
+  for (var r = 0; r < ROWS; r++) {
+    for (var c = 0; c < COLS; c++) {
+      if (board[r][c] === -1) continue;
+      var count = 0;
+      for (var dr = -1; dr <= 1; dr++) for (var dc = -1; dc <= 1; dc++) {
+        var nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && board[nr][nc] === -1) count++;
+      }
+      board[r][c] = count;
+    }
+  }
+  render();
+}
+
+function render() {
+  var el = document.getElementById('board');
+  el.style.gridTemplateColumns = 'repeat(' + COLS + ', 36px)';
+  el.innerHTML = '';
+  for (var r = 0; r < ROWS; r++) {
+    for (var c = 0; c < COLS; c++) {
+      var cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.r = r; cell.dataset.c = c;
+      if (revealed[r][c]) {
+        cell.classList.add('revealed');
+        if (board[r][c] === -1) { cell.classList.add('mine'); cell.textContent = '💣'; }
+        else if (board[r][c] > 0) { cell.classList.add('n' + board[r][c]); cell.textContent = board[r][c]; }
+      } else if (flagged[r][c]) {
+        cell.classList.add('flagged'); cell.textContent = '🚩';
+      }
+      cell.addEventListener('click', function() { reveal(+this.dataset.r, +this.dataset.c); });
+      cell.addEventListener('contextmenu', function(e) { e.preventDefault(); toggleFlag(+this.dataset.r, +this.dataset.c); });
+      el.appendChild(cell);
+    }
+  }
+}
+
+function reveal(r, c) {
+  if (gameOver || gameWon || revealed[r][c] || flagged[r][c]) return;
+  revealed[r][c] = true;
+  if (board[r][c] === -1) { gameOver = true; revealAll(); document.getElementById('loseMsg').style.display = 'block'; recordRound(false); render(); return; }
+  if (board[r][c] === 0) {
+    for (var dr = -1; dr <= 1; dr++) for (var dc = -1; dc <= 1; dc++) {
+      var nr = r + dr, nc = c + dc;
+      if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && !revealed[nr][nc]) reveal(nr, nc);
+    }
+  }
+  checkWin();
+  render();
+}
+
+function toggleFlag(r, c) {
+  if (gameOver || gameWon || revealed[r][c]) return;
+  flagged[r][c] = !flagged[r][c];
+  var count = 0;
+  for (var i = 0; i < ROWS; i++) for (var j = 0; j < COLS; j++) if (flagged[i][j]) count++;
+  document.getElementById('flagCount').textContent = count;
+  render();
+}
+
+function revealAll() { for (var r = 0; r < ROWS; r++) for (var c = 0; c < COLS; c++) revealed[r][c] = true; }
+
+function checkWin() {
+  var unrevealed = 0;
+  for (var r = 0; r < ROWS; r++) for (var c = 0; c < COLS; c++) if (!revealed[r][c]) unrevealed++;
+  if (unrevealed === MINES) {
+    gameWon = true;
+    document.getElementById('winMsg').style.display = 'block';
+    recordRound(true);
+    level++;
+  }
+}
+
+function newGame() { initBoard(); }
+
+function recordRound(won) {
+  fetch('/api/record-round', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ game_name: 'single_minesweeper', level: level, won: won })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.coins !== undefined) {
+      var el = document.getElementById('coinDisplay');
+      if (el) el.innerHTML = '<img src="/static/icon/coins.png" style="width:20px;height:20px;vertical-align:middle;"> ' + d.coins;
+    }
+  }).catch(function() {});
+}
+
+function logout() {
+  fetch('/auth/logout', { method: 'POST' }).then(function() { window.location.href = '/login'; });
+}
+
+// Load coins
+fetch('/api/coins').then(function(r){return r.json();}).then(function(d){
+  var el = document.getElementById('coinDisplay');
+  if (el && d.coins !== undefined) el.innerHTML = '<img src="/static/icon/coins.png" style="width:20px;height:20px;vertical-align:middle;"> ' + d.coins;
+}).catch(function(){});
+
+initBoard();
+</script>
+</body>
+</html>

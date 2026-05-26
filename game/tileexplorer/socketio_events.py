@@ -423,6 +423,11 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
                 and len(updated_state.get("tiles", [])) == 0
                 and len(updated_state.get("slots", [])) == 0):
             current_level = updated_state.get("level", 1)
+            _theme = updated_state.get("theme", "bingo")
+            if room_code:
+                _game_name = "2player_" + _theme
+            else:
+                _game_name = "single_" + _theme
 
             # Only advance level in single-player mode
             if not room_code:
@@ -467,6 +472,7 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
                         total_spend=0,
                         total_win=_reward,
                         room_id=room_code,
+                        game_name=_game_name,
                     )
                     # Record session win
                     session_id = session.get("session_id")
@@ -508,6 +514,7 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
                             total_spend=0,
                             total_win=0,
                             room_id=room_code,
+                            game_name=_game_name,
                         )
 
                 # Clear the room round_id so next game gets a fresh one
@@ -546,6 +553,7 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
                         total_spend=_cost,
                         total_win=0,
                         room_id=None,
+                        game_name=_game_name,
                     )
 
         # Handle game_over that is NOT a win (single-player loss)
@@ -568,6 +576,8 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
                     pass
 
                 current_level = updated_state.get("level", 1)
+                _theme = updated_state.get("theme", "bingo")
+                _game_name = "single_" + _theme
                 round_id = statistics_manager.generate_id()
                 coins_after = user_manager.get_coins(username)
                 statistics_manager.record_round(
@@ -581,6 +591,7 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
                     total_spend=_cost,
                     total_win=0,
                     room_id=None,
+                    game_name=_game_name,
                 )
         # Reset idle timer on activity
         if unique_code:

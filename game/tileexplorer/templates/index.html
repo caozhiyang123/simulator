@@ -54,26 +54,51 @@ h1 {
   border-color: #e74c3c;
 }
 
-/* Lobby container */
-.lobby-container {
+/* Lobby layout */
+.lobby-wrapper {
+  display: flex;
   width: 100%;
-  max-width: 900px;
-  margin-top: 20px;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-auto-rows: auto;
+  max-width: 1100px;
+  margin-top: 16px;
   gap: 16px;
 }
+.sidebar {
+  width: 180px;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sidebar-item {
+  padding: 12px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #aaa;
+  transition: background 0.2s, color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
+.sidebar-item.active { background: rgba(74,144,217,0.2); color: #fff; font-weight: 500; }
+.lobby-content {
+  flex: 1;
+  min-width: 0;
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.section-title { font-size: 16px; font-weight: 500; color: #ddd; margin: 16px 0 12px; }
+.recent-games { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 
-/* Room list - row 1, spanning 4 columns */
+/* Room list */
 .room-list {
-  grid-column: 1 / -1;
-  grid-row: 1;
-  min-height: 140px;
+  min-height: 100px;
   background: rgba(255,255,255,0.05);
   border-radius: 12px;
   padding: 16px;
   border: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 16px;
 }
 .room-list h2 {
   display: none;
@@ -149,16 +174,15 @@ h1 {
 }
 .btn-spectate:hover { opacity: 0.85; }
 
-/* Action buttons row - row 2 */
+/* Action buttons row */
 .actions-row {
-  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 16px;
 }
 #themeRows {
-  grid-column: 1 / -1;
+  margin-top: 8px;
 }
 .mode-card {
   display: flex;
@@ -288,20 +312,73 @@ h1 {
   <button class="btn-logout" id="btnLogout" aria-label="Logout">Logout</button>
 </header>
 
-<h1>🎰 Tile Explorer</h1>
+<h1>🎰 Game Center</h1>
 
-<main class="lobby-container" role="main">
-  <!-- Row 1: Room list spanning all 4 columns -->
-  <section class="room-list" aria-label="Active rooms">
-    <h2>Active Rooms</h2>
-    <div id="roomListContent">
-      <p class="room-list-empty">No active rooms. Create one or wait for others to start a game.</p>
+<div class="lobby-wrapper">
+  <!-- Left sidebar menu -->
+  <nav class="sidebar">
+    <div class="sidebar-item active" data-tab="general" onclick="switchTab('general')">
+      <span>🏠</span> General
     </div>
-  </section>
+    <div class="sidebar-item" data-tab="triple_match" onclick="switchTab('triple_match')">
+      <span>🎰</span> Triple Match
+    </div>
+    <div class="sidebar-item" data-tab="minesweeper" onclick="switchTab('minesweeper')">
+      <span>💣</span> Minesweeper
+    </div>
+  </nav>
 
-  <!-- Game mode selection - rendered dynamically per theme -->
-  <div id="themeRows"></div>
-</main>
+  <!-- Main content area -->
+  <main class="lobby-content" role="main">
+    <!-- General tab -->
+    <div class="tab-content active" id="tab-general">
+      <section class="room-list" aria-label="Active rooms">
+        <h2>Active Rooms</h2>
+        <div id="roomListContent">
+          <p class="room-list-empty">No active rooms.</p>
+        </div>
+      </section>
+      <div class="section-title">Recently Played</div>
+      <div id="recentGames" class="recent-games">
+        <p style="color:#888;font-size:14px;">No recent games yet.</p>
+      </div>
+    </div>
+
+    <!-- Triple Match tab -->
+    <div class="tab-content" id="tab-triple_match">
+      <section class="room-list" aria-label="Active rooms">
+        <h2>Active Rooms</h2>
+        <div id="roomListContentTM">
+          <p class="room-list-empty">No active rooms.</p>
+        </div>
+      </section>
+      <div id="themeRows"></div>
+    </div>
+
+    <!-- Minesweeper tab -->
+    <div class="tab-content" id="tab-minesweeper">
+      <div class="section-title">Minesweeper</div>
+      <div id="minesweeperModes" class="actions-row">
+        <div class="mode-card" onclick="enterMinesweeper('single')" tabindex="0">
+          <img class="mode-img" src="/static/player/minesweeper/1player.PNG" alt="Single Player" onerror="this.style.background='#333';this.alt='1P';">
+          <span class="mode-label">Single</span>
+        </div>
+        <div class="mode-card" onclick="enterMinesweeper('2player')" tabindex="0">
+          <img class="mode-img" src="/static/player/minesweeper/2player.PNG" alt="Two Player" onerror="this.style.background='#333';this.alt='2P';">
+          <span class="mode-label">2 Player</span>
+        </div>
+        <div class="mode-card" onclick="enterMinesweeper('3player')" tabindex="0">
+          <img class="mode-img" src="/static/player/minesweeper/3player.PNG" alt="Three Player" onerror="this.style.background='#333';this.alt='3P';">
+          <span class="mode-label">3 Player</span>
+        </div>
+        <div class="mode-card" onclick="enterMinesweeper('4player')" tabindex="0">
+          <img class="mode-img" src="/static/player/minesweeper/4player.PNG" alt="Four Player" onerror="this.style.background='#333';this.alt='4P';">
+          <span class="mode-label">4 Player</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
 
 <!-- Join Room Modal -->
 <div class="modal-overlay" id="joinModal" role="dialog" aria-modal="true" aria-labelledby="joinModalTitle">
@@ -353,6 +430,51 @@ h1 {
     setTimeout(function() { toast.classList.remove('visible'); }, duration);
   }
 
+  // --- Tab switching ---
+  function switchTab(tabId) {
+    // Update sidebar
+    document.querySelectorAll('.sidebar-item').forEach(function(el) {
+      el.classList.toggle('active', el.getAttribute('data-tab') === tabId);
+    });
+    // Update content
+    document.querySelectorAll('.tab-content').forEach(function(el) {
+      el.classList.toggle('active', el.id === 'tab-' + tabId);
+    });
+  }
+  window.switchTab = switchTab;
+
+  // --- Minesweeper ---
+  window.enterMinesweeper = function(mode) {
+    if (mode === 'single') {
+      if (playerCoins < singleModeCost) {
+        if (confirm('Insufficient coins. Watch an ad to earn coins?')) {
+          fetch('/api/coins/watch-ad', { method: 'POST' })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+              if (data.coins !== undefined) {
+                playerCoins = data.coins;
+                document.getElementById('coinDisplay').innerHTML = '<img src="/static/icon/coins.png" style="width:20px;height:20px;vertical-align:middle;"> ' + data.coins;
+                showToast('Earned coins!');
+              }
+            }).catch(function() {});
+        }
+        return;
+      }
+      fetch('/api/coins/deduct-single', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({game_name: 'single_minesweeper'}) })
+        .then(function(resp) { return resp.json().then(function(d) { return { ok: resp.ok, data: d }; }); })
+        .then(function(result) {
+          if (result.ok) {
+            window.location.href = '/minesweeper?mode=single';
+          } else {
+            showToast(result.data.error || 'Insufficient coins');
+            loadCoins();
+          }
+        }).catch(function() { showToast('Network error.'); });
+    } else {
+      showToast('Minesweeper ' + mode + ' mode coming soon!');
+    }
+  };
+
   // --- Username display ---
   var rawUsername = '{{ session.get("username", "") }}';
   var displayName = truncateUsername(rawUsername, 20);
@@ -370,8 +492,11 @@ h1 {
 
   function renderRoomList(rooms) {
     var container = document.getElementById('roomListContent');
+    var tmContainer = document.getElementById('roomListContentTM');
     if (!rooms || rooms.length === 0) {
-      container.innerHTML = '<p class="room-list-empty">No active rooms. Create one or wait for others to start a game.</p>';
+      var emptyHtml = '<p class="room-list-empty">No active rooms.</p>';
+      container.innerHTML = emptyHtml;
+      if (tmContainer) tmContainer.innerHTML = emptyHtml;
       return;
     }
 
@@ -415,6 +540,9 @@ h1 {
 
     html += '</tbody></table>';
     container.innerHTML = html;
+    // Also update Triple Match tab room list
+    var tmContainer = document.getElementById('roomListContentTM');
+    if (tmContainer) tmContainer.innerHTML = html;
   }
 
   function escapeHtml(text) {
@@ -453,6 +581,52 @@ h1 {
   }
   loadCoins();
 
+  // --- Load recent games ---
+  fetch('/api/recent-games')
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+      var games = data.games || [];
+      var container = document.getElementById('recentGames');
+      if (games.length === 0) {
+        container.innerHTML = '<p style="color:#888;font-size:14px;">No recent games yet.</p>';
+        return;
+      }
+      var gameImageMap = {
+        'single_bingo': '/static/player/bingo/1player.PNG',
+        '2player_bingo': '/static/player/bingo/2player.PNG',
+        '3player_bingo': '/static/player/bingo/3player.PNG',
+        '4player_bingo': '/static/player/bingo/4player.PNG',
+        'single_majiang': '/static/player/majiang/1player.PNG',
+        '2player_majiang': '/static/player/majiang/2player.PNG',
+        '3player_majiang': '/static/player/majiang/3player.PNG',
+        '4player_majiang': '/static/player/majiang/4player.PNG',
+        'single_poker': '/static/player/poker/1player.png',
+        '2player_poker': '/static/player/poker/2player.PNG',
+        '3player_poker': '/static/player/poker/3player.PNG',
+        '4player_poker': '/static/player/poker/4player.PNG',
+        'single_minesweeper': '/static/player/minesweeper/1player.PNG',
+        '2player_minesweeper': '/static/player/minesweeper/2player.PNG',
+        '3player_minesweeper': '/static/player/minesweeper/3player.PNG',
+        '4player_minesweeper': '/static/player/minesweeper/4player.PNG',
+      };
+      var gameUrlMap = {
+        'single_bingo': '/single?theme=bingo',
+        'single_majiang': '/single?theme=majiang',
+        'single_poker': '/single?theme=poker',
+        'single_minesweeper': '/minesweeper?mode=single',
+      };
+      var html = '';
+      games.forEach(function(g) {
+        var img = gameImageMap[g.game_name] || '/static/icon/icon.png';
+        var url = gameUrlMap[g.game_name] || '#';
+        html += '<div class="mode-card" onclick="window.location.href=\'' + url + '\'" tabindex="0">';
+        html += '<img class="mode-img" src="' + img + '" alt="' + g.game_name + '" onerror="this.style.background=\'#333\'">';
+        html += '</div>';
+      });
+      container.innerHTML = html;
+    })
+    .catch(function() {});
+
   // --- Render theme rows ---
   fetch('/api/config')
     .then(function(resp) { return resp.json(); })
@@ -483,7 +657,8 @@ h1 {
 
   // --- Multiplayer with theme ---
   window.enterMultiMode = function(theme) {
-    var el = document.getElementById('themeRows');
+    // Track game name for recent games
+    fetch('/api/set-game-name', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({game_name: '2player_' + (theme || 'bingo')}) });
     fetch('/api/rooms/create', { method: 'POST' })
       .then(function(resp) { return resp.json().then(function(d) { return { ok: resp.ok, data: d }; }); })
       .then(function(result) {
@@ -522,7 +697,7 @@ h1 {
       return;
     }
     // Deduct cost and enter
-    fetch('/api/coins/deduct-single', { method: 'POST' })
+    fetch('/api/coins/deduct-single', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({game_name: 'single_' + theme}) })
       .then(function(resp) { return resp.json().then(function(d) { return { ok: resp.ok, data: d }; }); })
       .then(function(result) {
         if (result.ok) {

@@ -89,9 +89,11 @@ def game_manager(tmp_path):
 
     config = {
         "port": 5002,
+        "tile_width": 60,
+        "tile_height": 120,
         "levels": {
             "1": {"image_count": 4, "copies": 3, "layers": 1, "shape": "circle"},
-            "2": {"image_count": 5, "copies": 6, "layers": 2, "shape": "heart"},
+            "2": {"image_count": 5, "copies": 3, "layers": 2, "shape": "heart"},
             "3": {"image_count": 3, "copies": 3, "layers": 1, "shape": "diamond"},
         },
     }
@@ -329,7 +331,7 @@ class TestPreservationValidTileAction:
                 if other.get("layer", 0) <= layer:
                     continue
                 if (abs(other["x"] - tile["x"]) < 60
-                        and abs(other["y"] - tile["y"]) < 60):
+                        and abs(other["y"] - tile["y"]) < 120):
                     blocked = True
                     break
             if not blocked:
@@ -347,7 +349,7 @@ class TestPreservationValidTileAction:
                 if other.get("layer", 0) <= layer:
                     continue
                 if (abs(other["x"] - tile["x"]) < 60
-                        and abs(other["y"] - tile["y"]) < 60):
+                        and abs(other["y"] - tile["y"]) < 120):
                     return tile
         return None
 
@@ -621,7 +623,7 @@ class TestPreservationMultiplayerBroadcast:
                 if other.get("layer", 0) <= layer:
                     continue
                 if (abs(other["x"] - tile["x"]) < 60
-                        and abs(other["y"] - tile["y"]) < 60):
+                        and abs(other["y"] - tile["y"]) < 120):
                     blocked = True
                     break
             if not blocked:

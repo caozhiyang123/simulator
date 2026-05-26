@@ -68,21 +68,9 @@ class StatisticsManager:
         total_spend: int,
         total_win: int,
         room_id: str | None,
+        game_name: str = "",
     ) -> None:
-        """Append a round record to user_round_statistics.json.
-
-        Args:
-            round_id: Unique identifier for this round.
-            username: Player's username.
-            unique_code: Player's unique code.
-            level: Level played.
-            coins: Current coin balance (same as balance_after).
-            balance_before: Coin balance before the round.
-            balance_after: Coin balance after the round.
-            total_spend: Coins spent this round.
-            total_win: Coins won this round.
-            room_id: Room code for multiplayer, None for single-player.
-        """
+        """Append a round record to user_round_statistics.json."""
         record = {
             "round_id": round_id,
             "username": username,
@@ -94,6 +82,7 @@ class StatisticsManager:
             "total_spend": total_spend,
             "total_win": total_win,
             "room_id": room_id,
+            "game_name": game_name,
             "time": datetime.now(timezone.utc).isoformat(),
         }
         data = self._load_json(self._round_stats_path)
@@ -138,14 +127,57 @@ class StatisticsManager:
             self._active_sessions[session_id]["total_spend"] += amount
 
     def record_session_win(self, session_id: str, amount: int) -> None:
-        """Accumulate total_win for a session.
-
-        Args:
-            session_id: The session to update.
-            amount: Amount won to add.
-        """
+        """Accumulate total_win for a session."""
         if session_id in self._active_sessions:
             self._active_sessions[session_id]["total_win"] += amount
+
+    def set_session_game_name(self, session_id: str, game_name: str) -> None:
+        """Set the game_name for the current session."""
+        if session_id in self._active_sessions:
+            self._active_sessions[session_id]["game_name"] = game_name
+
+    def get_session_game_name(self, session_id: str) -> str:
+        """Get the game_name for the current session."""
+        if session_id in self._active_sessions:
+            return self._active_sessions[session_id].get("game_name", "")
+        return ""
+
+    def get_recent_games(self, username: str, limit: int = 20) -> list[dict]:
+        """Get the most recent unique games played by a user.
+
+        Reads from round stats and active sessions.
+        Returns up to `limit` distinct game_name entries, most recent first.
+        """
+        round_data = self._load_json(self._round_stats_path)
+
+        all_records = []
+        for r in round_data:
+            if r.get("username") == username and r.get("game_name"):
+                all_records.append({
+                    "game_name": r["game_name"],
+                    "time": r.get("time", "")
+                })
+
+        # Also check active sessions (games in progress, not yet finished)
+        for sid, sdata in self._active_sessions.items():
+            if sdata.get("username") == username and sdata.get("game_name"):
+                all_records.append({
+                    "game_name": sdata["game_name"],
+                    "time": datetime.now(timezone.utc).isoformat()
+                })
+
+        # Sort by time descending, deduplicate by game_name
+        all_records.sort(key=lambda x: x.get("time", ""), reverse=True)
+        seen = set()
+        recent = []
+        for r in all_records:
+            gn = r["game_name"]
+            if gn not in seen:
+                seen.add(gn)
+                recent.append({"game_name": gn, "time": r.get("time", "")})
+            if len(recent) >= limit:
+                break
+        return recent
 
     def end_session(
         self,
@@ -155,18 +187,9 @@ class StatisticsManager:
         coins: int,
         level: int,
     ) -> None:
-        """Write session record to user_session_statistics.json.
-
-        Args:
-            session_id: The session identifier.
-            username: Player's username.
-            unique_code: Player's unique code.
-            coins: Coin balance at logout.
-            level: Level at logout.
-        """
+        """Write session record to user_session_statistics.json."""
         session_data = self._active_sessions.pop(session_id, None)
         if session_data is None:
-            # Session not tracked (e.g., server restart) — create minimal record
             session_data = {
                 "session_id": session_id,
                 "username": username,
@@ -189,6 +212,7 @@ class StatisticsManager:
             "level_after_login": level,
             "total_spend": session_data["total_spend"],
             "total_win": session_data["total_win"],
+            "time": datetime.now(timezone.utc).isoformat(),
         }
         data = self._load_json(self._session_stats_path)
         data.append(record)

@@ -1,6 +1,13 @@
 {
   "initial_coins": 100,
-  "battle_win_reward": 10,
-  "single_mode_cost": 5,
-  "ad_coin_reward": 5
+  "ad_coin_reward": 5,
+  "recent_games_limit": 20,
+  "triple_match": {
+    "single_mode_cost": 5,
+    "battle_win_reward": 10
+  },
+  "minesweeper": {
+    "single_mode_cost": 5,
+    "battle_win_reward": 10
+  }
 }

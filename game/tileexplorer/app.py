@@ -228,6 +228,14 @@ def single():
     return render_template("single.html", username=username, theme=theme)
 
 
+@app.route("/minesweeper")
+def minesweeper():
+    """Serve minesweeper game page."""
+    username = session.get("username", "")
+    mode = request.args.get("mode", "single")
+    return render_template("minesweeper.html", username=username, mode=mode)
+
+
 @app.route("/battle/<room_code>")
 def battle(room_code):
     """Serve battle page for a specific room."""
@@ -349,6 +357,94 @@ def get_flash_config():
     return jsonify(cfg)
 
 
+@app.route("/api/recent-games", methods=["GET"])
+def get_recent_games():
+    """Return recent games played by the current user."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"games": []})
+    try:
+        with open(GAME_SETTING_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        cfg = {}
+    limit = cfg.get("recent_games_limit", 20)
+    games = statistics_manager.get_recent_games(username, limit)
+    return jsonify({"games": games})
+
+
+@app.route("/api/set-game-name", methods=["POST"])
+def set_game_name():
+    """Set the current game name for the session (for recent games tracking)."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"error": "Not authenticated"}), 401
+    data = request.get_json(force=True)
+    game_name = data.get("game_name", "")
+    session_id = session.get("session_id")
+    if session_id and game_name:
+        statistics_manager.set_session_game_name(session_id, game_name)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/record-round", methods=["POST"])
+def api_record_round():
+    """Record a round completion (for client-side games like minesweeper)."""
+    username = session.get("username")
+    unique_code = session.get("unique_code")
+    if not username or not unique_code:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    data = request.get_json(force=True)
+    game_name = data.get("game_name", "")
+    level = data.get("level", 1)
+    won = data.get("won", False)
+
+    coins = user_manager.get_coins(username)
+
+    # Determine reward/cost from game_setting
+    try:
+        with open(GAME_SETTING_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        cfg = {}
+
+    total_spend = 0
+    total_win = 0
+
+    if won and "2player" in game_name:
+        # Multiplayer win reward
+        ms_cfg = cfg.get("minesweeper", {})
+        reward = ms_cfg.get("battle_win_reward", 10)
+        user_manager.add_coins(username, reward)
+        total_win = reward
+
+    round_id = statistics_manager.generate_id()
+    balance_after = user_manager.get_coins(username)
+
+    statistics_manager.record_round(
+        round_id=round_id,
+        username=username,
+        unique_code=unique_code,
+        level=level,
+        coins=balance_after,
+        balance_before=coins,
+        balance_after=balance_after,
+        total_spend=total_spend,
+        total_win=total_win,
+        room_id=None,
+        game_name=game_name,
+    )
+
+    # Update level for single-player win
+    if won and "single" in game_name:
+        current_level = user_manager.get_current_level(username)
+        if level >= current_level:
+            user_manager.update_level(username, min(60, level + 1))
+
+    return jsonify({"status": "ok", "coins": balance_after})
+
+
 @app.route("/api/coins", methods=["GET"])
 def get_coins():
     """Return current user's coin balance."""
@@ -381,6 +477,10 @@ def deduct_single_mode_cost():
     username = session.get("username")
     if not username:
         return jsonify({"error": "Not authenticated"}), 401
+
+    data = request.get_json(force=True) if request.is_json else {}
+    game_name = data.get("game_name", "")
+
     try:
         with open(GAME_SETTING_PATH, "r", encoding="utf-8") as f:
             cfg = json.load(f)
@@ -391,10 +491,12 @@ def deduct_single_mode_cost():
     if not success:
         return jsonify({"error": "Insufficient coins", "coins": user_manager.get_coins(username)}), 400
 
-    # Record session spend immediately when coins are deducted
+    # Record session spend and game_name
     session_id = session.get("session_id")
     if session_id:
         statistics_manager.record_session_spend(session_id, cost)
+        if game_name:
+            statistics_manager.set_session_game_name(session_id, game_name)
 
     return jsonify({"coins": user_manager.get_coins(username)})
 
