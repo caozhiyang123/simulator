@@ -20,7 +20,7 @@ app.secret_key = os.environ.get("SECRET_KEY", "tileexplorer-secret-2026")
 socketio = SocketIO(app, cors_allowed_origins="*", manage_session=False)
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "config.json")
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static", "bingo")
 USERS_PATH = os.path.join(os.path.dirname(__file__), "config", "users.json")
 
 # Instantiate managers
@@ -224,13 +224,15 @@ def index():
 @app.route("/single")
 def single():
     username = session.get("username", "")
-    return render_template("single.html", username=username)
+    theme = request.args.get("theme", "bingo")
+    return render_template("single.html", username=username, theme=theme)
 
 
 @app.route("/battle/<room_code>")
 def battle(room_code):
     """Serve battle page for a specific room."""
     username = session.get("username", "")
+    theme = request.args.get("theme", "bingo")
     # Find the room to get invitation_code, owner status, and spectator status
     invitation_code = ""
     is_owner = False
@@ -248,7 +250,8 @@ def battle(room_code):
                            username=username,
                            invitation_code=invitation_code,
                            is_owner=is_owner,
-                           is_spectator=is_spectator)
+                           is_spectator=is_spectator,
+                           theme=theme)
 
 
 @app.route("/api/config", methods=["GET"])
@@ -262,7 +265,9 @@ def get_config():
         "reconnect_interval_seconds": cfg.get(
             "reconnect_interval_seconds", 3),
         "undo_max_per_round": cfg.get("undo_max_per_round", 3),
-        "tile_size": cfg.get("tile_size", 80),
+        "tile_width": cfg.get("tile_width", 60),
+        "tile_height": cfg.get("tile_height", 120),
+        "themes": cfg.get("themes", []),
         "levels": cfg.get("levels", {}),
     })
 

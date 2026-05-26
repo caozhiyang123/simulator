@@ -150,8 +150,8 @@ class TestApplyTileAction:
                     continue
                 if other.get("layer", 0) <= layer:
                     continue
-                if (abs(other["x"] - tile["x"]) < 80
-                        and abs(other["y"] - tile["y"]) < 80):
+                if (abs(other["x"] - tile["x"]) < 60
+                        and abs(other["y"] - tile["y"]) < 60):
                     blocked = True
                     break
             if not blocked:
@@ -193,8 +193,8 @@ class TestApplyTileAction:
                     continue
                 if other.get("layer", 0) <= layer:
                     continue
-                if (abs(other["x"] - tile["x"]) < 80
-                        and abs(other["y"] - tile["y"]) < 80):
+                if (abs(other["x"] - tile["x"]) < 60
+                        and abs(other["y"] - tile["y"]) < 60):
                     blocked_tile = tile
                     break
             if blocked_tile:
@@ -269,8 +269,8 @@ class TestApplyTileAction:
                             continue
                         if other.get("layer", 0) <= t.get("layer", 0):
                             continue
-                        if (abs(other["x"] - t["x"]) < 80
-                                and abs(other["y"] - t["y"]) < 80):
+                        if (abs(other["x"] - t["x"]) < 60
+                                and abs(other["y"] - t["y"]) < 60):
                             blocked = True
                             break
                     if not blocked:
@@ -336,8 +336,8 @@ class TestGenerateLevel:
         """Tile positions are within board bounds."""
         result = game_manager.generate_level(1)
         for tile in result["tiles"]:
-            assert 0 <= tile["x"] <= 600 - 80
-            assert 0 <= tile["y"] <= 800 - 80
+            assert 0 <= tile["x"] <= 600 - 60
+            assert 0 <= tile["y"] <= 800 - 120
 
     def test_tiles_have_incrementing_z(self, game_manager):
         """Tiles have unique, incrementing z-index values."""

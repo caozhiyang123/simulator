@@ -7,6 +7,10 @@
 <style>
 :root {
   --tile-depth-border: 5px;
+  --tile-width: 60px;
+  --tile-height: 120px;
+  --slot-img-width: 51px;
+  --slot-img-height: 102px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, sans-serif; background: linear-gradient(135deg, #1a1a2e, #16213e); min-height: 100vh; display: flex; flex-direction: column; align-items: center; color: #fff; padding: 10px; }
@@ -20,11 +24,11 @@ h1 { margin-bottom: 4px; font-size: 24px; }
 .info { font-size: 14px; color: #aaa; margin-bottom: 12px; }
 
 .slots { display: flex; gap: 4px; margin-bottom: 8px; padding: 6px; background: rgba(255,255,255,0.1); border-radius: 12px; }
-.slot { width: 80px; height: 80px; border: 2px dashed rgba(255,255,255,0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; }
-.slot img { width: 68px; height: 68px; object-fit: cover; border-radius: 6px; }
+.slot { width: var(--tile-width); height: var(--tile-height); border: 2px dashed rgba(255,255,255,0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; }
+.slot img { width: var(--slot-img-width); height: var(--slot-img-height); object-fit: cover; border-radius: 6px; }
 
 .board { position: relative; width: 600px; height: 800px; }
-.tile { position: absolute; width: 80px; height: 80px; cursor: pointer; transition: transform 0.2s, opacity 0.3s; border-radius: 12px; overflow: hidden; box-shadow: 2px 2px 0 rgba(255,255,255,0.4), 1px 1px 3px rgba(0,0,0,0.3); border-bottom: var(--tile-depth-border) solid #FFFFFF; border-right: var(--tile-depth-border) solid #FFFFFF; }
+.tile { position: absolute; width: var(--tile-width); height: var(--tile-height); cursor: pointer; transition: transform 0.2s, opacity 0.3s; border-radius: 12px; overflow: hidden; box-shadow: 2px 2px 0 rgba(255,255,255,0.4), 1px 1px 3px rgba(0,0,0,0.3); border-bottom: var(--tile-depth-border) solid #FFFFFF; border-right: var(--tile-depth-border) solid #FFFFFF; }
 .tile:hover { transform: scale(1.05); z-index: 999 !important; }
 .tile img { width: 100%; height: 100%; object-fit: cover; }
 .tile.blocked { cursor: not-allowed; }
@@ -152,6 +156,18 @@ h1 { margin-bottom: 4px; font-size: 24px; }
   <span id="flashText" style="font-family:'Impact',sans-serif;"></span>
 </div>
 
+<!-- Rematch Modal -->
+<div class="modal-overlay" id="rematchModal">
+  <div class="modal">
+    <h2>Continue?</h2>
+    <p id="rematchMsg" style="color:#ccc;font-size:14px;margin-bottom:16px;">Would you like to play another round?</p>
+    <div class="modal-actions" style="display:flex;gap:10px;justify-content:center;">
+      <button class="btn btn-primary" id="btnRematchYes">Yes</button>
+      <button class="btn btn-secondary" id="btnRematchNo">No</button>
+    </div>
+  </div>
+</div>
+
 <!-- Room Closed Modal -->
 <div class="modal-overlay" id="closedModal">
   <div class="modal">
@@ -177,7 +193,8 @@ var undoMaxPerRound = 3;
 var adDuration = 3;
 var adProviderUrl = '';
 var adRewardCount = 1;
-var TILE_SIZE = 80;
+var TILE_W = 60;
+var TILE_H = 120;
 
 // Load undo/ad config
 fetch('/api/config')
@@ -185,7 +202,12 @@ fetch('/api/config')
   .then(function(cfg) {
     undoMaxPerRound = cfg.undo_max_per_round || 3;
     undoRemaining = undoMaxPerRound;
-    TILE_SIZE = cfg.tile_size || 80;
+    TILE_W = cfg.tile_width || 60;
+    TILE_H = cfg.tile_height || 120;
+    document.documentElement.style.setProperty('--tile-width', TILE_W + 'px');
+    document.documentElement.style.setProperty('--tile-height', TILE_H + 'px');
+    document.documentElement.style.setProperty('--slot-img-width', Math.round(TILE_W * 0.85) + 'px');
+    document.documentElement.style.setProperty('--slot-img-height', Math.round(TILE_H * 0.85) + 'px');
     updateUndoDisplay();
   }).catch(function() {});
 fetch('/api/ads-config')
@@ -249,7 +271,7 @@ function renderBoard(boardEl, tiles, clickable) {
     const isBlocked = tiles.some((other, oi) => {
       if (oi === idx) return false;
       if ((other.layer || 0) <= layer) return false;
-      return Math.abs(other.x - t.x) < TILE_SIZE && Math.abs(other.y - t.y) < TILE_SIZE;
+      return Math.abs(other.x - t.x) < TILE_W && Math.abs(other.y - t.y) < TILE_H;
     });
 
     if (isBlocked) {
@@ -289,7 +311,7 @@ function onTileClick(tileId) {
   const isBlocked = playerState.tiles.some(other => {
     if (other.id === tileId) return false;
     if ((other.layer || 0) <= layer) return false;
-    return Math.abs(other.x - tile.x) < TILE_SIZE && Math.abs(other.y - tile.y) < TILE_SIZE;
+    return Math.abs(other.x - tile.x) < TILE_W && Math.abs(other.y - tile.y) < TILE_H;
   });
   if (isBlocked) return;
 
@@ -398,7 +420,7 @@ function applyMagicEffect(boardId, emoji, affectedTileIds, duration) {
     var tileId = tileEl.dataset.tileId;
     if (tileId !== undefined && idSet[parseInt(tileId)]) {
       var overlay = document.createElement('div');
-      overlay.style.cssText = 'position:absolute;width:80px;height:80px;display:flex;align-items:center;justify-content:center;border-radius:12px;z-index:1000;pointer-events:all;overflow:hidden;';
+      overlay.style.cssText = 'position:absolute;width:' + TILE_W + 'px;height:' + TILE_H + 'px;display:flex;align-items:center;justify-content:center;border-radius:12px;z-index:1000;pointer-events:all;overflow:hidden;';
       overlay.style.left = tileEl.style.left;
       overlay.style.top = tileEl.style.top;
 
@@ -503,7 +525,7 @@ function connectSocket() {
 function createSocket(maxAttempts, intervalMs) {
   var connectRole = {{ 'true' if is_spectator else 'false' }} ? 'spectator' : 'player';
   socket = io({
-    query: { room_code: ROOM_CODE, role: connectRole },
+    query: { room_code: ROOM_CODE, role: connectRole, theme: '{{ theme }}' },
     reconnection: true,
     reconnectionAttempts: maxAttempts,
     reconnectionDelay: intervalMs,
@@ -547,6 +569,8 @@ function createSocket(maxAttempts, intervalMs) {
   });
 
   socket.on('game_start', (data) => {
+    // Hide rematch modal if shown
+    document.getElementById('rematchModal').style.display = 'none';
     gameStarted = true;
     // Hide waiting message
     const waitingMsg = document.getElementById('waitingMsg');
@@ -572,11 +596,22 @@ function createSocket(maxAttempts, intervalMs) {
     var flashDuration = ((flashCfg.blink_count || 3) * 2) * (flashCfg.blink_interval_ms || 300);
     setTimeout(function() {
       playCoinAnimation(data.reward || 10);
+      // After coin animation (~3s), show rematch prompt
+      setTimeout(function() { showRematchModal(); }, 3000);
     }, flashDuration + 200);
   });
 
   socket.on('game_lost', (data) => {
     playFlash('game_over');
+    // After game_over flash ends, show rematch prompt
+    var flashCfg = flashConfig['game_over'] || {};
+    var flashDuration = ((flashCfg.blink_count || 3) * 2) * (flashCfg.blink_interval_ms || 300);
+    setTimeout(function() { showRematchModal(); }, flashDuration + 500);
+  });
+
+  socket.on('player_ready_rematch', (data) => {
+    var msg = document.getElementById('rematchMsg');
+    if (msg) msg.textContent = (data.username || 'Opponent') + ' is ready! Waiting for you...';
   });
 
   socket.on('state_update', (data) => {
@@ -765,44 +800,86 @@ function playFlash(type) {
 
 // --- Coins ---
 function playCoinAnimation(reward) {
-  // Create coin sprite in center of screen
-  var coin = document.createElement('div');
-  coin.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:80px;height:80px;z-index:6000;pointer-events:none;';
-  var img = document.createElement('img');
-  img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
-  img.src = '/static/win_coins/coin1.png';
-  coin.appendChild(img);
-  document.body.appendChild(coin);
-
-  // Play 6-frame sequence animation
-  var frame = 1;
+  var coinCount = Math.min(reward, 20); // Show up to 20 coins
   var totalFrames = 6;
-  var frameDuration = 150;
+  var frameDuration = 120;
+  var coins = [];
+
+  // Spawn multiple coins with staggered positions
+  for (var i = 0; i < coinCount; i++) {
+    (function(index) {
+      setTimeout(function() {
+        var coin = document.createElement('div');
+        // Random offset from center for spread effect
+        var offsetX = (Math.random() - 0.5) * 200;
+        var offsetY = (Math.random() - 0.5) * 150;
+        coin.style.cssText = 'position:fixed;top:calc(50% + ' + offsetY + 'px);left:calc(50% + ' + offsetX + 'px);transform:translate(-50%,-50%);width:50px;height:50px;z-index:' + (6000 + index) + ';pointer-events:none;opacity:0;transition:opacity 0.2s;';
+        var img = document.createElement('img');
+        img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
+        var startFrame = (index % totalFrames) + 1;
+        img.src = '/static/win_coins/coin' + startFrame + '.png';
+        coin.appendChild(img);
+        document.body.appendChild(coin);
+        coins.push({ el: coin, img: img, frame: startFrame });
+
+        // Fade in
+        requestAnimationFrame(function() { coin.style.opacity = '1'; });
+      }, index * 80); // Stagger spawn
+    })(i);
+  }
+
+  // Animate all coin frames
   var animTimer = setInterval(function() {
-    frame++;
-    if (frame > totalFrames) frame = 1;
-    img.src = '/static/win_coins/coin' + frame + '.png';
+    coins.forEach(function(c) {
+      c.frame++;
+      if (c.frame > totalFrames) c.frame = 1;
+      c.img.src = '/static/win_coins/coin' + c.frame + '.png';
+    });
   }, frameDuration);
 
-  // After 1.5s of spinning, fly to the coin display in top-right
+  // After 1.8s, fly all coins to the balance display
   setTimeout(function() {
     clearInterval(animTimer);
     var target = document.getElementById('coinDisplay');
-    if (target) {
-      var rect = target.getBoundingClientRect();
-      coin.style.transition = 'all 0.6s ease-in';
-      coin.style.top = rect.top + 'px';
-      coin.style.left = rect.left + 'px';
-      coin.style.transform = 'scale(0.3)';
-      coin.style.opacity = '0.7';
-    }
-    // After fly animation, remove coin and update display
+    var rect = target ? target.getBoundingClientRect() : { top: 16, left: window.innerWidth - 100 };
+
+    coins.forEach(function(c, idx) {
+      setTimeout(function() {
+        c.el.style.transition = 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)';
+        c.el.style.top = rect.top + 10 + 'px';
+        c.el.style.left = rect.left + 10 + 'px';
+        c.el.style.transform = 'scale(0.2)';
+        c.el.style.opacity = '0.6';
+      }, idx * 40); // Stagger fly
+    });
+
+    // Clean up and update balance after all coins land
     setTimeout(function() {
-      if (coin.parentNode) coin.parentNode.removeChild(coin);
+      coins.forEach(function(c) {
+        if (c.el.parentNode) c.el.parentNode.removeChild(c.el);
+      });
+      coins = [];
       loadCoins();
-    }, 700);
-  }, 1500);
+    }, coinCount * 40 + 600);
+  }, 1800);
 }
+
+function showRematchModal() {
+  document.getElementById('rematchMsg').textContent = 'Would you like to play another round?';
+  document.getElementById('rematchModal').style.display = 'flex';
+}
+
+document.getElementById('btnRematchYes').addEventListener('click', function() {
+  document.getElementById('rematchMsg').textContent = 'Waiting for opponent...';
+  if (socket && socket.connected) {
+    socket.emit('request_rematch', {});
+  }
+});
+
+document.getElementById('btnRematchNo').addEventListener('click', function() {
+  document.getElementById('rematchModal').style.display = 'none';
+  window.location.href = '/';
+});
 
 function loadCoins() {
   fetch('/api/coins')

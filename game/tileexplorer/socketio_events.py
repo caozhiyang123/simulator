@@ -161,6 +161,7 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
         # Get room_code and role from query params or auth data
         room_code = request.args.get("room_code")
         role = request.args.get("role", "player")
+        theme = request.args.get("theme", "bingo")
 
         if not room_code:
             # Check if this is a lobby-only connection
@@ -172,8 +173,10 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
             sid = request.sid
             # Track unique_code -> sid for idle notifications
             _unique_code_to_sid[unique_code] = sid
+            theme = request.args.get("theme", "bingo")
             _handle_single_player_connect(
-                unique_code, username, game_state_manager, user_manager
+                unique_code, username, game_state_manager, user_manager,
+                theme=theme
             )
             # Start idle timer tracking for single-player
             idle_timer_manager.reset_timer(unique_code)
@@ -240,7 +243,7 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
             if conn["player2_sid"] is not None:
                 # Both players connected — start game
                 _start_game(room_code, conn, game_state_manager,
-                            user_manager)
+                            user_manager, theme=theme)
             else:
                 # Try to recover existing game state (reconnect)
                 _recover_multiplayer_state(
@@ -261,7 +264,7 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
                      to=conn["owner_sid"])
                 # Both players connected — start game
                 _start_game(room_code, conn, game_state_manager,
-                            user_manager)
+                            user_manager, theme=theme)
             else:
                 # Try to recover existing game state (reconnect)
                 _recover_multiplayer_state(
@@ -419,13 +422,14 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
         if (updated_state.get("game_over") is True
                 and len(updated_state.get("tiles", [])) == 0
                 and len(updated_state.get("slots", [])) == 0):
-            # Player won — update their level (Req 9.7, 11.2)
             current_level = updated_state.get("level", 1)
-            player_saved_level = user_manager.get_current_level(username)
-            # Only advance if this level >= saved level (Property 12)
-            if current_level >= player_saved_level:
-                new_level = min(60, current_level + 1)
-                user_manager.update_level(username, new_level)
+
+            # Only advance level in single-player mode
+            if not room_code:
+                player_saved_level = user_manager.get_current_level(username)
+                if current_level >= player_saved_level:
+                    new_level = min(60, current_level + 1)
+                    user_manager.update_level(username, new_level)
 
             # Award coins for battle win
             if room_code and room_code in _room_connections:
@@ -492,11 +496,12 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
                     # Record round statistics for loser
                     if statistics_manager and opponent_username and opponent_unique_code:
                         loser_coins = user_manager.get_coins(opponent_username)
+                        loser_level = user_manager.get_current_level(opponent_username)
                         statistics_manager.record_round(
                             round_id=round_id,
                             username=opponent_username,
                             unique_code=opponent_unique_code,
-                            level=current_level,
+                            level=loser_level,
                             coins=loser_coins,
                             balance_before=loser_coins,
                             balance_after=loser_coins,
@@ -746,6 +751,71 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
         # Reset idle timer
         idle_timer_manager.reset_timer(unique_code)
 
+    # Track rematch requests per room: {room_code: set of unique_codes}
+    _rematch_requests: dict[str, set] = {}
+
+    @socketio.on("request_rematch")
+    def handle_request_rematch(data=None):  # noqa: ARG001
+        """Handle rematch request from a player after game ends.
+
+        When all players in the room agree, starts a new game.
+        """
+        sid = request.sid
+        username = session.get("username")
+        unique_code = session.get("unique_code")
+
+        if not username or not unique_code:
+            return
+
+        if sid not in _sid_to_room:
+            return
+
+        room_code, role = _sid_to_room[sid]
+        if role == "spectator":
+            return
+
+        conn = _room_connections.get(room_code)
+        if not conn:
+            return
+
+        # Track this player's rematch request
+        if room_code not in _rematch_requests:
+            _rematch_requests[room_code] = set()
+        _rematch_requests[room_code].add(unique_code)
+
+        # Notify other players that this player wants rematch
+        if role == "owner" and conn["player2_sid"]:
+            emit("player_ready_rematch", {"username": username},
+                 to=conn["player2_sid"])
+        elif role == "player2" and conn["owner_sid"]:
+            emit("player_ready_rematch", {"username": username},
+                 to=conn["owner_sid"])
+
+        # Check if all players agreed
+        needed = set()
+        if conn["owner_unique_code"]:
+            needed.add(conn["owner_unique_code"])
+        if conn["player2_unique_code"]:
+            needed.add(conn["player2_unique_code"])
+
+        if needed and _rematch_requests[room_code] >= needed:
+            # All players agreed — clear old state and start new game
+            _rematch_requests.pop(room_code, None)
+
+            # Clear existing game states
+            if conn["owner_unique_code"]:
+                game_state_manager.clear_state(
+                    conn["owner_unique_code"], room_code
+                )
+            if conn["player2_unique_code"]:
+                game_state_manager.clear_state(
+                    conn["player2_unique_code"], room_code
+                )
+
+            # Start new game
+            _start_game(room_code, conn, game_state_manager,
+                        user_manager)
+
     # Start background task for room auto-close monitoring
     def _background_monitor():
         """Background task that checks room auto-close every 5 seconds."""
@@ -855,7 +925,8 @@ def handle_room_deleted(socketio, game_state_manager, room_code):
 
 
 def _handle_single_player_connect(unique_code, username,
-                                  game_state_manager, user_manager):
+                                  game_state_manager, user_manager,
+                                  theme="bingo"):
     """Handle single-player WebSocket connection with state recovery.
 
     On connect without a room_code (Req 8.3, 8.5, 8.6):
@@ -871,17 +942,19 @@ def _handle_single_player_connect(unique_code, username,
         username: Player's username.
         game_state_manager: GameStateManager instance.
         user_manager: UserManager instance.
+        theme: Theme id for tile images.
     """
     # room_code is None for single-player
     state = game_state_manager.get_game_state(unique_code, None)
 
     if state is not None:
-        # If game is over, clear and reinitialize (Req 2.1 — Retry reconnect)
-        if state.get("game_over", False):
+        # If theme changed or game is over, clear and reinitialize
+        if (state.get("game_over", False)
+                or state.get("theme") != theme):
             game_state_manager.clear_state(unique_code, None)
             saved_level = user_manager.get_current_level(username)
             new_state = game_state_manager.init_game_state(
-                unique_code, saved_level, None
+                unique_code, saved_level, None, theme=theme
             )
             emit("state_update", _build_state_view(new_state))
         else:
@@ -891,7 +964,7 @@ def _handle_single_player_connect(unique_code, username,
         # No state exists — initialize at player's saved level
         saved_level = user_manager.get_current_level(username)
         new_state = game_state_manager.init_game_state(
-            unique_code, saved_level, None
+            unique_code, saved_level, None, theme=theme
         )
         emit("state_update", _build_state_view(new_state))
 
@@ -916,7 +989,8 @@ def _recover_multiplayer_state(unique_code, room_code,
         emit("state_update", _build_state_view(state))
 
 
-def _start_game(room_code, conn, game_state_manager, user_manager):
+def _start_game(room_code, conn, game_state_manager, user_manager,
+                theme="bingo"):
     """Initialize or recover game states for both players and emit game_start.
 
     If both players already have existing (non-game-over) state for this
@@ -927,6 +1001,7 @@ def _start_game(room_code, conn, game_state_manager, user_manager):
         conn: The room connection tracking dict.
         game_state_manager: GameStateManager instance.
         user_manager: UserManager instance.
+        theme: Theme id for tile images.
     """
     owner_username = conn["owner_username"]
     owner_unique_code = conn["owner_unique_code"]
@@ -955,10 +1030,10 @@ def _start_game(room_code, conn, game_state_manager, user_manager):
         game_level = min(owner_level, player2_level)
 
         owner_state = game_state_manager.init_game_state(
-            owner_unique_code, game_level, room_code
+            owner_unique_code, game_level, room_code, theme=theme
         )
         player2_state = game_state_manager.init_game_state(
-            player2_unique_code, game_level, room_code
+            player2_unique_code, game_level, room_code, theme=theme
         )
 
     # Build read-only views (exclude unique_code for privacy)

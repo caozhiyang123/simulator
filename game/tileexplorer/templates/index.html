@@ -61,7 +61,7 @@ h1 {
   margin-top: 20px;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: auto auto;
+  grid-auto-rows: auto;
   gap: 16px;
 }
 
@@ -152,10 +152,13 @@ h1 {
 /* Action buttons row - row 2 */
 .actions-row {
   grid-column: 1 / -1;
-  grid-row: 2;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
+  margin-bottom: 16px;
+}
+#themeRows {
+  grid-column: 1 / -1;
 }
 .mode-card {
   display: flex;
@@ -174,6 +177,7 @@ h1 {
 }
 .mode-img {
   width: 100%;
+  max-width: 150px;
   aspect-ratio: 1 / 1;
   object-fit: cover;
   border-radius: 16px;
@@ -295,25 +299,8 @@ h1 {
     </div>
   </section>
 
-  <!-- Row 2: Game mode selection -->
-  <div class="actions-row">
-    <a href="#" class="mode-card" role="button" aria-label="Single Player" id="btnSinglePlayer" onclick="enterSingleMode(event)">
-      <img class="mode-img" src="/static/player/1player.PNG" alt="Single Player">
-      <span class="mode-label">Single Player</span>
-    </a>
-    <div class="mode-card" id="btnMultiplayer" role="button" aria-label="Two Player Battle" tabindex="0">
-      <img class="mode-img" src="/static/player/2player.PNG" alt="Two Player Battle">
-      <span class="mode-label">Two Player</span>
-    </div>
-    <div class="mode-card" id="btnThreePlayer" role="button" aria-label="Three Player Battle" tabindex="0">
-      <img class="mode-img" src="/static/player/3player.PNG" alt="Three Player Battle">
-      <span class="mode-label">Three Player</span>
-    </div>
-    <div class="mode-card" id="btnFourPlayer" role="button" aria-label="Four Player Battle" tabindex="0">
-      <img class="mode-img" src="/static/player/4player.PNG" alt="Four Player Battle">
-      <span class="mode-label">Four Player</span>
-    </div>
-  </div>
+  <!-- Game mode selection - rendered dynamically per theme -->
+  <div id="themeRows"></div>
 </main>
 
 <!-- Join Room Modal -->
@@ -466,6 +453,49 @@ h1 {
   }
   loadCoins();
 
+  // --- Render theme rows ---
+  fetch('/api/config')
+    .then(function(resp) { return resp.json(); })
+    .then(function(cfg) {
+      var themes = cfg.themes || [];
+      var container = document.getElementById('themeRows');
+      var html = '';
+      for (var t = 0; t < themes.length; t++) {
+        var theme = themes[t];
+        html += '<div class="actions-row">';
+        html += '<a href="#" class="mode-card" onclick="window.enterSingleMode(event,\'' + theme.id + '\')">';
+        html += '<img class="mode-img" src="' + theme.player_dir + '/1player.PNG" alt="' + theme.name + ' Single">';
+        html += '</a>';
+        html += '<div class="mode-card" onclick="window.enterMultiMode(\'' + theme.id + '\')" tabindex="0">';
+        html += '<img class="mode-img" src="' + theme.player_dir + '/2player.PNG" alt="' + theme.name + ' Two Player">';
+        html += '</div>';
+        html += '<div class="mode-card" onclick="showToast(\'' + theme.name + ' Three Player coming soon!\')" tabindex="0">';
+        html += '<img class="mode-img" src="' + theme.player_dir + '/3player.PNG" alt="' + theme.name + ' Three Player">';
+        html += '</div>';
+        html += '<div class="mode-card" onclick="showToast(\'' + theme.name + ' Four Player coming soon!\')" tabindex="0">';
+        html += '<img class="mode-img" src="' + theme.player_dir + '/4player.PNG" alt="' + theme.name + ' Four Player">';
+        html += '</div>';
+        html += '</div>';
+      }
+      container.innerHTML = html;
+    })
+    .catch(function() {});
+
+  // --- Multiplayer with theme ---
+  window.enterMultiMode = function(theme) {
+    var el = document.getElementById('themeRows');
+    fetch('/api/rooms/create', { method: 'POST' })
+      .then(function(resp) { return resp.json().then(function(d) { return { ok: resp.ok, data: d }; }); })
+      .then(function(result) {
+        if (result.ok && result.data.redirect) {
+          window.location.href = result.data.redirect + '?theme=' + (theme || 'bingo');
+        } else {
+          showToast(result.data.error || 'Failed to create room');
+        }
+      })
+      .catch(function() { showToast('Network error.'); });
+  };
+
   // --- Single mode cost check ---
   var singleModeCost = 5;
   fetch('/api/game-setting')
@@ -473,8 +503,9 @@ h1 {
     .then(function(cfg) { singleModeCost = cfg.single_mode_cost || 5; })
     .catch(function() {});
 
-  window.enterSingleMode = function(e) {
+  window.enterSingleMode = function(e, theme) {
     e.preventDefault();
+    theme = theme || 'bingo';
     if (playerCoins < singleModeCost) {
       if (confirm('Insufficient coins (' + playerCoins + '). Watch an ad to earn ' + singleModeCost + ' coins?')) {
         fetch('/api/coins/watch-ad', { method: 'POST' })
@@ -495,7 +526,7 @@ h1 {
       .then(function(resp) { return resp.json().then(function(d) { return { ok: resp.ok, data: d }; }); })
       .then(function(result) {
         if (result.ok) {
-          window.location.href = '/single';
+          window.location.href = '/single?theme=' + theme;
         } else {
           showToast(result.data.error || 'Insufficient coins');
           loadCoins();
@@ -531,37 +562,6 @@ h1 {
   });
   document.getElementById('rejoinModalNo').addEventListener('click', function() {
     document.getElementById('rejoinModal').classList.remove('active');
-  });
-
-  // --- Multiplayer button (create room) ---
-  document.getElementById('btnMultiplayer').addEventListener('click', function() {
-    var el = this;
-    if (el.dataset.disabled) return;
-    el.dataset.disabled = 'true';
-    fetch('/api/rooms/create', { method: 'POST' })
-      .then(function(resp) { return resp.json().then(function(d) { return { ok: resp.ok, data: d }; }); })
-      .then(function(result) {
-        if (result.ok && result.data.redirect) {
-          window.location.href = result.data.redirect;
-        } else {
-          showToast(result.data.error || 'Failed to create room');
-          delete el.dataset.disabled;
-        }
-      })
-      .catch(function(err) {
-        showToast('Network error. Please try again.');
-        delete el.dataset.disabled;
-      });
-  });
-
-  // --- Three Player (coming soon) ---
-  document.getElementById('btnThreePlayer').addEventListener('click', function() {
-    showToast('Three Player mode coming soon!');
-  });
-
-  // --- Four Player (coming soon) ---
-  document.getElementById('btnFourPlayer').addEventListener('click', function() {
-    showToast('Four Player mode coming soon!');
   });
 
   // --- Join modal ---

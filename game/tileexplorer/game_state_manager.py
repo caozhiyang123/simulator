@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "config.json")
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static", "bingo")
 
 # Board dimensions
 BOARD_W = 600
@@ -21,17 +21,19 @@ BOARD_H = 800
 MAX_SLOTS = 7
 
 
-def _get_tile_size(config_path: str = CONFIG_PATH) -> int:
-    """Load tile_size from config.json, default 80."""
+def _get_tile_dimensions(config_path: str = CONFIG_PATH) -> tuple[int, int]:
+    """Load tile_width and tile_height from config.json."""
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
-        return cfg.get("tile_size", 80)
+        w = cfg.get("tile_width", 60)
+        h = cfg.get("tile_height", 120)
+        return (w, h)
     except (OSError, json.JSONDecodeError):
-        return 80
+        return (60, 120)
 
 
-TILE_SIZE = _get_tile_size()
+TILE_W, TILE_H = _get_tile_dimensions()
 
 
 # Shape test functions ported from single.html JavaScript.
@@ -373,7 +375,19 @@ def _list_images(static_dir: str = STATIC_DIR) -> list[str]:
             f for f in os.listdir(static_dir)
             if f.lower().endswith(('.png', '.jpg', '.jpeg'))
         ])
-        return [f"/static/{f}" for f in files]
+        return [f"/static/bingo/{f}" for f in files]
+    except OSError:
+        return []
+
+
+def _list_images_for_theme(fs_path: str, url_prefix: str) -> list[str]:
+    """List image files from a theme directory with the given URL prefix."""
+    try:
+        files = sorted([
+            f for f in os.listdir(fs_path)
+            if f.lower().endswith(('.png', '.jpg', '.jpeg'))
+        ])
+        return [f"{url_prefix}/{f}" for f in files]
     except OSError:
         return []
 
@@ -400,18 +414,20 @@ class GameStateManager:
         return (unique_code, room_code)
 
     def init_game_state(self, unique_code: str, level: int,
-                        room_code: str | None = None) -> dict:
+                        room_code: str | None = None,
+                        theme: str = "bingo") -> dict:
         """Initialize a new game state for a player at a given level.
 
         Generates the tile layout using config and stores it in memory.
         Returns the new game state dict.
         """
         level = max(1, min(60, level))
-        layout = self.generate_level(level)
+        layout = self.generate_level(level, theme=theme)
         state = {
             "unique_code": unique_code,
             "room_code": room_code,
             "level": level,
+            "theme": theme,
             "tiles": layout["tiles"],
             "slots": [],
             "remaining": len(layout["tiles"]),
@@ -524,9 +540,9 @@ class GameStateManager:
                 continue
             if other.get("layer", 0) <= tile_layer:
                 continue
-            # Check overlap: distance < tile_size in both axes
-            if (abs(other["x"] - tile["x"]) < TILE_SIZE
-                    and abs(other["y"] - tile["y"]) < TILE_SIZE):
+            # Check overlap: distance < tile dimensions in both axes
+            if (abs(other["x"] - tile["x"]) < TILE_W
+                    and abs(other["y"] - tile["y"]) < TILE_H):
                 raise ValueError(f"Tile {tile_id} is blocked")
 
         # Move tile to slots (preserve original position for undo)
@@ -706,12 +722,12 @@ class GameStateManager:
         self._states.pop(key, None)
         self._persisted.pop(key, None)
 
-    def generate_level(self, level: int) -> dict:
+    def generate_level(self, level: int, theme: str = "bingo") -> dict:
         """Generate tile layout for a level using config and shape functions.
 
         Mirrors the initLevel() logic from single.html:
         1. Load level config (image_count, copies, layers, shape)
-        2. Select random images, create tile copies (multiples of 3)
+        2. Select random images from theme directory
         3. Distribute tiles across layers (bottom gets most)
         4. Position tiles using shape-based grid positions
         5. Apply layer offsets for 3D depth effect
@@ -719,7 +735,29 @@ class GameStateManager:
         Returns dict with "tiles" list.
         """
         config = _load_config(self._config_path)
-        all_images = _list_images(self._static_dir)
+
+        # Determine image directory based on theme
+        themes = config.get("themes", [])
+        theme_tile_dir = None
+        for t in themes:
+            if t.get("id") == theme:
+                theme_tile_dir = t.get("tile_dir")
+                break
+
+        if theme_tile_dir:
+            # Resolve to filesystem path for listing
+            theme_static_path = os.path.join(
+                os.path.dirname(self._config_path), "..",
+                "static", theme
+            )
+            theme_static_path = os.path.normpath(theme_static_path)
+            all_images = _list_images_for_theme(
+                theme_static_path, theme_tile_dir
+            )
+        else:
+            all_images = _list_images(self._static_dir)
+
+        levels = config.get("levels", {})
         levels = config.get("levels", {})
 
         level_key = str(level)
@@ -745,7 +783,7 @@ class GameStateManager:
             )
         else:
             # Fallback if no images available
-            selected = [f"/static/{i + 1}.PNG" for i in range(num_images)]
+            selected = [f"/static/bingo/{i + 1}.PNG" for i in range(num_images)]
 
         # Create tile data with copies
         tile_data = []
@@ -822,10 +860,10 @@ class GameStateManager:
                 sy = cy + (pos["y"] - cy) * scale
 
                 # Convert to pixel coordinates
-                px = sx * (BOARD_W - TILE_SIZE) + layer_offset_px
-                py = sy * (BOARD_H - TILE_SIZE) - layer_offset_px
-                px = max(0, min(BOARD_W - TILE_SIZE, px))
-                py = max(0, min(BOARD_H - TILE_SIZE, py))
+                px = sx * (BOARD_W - TILE_W) + layer_offset_px
+                py = sy * (BOARD_H - TILE_H) - layer_offset_px
+                px = max(0, min(BOARD_W - TILE_W, px))
+                py = max(0, min(BOARD_H - TILE_H, py))
 
                 t["x"] = round(px, 2)
                 t["y"] = round(py, 2)

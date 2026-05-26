@@ -1210,9 +1210,9 @@ class TestLevelCompletion:
             "type": "select_tile", "tile_id": 0
         })
 
-        # Verify the player's level was updated
+        # Verify the player's level was NOT updated (multiplayer doesn't advance level)
         new_level = um.get_current_level("owner1")
-        assert new_level == 2
+        assert new_level == 1
 
         owner_client.disconnect()
         player2_client.disconnect()

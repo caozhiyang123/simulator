@@ -7,6 +7,7 @@ to JSON files in the config/ directory.
 import json
 import os
 import uuid
+from datetime import datetime, timezone
 
 
 ROUND_STATS_PATH = os.path.join(
@@ -93,6 +94,7 @@ class StatisticsManager:
             "total_spend": total_spend,
             "total_win": total_win,
             "room_id": room_id,
+            "time": datetime.now(timezone.utc).isoformat(),
         }
         data = self._load_json(self._round_stats_path)
         data.append(record)
