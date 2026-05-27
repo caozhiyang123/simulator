@@ -5,11 +5,13 @@
     "level_up_score_multiplier": 99999
   },
   "multiplayer": {
-    "2player_target_score": 100,
+    "2player_target_score": 50,
     "3player_target_score": 150,
     "4player_target_score": 200,
     "death_fragments": 10,
-    "fragment_score": 3
+    "fragment_score": 3,
+    "countdown_seconds": 3,
+    "death_choice_seconds": 3
   },
   "controls": {
     "up": [

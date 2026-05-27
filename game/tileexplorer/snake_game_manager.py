@@ -84,14 +84,28 @@ class SnakeGameRoom:
 
     def add_player(self, username, unique_code):
         """Add a player to the room."""
-        if username in self.players:
-            return
-        player = SnakePlayer(username, unique_code)
-        self.players[username] = player
-        self.player_order.append(username)
+        if username not in self.players:
+            player = SnakePlayer(username, unique_code)
+            self.players[username] = player
+            self.player_order.append(username)
+        # Mark as connected
+        if not hasattr(self, 'connected_players'):
+            self.connected_players = set()
+        self.connected_players.add(username)
+
+    def remove_connected(self, username):
+        """Mark a player as disconnected."""
+        if hasattr(self, 'connected_players'):
+            self.connected_players.discard(username)
 
     def is_full(self):
         return len(self.players) >= self.player_count
+
+    def all_connected(self):
+        """Check if all registered players are currently connected."""
+        if not hasattr(self, 'connected_players'):
+            return False
+        return len(self.connected_players) >= self.player_count
 
     def start_game(self, difficulty=1):
         """Initialize game state and start."""
@@ -100,6 +114,7 @@ class SnakeGameRoom:
         self.all_dead = False
         self.difficulty = difficulty
         self.rematch_votes.clear()
+        # Don't clear connected_players here — they're already connected
 
         cfg = self.config
         level_cfg = self._get_level_config(difficulty)

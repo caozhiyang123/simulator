@@ -67,6 +67,16 @@ canvas { border: 2px solid #2a4a2a; border-radius: 8px; background: #0d1f0d; dis
   </div>
 </div>
 
+<!-- Death Choice Modal (individual player death) -->
+<div class="modal-overlay" id="deathModal" style="display:none;">
+  <div class="modal-box">
+    <h2>💀 You Died!</h2>
+    <p>Retry or return to lobby? (<span id="deathCountdown">3</span>s)</p>
+    <button onclick="deathRetry()">Retry</button>
+    <button onclick="window.location.href='/'">Back to Lobby</button>
+  </div>
+</div>
+
 <!-- All Dead Modal -->
 <div class="modal-overlay" id="allDeadModal">
   <div class="modal-box">
@@ -139,8 +149,24 @@ socket.on('connect', function() {
   console.log('Connected to snake battle room');
 });
 
+socket.on('snake_countdown', function(data) {
+  document.getElementById('waitingOverlay').innerHTML = '<span style="font-size:48px;font-weight:bold;">' + data.seconds + '</span>';
+  var count = data.seconds;
+  var timer = setInterval(function() {
+    count--;
+    if (count <= 0) {
+      clearInterval(timer);
+      document.getElementById('waitingOverlay').style.display = 'none';
+    } else {
+      document.getElementById('waitingOverlay').innerHTML = '<span style="font-size:48px;font-weight:bold;">' + count + '</span>';
+    }
+  }, 1000);
+  document.getElementById('diffLevel').textContent = data.difficulty || 1;
+});
+
 socket.on('snake_game_start', function(data) {
   gameStarted = true;
+  myAlive = true;
   myId = data.my_id;
   gameState = data.state;
   document.getElementById('waitingOverlay').style.display = 'none';
@@ -149,30 +175,52 @@ socket.on('snake_game_start', function(data) {
   draw();
 });
 
+var myAlive = true;
+var deathTimer = null;
+
 socket.on('snake_state_update', function(data) {
   gameState = data.state;
   renderScoreboard();
   draw();
+
+  // Check if I just died (but game continues for others)
+  if (myAlive && gameState.players && myId !== null) {
+    var me = gameState.players[myId];
+    if (me && !me.alive && !data.winner) {
+      myAlive = false;
+      showDeathChoice();
+    }
+  }
+
   // Check win condition
   if (data.winner) {
+    clearDeathTimer();
     if (data.winner === USERNAME) {
       document.getElementById('resultTitle').textContent = '🏆 Victory!';
-      document.getElementById('resultMsg').textContent = 'You reached ' + targetScore + ' points! Coins rewarded.';
+      document.getElementById('resultMsg').textContent = 'You reached ' + targetScore + ' points! +' + (data.reward || 10) + ' coins!';
+      // Coin fly animation
+      setTimeout(function() { playCoinAnimation(data.reward || 10); }, 500);
     } else {
       document.getElementById('resultTitle').textContent = '😢 Defeat';
       document.getElementById('resultMsg').textContent = data.winner + ' won the game.';
     }
     document.getElementById('resultModal').style.display = 'flex';
+    document.getElementById('deathModal').style.display = 'none';
   }
 });
 
 socket.on('snake_all_dead', function(data) {
+  clearDeathTimer();
+  document.getElementById('deathModal').style.display = 'none';
   document.getElementById('allDeadModal').style.display = 'flex';
 });
 
 socket.on('snake_rematch_start', function(data) {
   document.getElementById('resultModal').style.display = 'none';
   document.getElementById('allDeadModal').style.display = 'none';
+  document.getElementById('deathModal').style.display = 'none';
+  clearDeathTimer();
+  myAlive = true;
   gameState = data.state;
   myId = data.my_id;
   renderScoreboard();
@@ -187,6 +235,32 @@ function requestRematch() {
   socket.emit('snake_rematch', {});
   document.getElementById('resultModal').style.display = 'none';
   document.getElementById('allDeadModal').style.display = 'none';
+  document.getElementById('deathModal').style.display = 'none';
+}
+
+function showDeathChoice() {
+  var seconds = (config && config.multiplayer) ? config.multiplayer.death_choice_seconds || 3 : 3;
+  document.getElementById('deathCountdown').textContent = seconds;
+  document.getElementById('deathModal').style.display = 'flex';
+  var count = seconds;
+  deathTimer = setInterval(function() {
+    count--;
+    document.getElementById('deathCountdown').textContent = count;
+    if (count <= 0) {
+      clearDeathTimer();
+      window.location.href = '/';
+    }
+  }, 1000);
+}
+
+function clearDeathTimer() {
+  if (deathTimer) { clearInterval(deathTimer); deathTimer = null; }
+}
+
+function deathRetry() {
+  clearDeathTimer();
+  document.getElementById('deathModal').style.display = 'none';
+  // Stay and watch, or request rematch when game ends
 }
 
 // Keyboard controls
@@ -279,6 +353,47 @@ var toggleInv = document.getElementById('toggleInvitation');
 if (toggleInv) toggleInv.addEventListener('change', function(e) {
   fetch('/api/rooms/' + ROOM_CODE + '/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({spectator_requires_invitation:e.target.checked}) });
 });
+
+// Coin fly animation for winner
+function playCoinAnimation(reward) {
+  var count = Math.min(reward, 15);
+  var coins = [];
+  for (var i = 0; i < count; i++) {
+    (function(idx) {
+      setTimeout(function() {
+        var coin = document.createElement('div');
+        var ox = (Math.random() - 0.5) * 160;
+        var oy = (Math.random() - 0.5) * 120;
+        coin.style.cssText = 'position:fixed;top:calc(50% + ' + oy + 'px);left:calc(50% + ' + ox + 'px);transform:translate(-50%,-50%);width:40px;height:40px;z-index:' + (200+idx) + ';pointer-events:none;opacity:0;transition:opacity 0.2s;';
+        coin.innerHTML = '<img src="/static/icon/coins.png" style="width:100%;height:100%;">';
+        document.body.appendChild(coin);
+        coins.push(coin);
+        requestAnimationFrame(function() { coin.style.opacity = '1'; });
+      }, idx * 60);
+    })(i);
+  }
+  setTimeout(function() {
+    var target = document.getElementById('coinDisplay');
+    var rect = target ? target.getBoundingClientRect() : {top:16,left:window.innerWidth-100};
+    coins.forEach(function(c, idx) {
+      setTimeout(function() {
+        c.style.transition = 'all 0.5s ease-in';
+        c.style.top = rect.top + 'px';
+        c.style.left = rect.left + 'px';
+        c.style.transform = 'scale(0.3)';
+        c.style.opacity = '0.5';
+      }, idx * 30);
+    });
+    setTimeout(function() {
+      coins.forEach(function(c) { if(c.parentNode) c.parentNode.removeChild(c); });
+      // Refresh coin display
+      fetch('/api/coins').then(function(r){return r.json();}).then(function(d){
+        var el = document.getElementById('coinDisplay');
+        if (el && d.coins !== undefined) el.innerHTML = '<img src="/static/icon/coins.png" style="width:20px;height:20px;"> ' + d.coins;
+      }).catch(function(){});
+    }, count * 30 + 600);
+  }, 1500);
+}
 
 // Initial draw
 draw();

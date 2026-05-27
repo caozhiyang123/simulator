@@ -340,6 +340,14 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
         if unique_code:
             _unique_code_to_sid.pop(unique_code, None)
 
+        # Remove from snake room connected players
+        try:
+            snake_room = _snake_mgr.get_room(room_code)
+            if snake_room and username:
+                snake_room.remove_connected(username)
+        except NameError:
+            pass
+
         # Start idle timer for disconnected player
         if unique_code:
             idle_timer_manager.reset_timer(unique_code)
@@ -902,9 +910,9 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
             room = _snake_mgr.create_room(room_code, 2)
         room.add_player(username, unique_code)
 
-        # Check if room is full and ready to start/restart
+        # Check if all players are connected and ready to start/restart
         should_start = False
-        if room.is_full():
+        if room.is_full() and room.all_connected():
             if not room.started:
                 should_start = True
             elif room.winner or room.all_dead:
@@ -927,23 +935,39 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
             for lv in avail:
                 if lv <= mid_level:
                     difficulty = lv
-            room.start_game(difficulty)
-            _start_snake_loop(room_code)
 
-            # Emit game_start to each player
-            conn = _room_connections.get(room_code, {})
-            for i, u in enumerate(room.player_order):
-                p_sid = None
-                if conn.get("owner_username") == u:
-                    p_sid = conn.get("owner_sid")
-                elif conn.get("player2_username") == u:
-                    p_sid = conn.get("player2_sid")
-                if p_sid:
-                    emit("snake_game_start", {
-                        "state": room.get_state(),
-                        "my_id": i,
-                        "difficulty": difficulty,
-                    }, to=p_sid)
+            # Get countdown duration from config
+            mp_cfg = cfg.get("multiplayer", {})
+            countdown = mp_cfg.get("countdown_seconds", 3)
+
+            # Emit countdown to all players
+            socketio.emit("snake_countdown", {
+                "seconds": countdown,
+                "difficulty": difficulty,
+            }, to=room_code)
+
+            # Start game after countdown
+            def _delayed_start(rc, rm, diff):
+                socketio.sleep(countdown)
+                rm.start_game(diff)
+                _start_snake_loop(rc)
+                conn = _room_connections.get(rc, {})
+                for i, u in enumerate(rm.player_order):
+                    p_sid = None
+                    if conn.get("owner_username") == u:
+                        p_sid = conn.get("owner_sid")
+                    elif conn.get("player2_username") == u:
+                        p_sid = conn.get("player2_sid")
+                    if p_sid:
+                        socketio.emit("snake_game_start", {
+                            "state": rm.get_state(),
+                            "my_id": i,
+                            "difficulty": diff,
+                        }, to=p_sid)
+
+            socketio.start_background_task(
+                _delayed_start, room_code, room, difficulty
+            )
 
     def _start_snake_loop(room_code):
         """Start the server-side game loop for a snake room."""
@@ -969,8 +993,6 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
 
                 # Broadcast state
                 data = {"state": state, "winner": room.winner}
-                socketio.emit("snake_state_update", data,
-                              to=room_code)
 
                 if room.winner:
                     # Award coins to winner
@@ -978,6 +1000,22 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
                     reward = gs.get("snake", {}).get(
                         "battle_win_reward", 10)
                     user_manager.add_coins(room.winner, reward)
+                    data["reward"] = reward
+
+                    # Record session win
+                    if statistics_manager:
+                        for sid, sdata in (
+                            statistics_manager._active_sessions.items()
+                        ):
+                            if sdata.get("username") == room.winner:
+                                statistics_manager.record_session_win(
+                                    sid, reward)
+                                break
+
+                socketio.emit("snake_state_update", data,
+                              to=room_code)
+
+                if room.winner:
                     _snake_loops.pop(room_code, None)
                     break
 
@@ -993,14 +1031,15 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
 
     def _load_game_setting_for_snake():
         try:
+            import json as _json
             import os as _os
             path = _os.path.join(
                 _os.path.dirname(__file__),
                 "config", "game_setting.json"
             )
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, json.JSONDecodeError):
+                return _json.load(f)
+        except (OSError, ValueError):
             return {}
 
     # Start background task for room auto-close monitoring
