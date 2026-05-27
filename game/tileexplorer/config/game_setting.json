@@ -9,5 +9,9 @@
   "minesweeper": {
     "single_mode_cost": 5,
     "battle_win_reward": 10
+  },
+  "snake": {
+    "single_mode_cost": 5,
+    "battle_win_reward": 10
   }
 }

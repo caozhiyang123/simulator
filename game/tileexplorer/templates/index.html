@@ -326,6 +326,9 @@ h1 {
     <div class="sidebar-item" data-tab="minesweeper" onclick="switchTab('minesweeper')">
       <span>💣</span> Minesweeper
     </div>
+    <div class="sidebar-item" data-tab="snake" onclick="switchTab('snake')">
+      <span>🐍</span> Snake
+    </div>
   </nav>
 
   <!-- Main content area -->
@@ -373,6 +376,29 @@ h1 {
         </div>
         <div class="mode-card" onclick="enterMinesweeper('4player')" tabindex="0">
           <img class="mode-img" src="/static/player/minesweeper/4player.PNG" alt="Four Player" onerror="this.style.background='#333';this.alt='4P';">
+          <span class="mode-label">4 Player</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Snake tab -->
+    <div class="tab-content" id="tab-snake">
+      <div class="section-title">Snake</div>
+      <div class="actions-row">
+        <div class="mode-card" onclick="enterSnake('single')" tabindex="0">
+          <img class="mode-img" src="/static/player/snake/1player.PNG" alt="Single Player" onerror="this.style.background='#333';this.alt='1P';">
+          <span class="mode-label">Single</span>
+        </div>
+        <div class="mode-card" onclick="enterSnake('2player')" tabindex="0">
+          <img class="mode-img" src="/static/player/snake/2player.PNG" alt="Two Player" onerror="this.style.background='#333';this.alt='2P';">
+          <span class="mode-label">2 Player</span>
+        </div>
+        <div class="mode-card" onclick="enterSnake('3player')" tabindex="0">
+          <img class="mode-img" src="/static/player/snake/3player.PNG" alt="Three Player" onerror="this.style.background='#333';this.alt='3P';">
+          <span class="mode-label">3 Player</span>
+        </div>
+        <div class="mode-card" onclick="enterSnake('4player')" tabindex="0">
+          <img class="mode-img" src="/static/player/snake/4player.PNG" alt="Four Player" onerror="this.style.background='#333';this.alt='4P';">
           <span class="mode-label">4 Player</span>
         </div>
       </div>
@@ -448,7 +474,7 @@ h1 {
     if (mode === 'single') {
       if (playerCoins < singleModeCost) {
         if (confirm('Insufficient coins. Watch an ad to earn coins?')) {
-          fetch('/api/coins/watch-ad', { method: 'POST' })
+          fetch('/api/coins/watch-ad', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({game_name:'single_minesweeper'}) })
             .then(function(resp) { return resp.json(); })
             .then(function(data) {
               if (data.coins !== undefined) {
@@ -472,6 +498,50 @@ h1 {
         }).catch(function() { showToast('Network error.'); });
     } else {
       showToast('Minesweeper ' + mode + ' mode coming soon!');
+    }
+  };
+
+  // --- Snake ---
+  window.enterSnake = function(mode) {
+    if (mode === 'single') {
+      if (playerCoins < singleModeCost) {
+        if (confirm('Insufficient coins. Watch an ad to earn coins?')) {
+          fetch('/api/coins/watch-ad', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({game_name:'single_snake'}) })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+              if (data.coins !== undefined) {
+                playerCoins = data.coins;
+                document.getElementById('coinDisplay').innerHTML = '<img src="/static/icon/coins.png" style="width:20px;height:20px;vertical-align:middle;"> ' + data.coins;
+                showToast('Earned coins!');
+              }
+            }).catch(function() {});
+        }
+        return;
+      }
+      fetch('/api/coins/deduct-single', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({game_name: 'single_snake'}) })
+        .then(function(resp) { return resp.json().then(function(d) { return { ok: resp.ok, data: d }; }); })
+        .then(function(result) {
+          if (result.ok) {
+            window.location.href = '/snake?mode=single';
+          } else {
+            showToast(result.data.error || 'Insufficient coins');
+            loadCoins();
+          }
+        }).catch(function() { showToast('Network error.'); });
+    } else if (mode === '2player') {
+      // Create room for snake battle
+      fetch('/api/set-game-name', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({game_name: '2player_snake'}) });
+      fetch('/api/rooms/create', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({game_name: '2player_snake'}) })
+        .then(function(resp) { return resp.json().then(function(d) { return { ok: resp.ok, data: d }; }); })
+        .then(function(result) {
+          if (result.ok && result.data.redirect) {
+            window.location.href = result.data.redirect;
+          } else {
+            showToast(result.data.error || 'Failed to create room');
+          }
+        }).catch(function() { showToast('Network error.'); });
+    } else {
+      showToast('Snake ' + mode + ' mode coming soon!');
     }
   };
 
@@ -500,8 +570,16 @@ h1 {
       return;
     }
 
+    // Game mode image map
+    var gameModeImg = {
+      '2player_snake': '/static/player/snake/2player.PNG',
+      '2player_bingo': '/static/player/bingo/2player.PNG',
+      '2player_majiang': '/static/player/majiang/2player.PNG',
+      '2player_poker': '/static/player/poker/2player.PNG',
+    };
+
     var html = '<table class="room-table" role="grid">';
-    html += '<thead><tr><th>Room</th><th>Status</th><th>Actions</th></tr></thead>';
+    html += '<thead><tr><th></th><th>Room</th><th>Status</th><th>Actions</th></tr></thead>';
     html += '<tbody>';
 
     for (var i = 0; i < rooms.length; i++) {
@@ -511,25 +589,34 @@ h1 {
       var statusClass = isFull ? 'status-playing' : 'status-waiting';
       var statusText = playerCount + '/2';
       var alias = truncateUsername(room.alias || 'Unknown', 20);
+      var gameName = room.game_name || '';
+
+      // Determine correct URL based on game_name
+      var roomUrl = '/battle/' + room.unique_code;
+      if (gameName.indexOf('snake') !== -1) {
+        roomUrl = '/snake/battle/' + room.unique_code;
+      }
+
+      // Game mode image
+      var modeImg = gameModeImg[gameName] || '/static/icon/icon.png';
 
       // Check if current user is a member of this room
       var isMember = room.is_member || room.room_owner === rawUsername || room.player2_username === rawUsername;
 
       html += '<tr>';
+      html += '<td><img src="' + modeImg + '" style="width:28px;height:28px;border-radius:4px;object-fit:cover;" onerror="this.style.display=\'none\'"></td>';
       html += '<td>' + escapeHtml(alias) + '</td>';
       html += '<td><span class="' + statusClass + '">' + statusText + '</span></td>';
       html += '<td>';
 
       if (isMember) {
-        // Show Rejoin button for rooms where user is a member
-        html += '<button class="btn-rejoin" onclick="window.location.href=\'/battle/' + escapeHtml(room.unique_code) + '\'">Rejoin</button>';
+        html += '<button class="btn-rejoin" onclick="window.location.href=\'' + roomUrl + '\'">Rejoin</button>';
       } else if (isFull) {
         html += '<button class="btn-join" disabled title="Room is full">Join</button>';
       } else {
         html += '<button class="btn-join" data-room-code="' + escapeHtml(room.unique_code) + '" onclick="window._openJoinModal(this)">Join</button>';
       }
 
-      // Spectate button - only shown when room has 2 players and user is not a member
       if (isFull && !isMember) {
         html += '<button class="btn-spectate" data-room-code="' + escapeHtml(room.unique_code) + '" data-requires-invite="' + (room.spectator_requires_invitation ? 'true' : 'false') + '" data-spectator-enabled="' + (room.spectator_access_enabled ? 'true' : 'false') + '" onclick="window._spectateRoom(this)">Spectate</button>';
       }
@@ -540,7 +627,6 @@ h1 {
 
     html += '</tbody></table>';
     container.innerHTML = html;
-    // Also update Triple Match tab room list
     var tmContainer = document.getElementById('roomListContentTM');
     if (tmContainer) tmContainer.innerHTML = html;
   }
@@ -608,18 +694,27 @@ h1 {
         '2player_minesweeper': '/static/player/minesweeper/2player.PNG',
         '3player_minesweeper': '/static/player/minesweeper/3player.PNG',
         '4player_minesweeper': '/static/player/minesweeper/4player.PNG',
+        'single_snake': '/static/player/snake/1player.PNG',
+        '2player_snake': '/static/player/snake/2player.PNG',
+        '3player_snake': '/static/player/snake/3player.PNG',
+        '4player_snake': '/static/player/snake/4player.PNG',
       };
-      var gameUrlMap = {
-        'single_bingo': '/single?theme=bingo',
-        'single_majiang': '/single?theme=majiang',
-        'single_poker': '/single?theme=poker',
-        'single_minesweeper': '/minesweeper?mode=single',
+      var gameEntryMap = {
+        'single_bingo': "window.enterSingleMode(event,'bingo')",
+        'single_majiang': "window.enterSingleMode(event,'majiang')",
+        'single_poker': "window.enterSingleMode(event,'poker')",
+        'single_minesweeper': "window.enterMinesweeper('single')",
+        'single_snake': "window.enterSnake('single')",
       };
       var html = '';
       games.forEach(function(g) {
         var img = gameImageMap[g.game_name] || '/static/icon/icon.png';
-        var url = gameUrlMap[g.game_name] || '#';
-        html += '<div class="mode-card" onclick="window.location.href=\'' + url + '\'" tabindex="0">';
+        var entry = gameEntryMap[g.game_name] || '';
+        if (entry) {
+          html += '<div class="mode-card" onclick="' + entry + '" tabindex="0">';
+        } else {
+          html += '<div class="mode-card" tabindex="0">';
+        }
         html += '<img class="mode-img" src="' + img + '" alt="' + g.game_name + '" onerror="this.style.background=\'#333\'">';
         html += '</div>';
       });
@@ -657,9 +752,10 @@ h1 {
 
   // --- Multiplayer with theme ---
   window.enterMultiMode = function(theme) {
+    var gameName = '2player_' + (theme || 'bingo');
     // Track game name for recent games
-    fetch('/api/set-game-name', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({game_name: '2player_' + (theme || 'bingo')}) });
-    fetch('/api/rooms/create', { method: 'POST' })
+    fetch('/api/set-game-name', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({game_name: gameName}) });
+    fetch('/api/rooms/create', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({game_name: gameName}) })
       .then(function(resp) { return resp.json().then(function(d) { return { ok: resp.ok, data: d }; }); })
       .then(function(result) {
         if (result.ok && result.data.redirect) {
@@ -683,7 +779,7 @@ h1 {
     theme = theme || 'bingo';
     if (playerCoins < singleModeCost) {
       if (confirm('Insufficient coins (' + playerCoins + '). Watch an ad to earn ' + singleModeCost + ' coins?')) {
-        fetch('/api/coins/watch-ad', { method: 'POST' })
+        fetch('/api/coins/watch-ad', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({game_name:'single_' + theme}) })
           .then(function(resp) { return resp.json(); })
           .then(function(data) {
             if (data.coins !== undefined) {

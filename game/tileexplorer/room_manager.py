@@ -57,7 +57,8 @@ class RoomManager:
         with open(self._room_list_path, "w", encoding="utf-8") as f:
             json.dump(rooms, f, ensure_ascii=False, indent=2)
 
-    def create_room(self, owner_username: str, owner_unique_code: str) -> dict:
+    def create_room(self, owner_username: str, owner_unique_code: str,
+                    game_name: str = "") -> dict:
         """Create a new room. Returns room dict or raises ValueError."""
         rooms = self._load_rooms()
 
@@ -95,6 +96,7 @@ class RoomManager:
         alias = owner_username[:20]
 
         room = {
+            "game_name": game_name,
             "alias": alias,
             "unique_code": room_code,
             "invitation_code": invitation_code,

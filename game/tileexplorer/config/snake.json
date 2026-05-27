@@ -1,0 +1,175 @@
+{
+  "scoring": {
+    "food_score": 10,
+    "ball_score": 5,
+    "level_up_score_multiplier": 99999
+  },
+  "multiplayer": {
+    "2player_target_score": 100,
+    "3player_target_score": 150,
+    "4player_target_score": 200,
+    "death_fragments": 10,
+    "fragment_score": 3
+  },
+  "controls": {
+    "up": [
+      "w",
+      "ArrowUp"
+    ],
+    "down": [
+      "s",
+      "ArrowDown"
+    ],
+    "left": [
+      "a",
+      "ArrowLeft"
+    ],
+    "right": [
+      "d",
+      "ArrowRight"
+    ]
+  },
+  "board": {
+    "width": 800,
+    "height": 600,
+    "grid_size": 20
+  },
+  "levels": {
+    "1": {
+      "speed_px_per_step": 10,
+      "steps_per_second": 6,
+      "initial_length": 3,
+      "snake_width": 16,
+      "max_length": 80,
+      "max_width": 24,
+      "growth_per_food": 1,
+      "food_count": 5,
+      "ball_count": 3,
+      "obstacle_count": 0,
+      "mine_count": 0,
+      "speed_zone_count": 0,
+      "slow_zone_count": 0,
+      "trap_count": 0,
+      "tolerance_frames": 3
+    },
+    "10": {
+      "speed_px_per_step": 20,
+      "steps_per_second": 6,
+      "initial_length": 3,
+      "snake_width": 16,
+      "max_length": 80,
+      "max_width": 24,
+      "growth_per_food": 1,
+      "food_count": 5,
+      "ball_count": 3,
+      "obstacle_count": 0,
+      "mine_count": 0,
+      "speed_zone_count": 0,
+      "slow_zone_count": 0,
+      "trap_count": 0,
+      "tolerance_frames": 3
+    },
+    "20": {
+      "speed_px_per_step": 20,
+      "steps_per_second": 6,
+      "initial_length": 3,
+      "snake_width": 16,
+      "max_length": 80,
+      "max_width": 24,
+      "growth_per_food": 1,
+      "food_count": 5,
+      "ball_count": 3,
+      "obstacle_count": 0,
+      "mine_count": 0,
+      "speed_zone_count": 0,
+      "slow_zone_count": 0,
+      "trap_count": 0,
+      "tolerance_frames": 3
+    },
+    "30": {
+      "speed_px_per_step": 20,
+      "steps_per_second": 7,
+      "initial_length": 3,
+      "snake_width": 16,
+      "max_length": 80,
+      "max_width": 24,
+      "growth_per_food": 1,
+      "food_count": 6,
+      "ball_count": 4,
+      "obstacle_count": 3,
+      "mine_count": 1,
+      "speed_zone_count": 1,
+      "slow_zone_count": 1,
+      "trap_count": 0,
+      "tolerance_frames": 3
+    },
+    "40": {
+      "speed_px_per_step": 20,
+      "steps_per_second": 7,
+      "initial_length": 4,
+      "snake_width": 17,
+      "max_length": 85,
+      "max_width": 25,
+      "growth_per_food": 2,
+      "food_count": 7,
+      "ball_count": 5,
+      "obstacle_count": 5,
+      "mine_count": 2,
+      "speed_zone_count": 2,
+      "slow_zone_count": 1,
+      "trap_count": 1,
+      "tolerance_frames": 2
+    },
+    "50": {
+      "speed_px_per_step": 20,
+      "steps_per_second": 8,
+      "initial_length": 4,
+      "snake_width": 18,
+      "max_length": 90,
+      "max_width": 26,
+      "growth_per_food": 2,
+      "food_count": 8,
+      "ball_count": 6,
+      "obstacle_count": 8,
+      "mine_count": 3,
+      "speed_zone_count": 2,
+      "slow_zone_count": 2,
+      "trap_count": 2,
+      "tolerance_frames": 2
+    },
+    "60": {
+      "speed_px_per_step": 20,
+      "steps_per_second": 10,
+      "initial_length": 5,
+      "snake_width": 20,
+      "max_length": 100,
+      "max_width": 28,
+      "growth_per_food": 3,
+      "food_count": 10,
+      "ball_count": 8,
+      "obstacle_count": 12,
+      "mine_count": 5,
+      "speed_zone_count": 3,
+      "slow_zone_count": 3,
+      "trap_count": 3,
+      "tolerance_frames": 1
+    },
+    "default": {
+      "speed_px_per_step": 20,
+      "steps_per_second": 6,
+      "initial_length": 3,
+      "snake_width": 16,
+      "max_length": 80,
+      "max_width": 24,
+      "growth_per_food": 1,
+      "food_count": 5,
+      "ball_count": 3,
+      "obstacle_count": 0,
+      "mine_count": 0,
+      "speed_zone_count": 0,
+      "slow_zone_count": 0,
+      "trap_count": 0,
+      "tolerance_frames": 3
+    }
+  }
+}

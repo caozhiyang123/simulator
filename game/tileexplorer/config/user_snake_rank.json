@@ -1,0 +1,20 @@
+[
+  {
+    "id": "08b13c16-c27a-4331-b9b5-5aeee2ea2b2e",
+    "username": "admin",
+    "unique_code": "8ee3fa17-260a-4ed6-bfd3-6d1c99c6dc23",
+    "score": 55
+  },
+  {
+    "id": "18aaea64-7410-4fce-ad18-df6771b06861",
+    "username": "michael",
+    "unique_code": "88e90ee9-9d2a-4439-89a8-d0059a582f9a",
+    "score": 30
+  },
+  {
+    "id": "f0b86537-bff2-4d78-a409-44e6e435de33",
+    "username": "aileen",
+    "unique_code": "2f2e5852-b963-4417-88d0-352dea8074e4",
+    "score": 20
+  }
+]

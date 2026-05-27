@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import uuid
+from datetime import datetime, timezone
 
 from flask import Flask, jsonify, render_template, request, session, redirect
 from flask_socketio import SocketIO
@@ -236,6 +237,122 @@ def minesweeper():
     return render_template("minesweeper.html", username=username, mode=mode)
 
 
+SNAKE_CONFIG_PATH = os.path.join(
+    os.path.dirname(__file__), "config", "snake.json"
+)
+
+
+@app.route("/snake")
+def snake():
+    """Serve snake game page."""
+    username = session.get("username", "")
+    mode = request.args.get("mode", "single")
+    return render_template("snake.html", username=username, mode=mode)
+
+
+@app.route("/snake/battle/<room_code>")
+def snake_battle(room_code):
+    """Serve snake multiplayer battle page."""
+    username = session.get("username", "")
+    # Check if user is room owner
+    rooms = room_manager.get_active_rooms()
+    is_owner = False
+    invitation_code = ""
+    for room in rooms:
+        if room.get("unique_code") == room_code:
+            if room.get("room_owner") == username:
+                is_owner = True
+                invitation_code = room.get("invitation_code", "")
+            break
+    return render_template("snake_battle.html",
+                           room_code=room_code,
+                           username=username,
+                           is_owner=is_owner,
+                           invitation_code=invitation_code)
+
+
+@app.route("/api/snake-config", methods=["GET"])
+def get_snake_config():
+    """Return snake game configuration."""
+    try:
+        with open(SNAKE_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        cfg = {}
+    return jsonify(cfg)
+
+
+@app.route("/api/player-level", methods=["GET"])
+def get_player_level():
+    """Return current player's level."""
+    username = session.get("username")
+    if not username:
+        return jsonify({"level": 1})
+    level = user_manager.get_current_level(username)
+    return jsonify({"level": level})
+
+
+SNAKE_STATS_PATH = os.path.join(
+    os.path.dirname(__file__), "config", "user_snake_rank.json"
+)
+
+
+@app.route("/api/snake-leaderboard", methods=["GET"])
+def get_snake_leaderboard():
+    """Return snake game leaderboard sorted by score descending."""
+    try:
+        with open(SNAKE_STATS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        data = []
+    # Each record is already one per user (highest score only)
+    leaderboard = sorted(
+        [{"username": r.get("username", ""), "score": r.get("score", 0)} for r in data if r.get("username")],
+        key=lambda x: x["score"], reverse=True
+    )
+    return jsonify({"leaderboard": leaderboard[:20]})
+
+
+@app.route("/api/snake-score", methods=["POST"])
+def post_snake_score():
+    """Record a snake game score (only keeps highest per user)."""
+    username = session.get("username")
+    unique_code = session.get("unique_code")
+    if not username:
+        return jsonify({"error": "Not authenticated"}), 401
+    data = request.get_json(force=True) or {}
+    score = data.get("score", 0)
+    try:
+        with open(SNAKE_STATS_PATH, "r", encoding="utf-8") as f:
+            records = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        records = []
+
+    # Find existing record for this user
+    existing = None
+    for r in records:
+        if r.get("username") == username and r.get("unique_code") == unique_code:
+            existing = r
+            break
+
+    if existing:
+        # Only update if new score is higher
+        if score > existing.get("score", 0):
+            existing["score"] = score
+    else:
+        # Create new record
+        records.append({
+            "id": str(uuid.uuid4()),
+            "username": username,
+            "unique_code": unique_code or "",
+            "score": score,
+        })
+
+    with open(SNAKE_STATS_PATH, "w", encoding="utf-8") as f:
+        json.dump(records, f, ensure_ascii=False, indent=2)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/battle/<room_code>")
 def battle(room_code):
     """Serve battle page for a specific room."""
@@ -409,18 +526,30 @@ def api_record_round():
     except (OSError, json.JSONDecodeError):
         cfg = {}
 
+    # Determine total_spend based on game type (cost was deducted at entry)
     total_spend = 0
-    total_win = 0
+    if "single" in game_name:
+        if "snake" in game_name:
+            total_spend = cfg.get("snake", {}).get("single_mode_cost", 5)
+        elif "minesweeper" in game_name:
+            total_spend = cfg.get("minesweeper", {}).get("single_mode_cost", 5)
+        else:
+            total_spend = cfg.get("triple_match", {}).get("single_mode_cost", 5)
 
+    total_win = 0
     if won and "2player" in game_name:
-        # Multiplayer win reward
-        ms_cfg = cfg.get("minesweeper", {})
-        reward = ms_cfg.get("battle_win_reward", 10)
+        if "snake" in game_name:
+            reward = cfg.get("snake", {}).get("battle_win_reward", 10)
+        elif "minesweeper" in game_name:
+            reward = cfg.get("minesweeper", {}).get("battle_win_reward", 10)
+        else:
+            reward = 10
         user_manager.add_coins(username, reward)
         total_win = reward
 
     round_id = statistics_manager.generate_id()
-    balance_after = user_manager.get_coins(username)
+    balance_before = coins + total_spend  # balance before entry cost was deducted
+    balance_after = user_manager.get_coins(username)  # after any win reward
 
     statistics_manager.record_round(
         round_id=round_id,
@@ -428,7 +557,7 @@ def api_record_round():
         unique_code=unique_code,
         level=level,
         coins=balance_after,
-        balance_before=coins,
+        balance_before=balance_before,
         balance_after=balance_after,
         total_spend=total_spend,
         total_win=total_win,
@@ -455,10 +584,16 @@ def get_coins():
     return jsonify({"coins": coins})
 
 
+USER_BONUS_PATH = os.path.join(
+    os.path.dirname(__file__), "config", "user_bonus.json"
+)
+
+
 @app.route("/api/coins/watch-ad", methods=["POST"])
 def watch_ad_for_coins():
     """Reward coins for watching an ad."""
     username = session.get("username")
+    unique_code = session.get("unique_code")
     if not username:
         return jsonify({"error": "Not authenticated"}), 401
     try:
@@ -467,7 +602,37 @@ def watch_ad_for_coins():
     except (OSError, json.JSONDecodeError):
         cfg = {}
     reward = cfg.get("ad_coin_reward", 5)
+    balance_before = user_manager.get_coins(username)
     new_balance = user_manager.add_coins(username, reward)
+
+    # Record bonus in user_bonus.json
+    data = request.get_json(force=True) or {}
+    game_name = data.get("game_name", "")
+    level = data.get("level", 1)
+
+    bonus_record = {
+        "round_id": str(uuid.uuid4()),
+        "username": username,
+        "unique_code": unique_code or "",
+        "level": level,
+        "coins": new_balance,
+        "balance_before": balance_before,
+        "balance_after": new_balance,
+        "total_spend": 0,
+        "total_win": reward,
+        "room_id": None,
+        "game_name": game_name,
+        "time": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        with open(USER_BONUS_PATH, "r", encoding="utf-8") as f:
+            bonus_data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        bonus_data = []
+    bonus_data.append(bonus_record)
+    with open(USER_BONUS_PATH, "w", encoding="utf-8") as f:
+        json.dump(bonus_data, f, ensure_ascii=False, indent=2)
+
     return jsonify({"coins": new_balance, "reward": reward})
 
 
@@ -478,7 +643,7 @@ def deduct_single_mode_cost():
     if not username:
         return jsonify({"error": "Not authenticated"}), 401
 
-    data = request.get_json(force=True) if request.is_json else {}
+    data = request.get_json(force=True) or {}
     game_name = data.get("game_name", "")
 
     try:
@@ -486,7 +651,16 @@ def deduct_single_mode_cost():
             cfg = json.load(f)
     except (OSError, json.JSONDecodeError):
         cfg = {}
-    cost = cfg.get("single_mode_cost", 5)
+
+    # Determine cost from game-specific config
+    cost = 5  # default
+    if "snake" in game_name:
+        cost = cfg.get("snake", {}).get("single_mode_cost", 5)
+    elif "minesweeper" in game_name:
+        cost = cfg.get("minesweeper", {}).get("single_mode_cost", 5)
+    else:
+        cost = cfg.get("triple_match", {}).get("single_mode_cost", 5)
+
     success = user_manager.deduct_coins(username, cost)
     if not success:
         return jsonify({"error": "Insufficient coins", "coins": user_manager.get_coins(username)}), 400
@@ -562,6 +736,7 @@ def _broadcast_room_list():
         if room.get("player2_username") is not None:
             player_count = 2
         result.append({
+            "game_name": room.get("game_name", ""),
             "alias": room.get("alias", ""),
             "unique_code": room.get("unique_code", ""),
             "player_count": player_count,
@@ -590,6 +765,7 @@ def get_rooms():
         is_member = (room.get("room_owner") == username
                      or room.get("player2_username") == username)
         result.append({
+            "game_name": room.get("game_name", ""),
             "alias": room.get("alias", ""),
             "unique_code": room.get("unique_code", ""),
             "player_count": player_count,
@@ -597,6 +773,8 @@ def get_rooms():
             "spectator_requires_invitation": room.get("spectator_requires_invitation", True),
             "spectator_count": len(room.get("spectators", [])),
             "is_member": is_member,
+            "room_owner": room.get("room_owner", ""),
+            "player2_username": room.get("player2_username", ""),
         })
     return jsonify({"rooms": result})
 
@@ -610,12 +788,23 @@ def create_room():
     if not username or not unique_code:
         return jsonify({"error": "Session missing user data"}), 401
 
+    data = request.get_json(silent=True) or {}
+    game_name = data.get("game_name", "")
+
     try:
-        room = room_manager.create_room(username, unique_code)
+        room = room_manager.create_room(username, unique_code,
+                                        game_name=game_name)
     except ValueError as e:
         return jsonify({"error": str(e)}), 409
 
     _broadcast_room_list()
+
+    # Determine redirect based on game_name
+    room_code = room["unique_code"]
+    if "snake" in game_name:
+        redirect_url = f"/snake/battle/{room_code}"
+    else:
+        redirect_url = f"/battle/{room_code}"
 
     return jsonify({
         "status": "ok",
@@ -625,7 +814,7 @@ def create_room():
             "invitation_code": room["invitation_code"],
             "room_owner": room["room_owner"],
         },
-        "redirect": f"/battle/{room['unique_code']}",
+        "redirect": redirect_url,
     })
 
 
@@ -660,9 +849,17 @@ def join_room():
 
     _broadcast_room_list()
 
+    # Determine redirect based on room's game_name
+    room_game = room.get("game_name", "")
+    room_code = room["unique_code"]
+    if "snake" in room_game:
+        redirect_url = f"/snake/battle/{room_code}"
+    else:
+        redirect_url = f"/battle/{room_code}"
+
     return jsonify({
         "status": "ok",
-        "redirect": f"/battle/{room['unique_code']}",
+        "redirect": redirect_url,
     })
 
 

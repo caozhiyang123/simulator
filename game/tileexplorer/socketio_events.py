@@ -229,6 +229,7 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
 
         # Determine if this player is the owner or player 2
         is_owner = (target_room.get("room_owner") == username)
+        game_type = request.args.get("game_type", "")
 
         # Track unique_code -> sid mapping for idle notifications
         _unique_code_to_sid[unique_code] = sid
@@ -241,15 +242,18 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
 
             # Check if player 2 is already connected
             if conn["player2_sid"] is not None:
-                # Both players connected — start game
-                _start_game(room_code, conn, game_state_manager,
-                            user_manager, theme=theme)
+                if game_type == "snake":
+                    _on_snake_player_join(room_code, username, unique_code)
+                else:
+                    _start_game(room_code, conn, game_state_manager,
+                                user_manager, theme=theme)
             else:
-                # Try to recover existing game state (reconnect)
-                _recover_multiplayer_state(
-                    unique_code, room_code, game_state_manager
-                )
-                # Owner is alone — emit waiting
+                if game_type == "snake":
+                    _on_snake_player_join(room_code, username, unique_code)
+                else:
+                    _recover_multiplayer_state(
+                        unique_code, room_code, game_state_manager
+                    )
                 emit("waiting_for_opponent", {})
         else:
             # Player 2
@@ -258,16 +262,17 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
             conn["player2_unique_code"] = unique_code
             _sid_to_room[sid] = (room_code, "player2")
 
-            # Notify owner that opponent joined
-            if conn["owner_sid"] is not None:
-                emit("player_joined", {"username": username},
-                     to=conn["owner_sid"])
-                # Both players connected — start game
-                _start_game(room_code, conn, game_state_manager,
-                            user_manager, theme=theme)
+            if game_type == "snake":
+                _on_snake_player_join(room_code, username, unique_code)
             else:
-                # Try to recover existing game state (reconnect)
-                _recover_multiplayer_state(
+                # Notify owner that opponent joined
+                if conn["owner_sid"] is not None:
+                    emit("player_joined", {"username": username},
+                         to=conn["owner_sid"])
+                    _start_game(room_code, conn, game_state_manager,
+                                user_manager, theme=theme)
+                else:
+                    _recover_multiplayer_state(
                     unique_code, room_code, game_state_manager
                 )
 
@@ -826,6 +831,177 @@ def register_socketio_events(socketio, room_manager, game_state_manager,
             # Start new game
             _start_game(room_code, conn, game_state_manager,
                         user_manager)
+
+    # --- Snake Multiplayer Events ---
+    from snake_game_manager import SnakeGameManager
+    _snake_mgr = SnakeGameManager()
+    _snake_loops = {}  # {room_code: True} tracks active game loops
+
+    @socketio.on("snake_direction")
+    def handle_snake_direction(data):
+        """Handle direction change from a snake player."""
+        username = session.get("username")
+        sid = request.sid
+        if sid not in _sid_to_room:
+            return
+        room_code, role = _sid_to_room[sid]
+        room = _snake_mgr.get_room(room_code)
+        if room and username:
+            room.set_direction(username, data.get("direction"))
+
+    @socketio.on("snake_rematch")
+    def handle_snake_rematch(data=None):
+        """Handle rematch vote for snake battle."""
+        username = session.get("username")
+        sid = request.sid
+        if sid not in _sid_to_room:
+            return
+        room_code, role = _sid_to_room[sid]
+        room = _snake_mgr.get_room(room_code)
+        if not room:
+            return
+        all_voted = room.vote_rematch(username)
+        if all_voted:
+            # Determine difficulty (median of player levels)
+            levels = []
+            for u in room.player_order:
+                levels.append(user_manager.get_current_level(u))
+            levels.sort()
+            mid_level = levels[len(levels) // 2]
+            # Find highest unlockable difficulty
+            cfg = room.config
+            avail = sorted(
+                [int(k) for k in cfg.get("levels", {}).keys()
+                 if k != "default"],
+            )
+            difficulty = 1
+            for lv in avail:
+                if lv <= mid_level:
+                    difficulty = lv
+            room.start_game(difficulty)
+            _start_snake_loop(room_code)
+            # Emit to all players
+            for u in room.player_order:
+                conn = _room_connections.get(room_code, {})
+                p_sid = None
+                if conn.get("owner_username") == u:
+                    p_sid = conn.get("owner_sid")
+                elif conn.get("player2_username") == u:
+                    p_sid = conn.get("player2_sid")
+                if p_sid:
+                    idx = room.player_order.index(u)
+                    emit("snake_rematch_start", {
+                        "state": room.get_state(),
+                        "my_id": idx,
+                    }, to=p_sid)
+
+    def _on_snake_player_join(room_code, username, unique_code):
+        """Called when a player joins a snake battle room."""
+        room = _snake_mgr.get_room(room_code)
+        if not room:
+            room = _snake_mgr.create_room(room_code, 2)
+        room.add_player(username, unique_code)
+
+        # Check if room is full and ready to start/restart
+        should_start = False
+        if room.is_full():
+            if not room.started:
+                should_start = True
+            elif room.winner or room.all_dead:
+                # Previous game ended — reset for new game
+                should_start = True
+
+        if should_start:
+            # Determine difficulty
+            levels = []
+            for u in room.player_order:
+                levels.append(user_manager.get_current_level(u))
+            levels.sort()
+            mid_level = levels[len(levels) // 2]
+            cfg = room.config
+            avail = sorted(
+                [int(k) for k in cfg.get("levels", {}).keys()
+                 if k != "default"],
+            )
+            difficulty = 1
+            for lv in avail:
+                if lv <= mid_level:
+                    difficulty = lv
+            room.start_game(difficulty)
+            _start_snake_loop(room_code)
+
+            # Emit game_start to each player
+            conn = _room_connections.get(room_code, {})
+            for i, u in enumerate(room.player_order):
+                p_sid = None
+                if conn.get("owner_username") == u:
+                    p_sid = conn.get("owner_sid")
+                elif conn.get("player2_username") == u:
+                    p_sid = conn.get("player2_sid")
+                if p_sid:
+                    emit("snake_game_start", {
+                        "state": room.get_state(),
+                        "my_id": i,
+                        "difficulty": difficulty,
+                    }, to=p_sid)
+
+    def _start_snake_loop(room_code):
+        """Start the server-side game loop for a snake room."""
+        if room_code in _snake_loops:
+            return
+        _snake_loops[room_code] = True
+
+        def _loop():
+            room = _snake_mgr.get_room(room_code)
+            if not room:
+                _snake_loops.pop(room_code, None)
+                return
+            cfg = room.config
+            level_cfg = room._get_level_config(room.difficulty)
+            interval = 1.0 / (level_cfg.get("steps_per_second", 6))
+
+            while room_code in _snake_loops:
+                socketio.sleep(interval)
+                room = _snake_mgr.get_room(room_code)
+                if not room or not room.started:
+                    break
+                state = room.tick()
+
+                # Broadcast state
+                data = {"state": state, "winner": room.winner}
+                socketio.emit("snake_state_update", data,
+                              to=room_code)
+
+                if room.winner:
+                    # Award coins to winner
+                    gs = _load_game_setting_for_snake()
+                    reward = gs.get("snake", {}).get(
+                        "battle_win_reward", 10)
+                    user_manager.add_coins(room.winner, reward)
+                    _snake_loops.pop(room_code, None)
+                    break
+
+                if room.all_dead:
+                    socketio.emit("snake_all_dead", {},
+                                  to=room_code)
+                    _snake_loops.pop(room_code, None)
+                    break
+
+            _snake_loops.pop(room_code, None)
+
+        socketio.start_background_task(_loop)
+
+    def _load_game_setting_for_snake():
+        try:
+            import os as _os
+            path = _os.path.join(
+                _os.path.dirname(__file__),
+                "config", "game_setting.json"
+            )
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return {}
 
     # Start background task for room auto-close monitoring
     def _background_monitor():
