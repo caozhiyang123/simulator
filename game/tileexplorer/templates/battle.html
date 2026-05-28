@@ -23,9 +23,9 @@ h1 { margin-bottom: 4px; font-size: 24px; }
 .player-name { font-size: 16px; font-weight: bold; margin-bottom: 8px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
 .info { font-size: 14px; color: #aaa; margin-bottom: 12px; }
 
-.slots { display: flex; gap: 4px; margin-bottom: 8px; padding: 6px; background: rgba(255,255,255,0.1); border-radius: 12px; }
-.slot { width: var(--tile-width); height: var(--tile-height); border: 2px dashed rgba(255,255,255,0.3); border-radius: 10px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; }
-.slot img { width: var(--slot-img-width); height: var(--slot-img-height); object-fit: cover; border-radius: 6px; }
+.slots { display: flex; gap: 3px; margin-bottom: 8px; padding: 4px; background: rgba(255,255,255,0.1); border-radius: 12px; flex-wrap: nowrap; }
+.slot { width: var(--slot-width, var(--tile-width)); height: var(--slot-height, var(--tile-height)); border: 2px dashed rgba(255,255,255,0.3); border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.3s; flex-shrink: 0; }
+.slot img { width: 85%; height: 85%; object-fit: cover; border-radius: 6px; }
 
 .board { position: relative; width: 600px; height: 800px; }
 .tile { position: absolute; width: var(--tile-width); height: var(--tile-height); cursor: pointer; transition: transform 0.2s, opacity 0.3s; border-radius: 12px; overflow: hidden; box-shadow: 2px 2px 0 rgba(255,255,255,0.4), 1px 1px 3px rgba(0,0,0,0.3); border-bottom: var(--tile-depth-border) solid #FFFFFF; border-right: var(--tile-depth-border) solid #FFFFFF; }
@@ -206,8 +206,12 @@ fetch('/api/config')
     TILE_H = cfg.tile_height || 120;
     document.documentElement.style.setProperty('--tile-width', TILE_W + 'px');
     document.documentElement.style.setProperty('--tile-height', TILE_H + 'px');
-    document.documentElement.style.setProperty('--slot-img-width', Math.round(TILE_W * 0.85) + 'px');
-    document.documentElement.style.setProperty('--slot-img-height', Math.round(TILE_H * 0.85) + 'px');
+    // Calculate slot size for battle mode: 7 slots must fit within 580px (board width - padding)
+    var maxSlotW = Math.floor((580 - 6 * 3) / 7); // 580px available, 6 gaps of 3px
+    var slotW = Math.min(TILE_W, maxSlotW);
+    var slotH = Math.round(slotW * (TILE_H / TILE_W));
+    document.documentElement.style.setProperty('--slot-width', slotW + 'px');
+    document.documentElement.style.setProperty('--slot-height', slotH + 'px');
     updateUndoDisplay();
   }).catch(function() {});
 fetch('/api/ads-config')
