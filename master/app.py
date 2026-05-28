@@ -1083,6 +1083,68 @@ def worker_browse():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/files/master/upload", methods=["POST"])
+def master_upload():
+    """Upload a file from the browser to the master filesystem.
+
+    Form data: target_dir (absolute path on master)
+    File: file (multipart file upload)
+    """
+    target_dir = request.form.get("target_dir", "")
+    if not target_dir:
+        return jsonify({"error": "target_dir required"}), 400
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    uploaded = request.files["file"]
+    if not uploaded.filename:
+        return jsonify({"error": "Empty filename"}), 400
+
+    # Ensure target directory exists
+    os.makedirs(target_dir, exist_ok=True)
+    dest_path = os.path.join(target_dir, uploaded.filename)
+    try:
+        uploaded.save(dest_path)
+        return jsonify({"status": "ok", "path": dest_path})
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/remote/upload-browser", methods=["POST"])
+def remote_upload_browser():
+    """Upload a file from the browser to a remote worker.
+
+    Form data: addr, target_dir (absolute path on worker)
+    File: file (multipart file upload)
+    """
+    addr = request.form.get("addr", "")
+    target_dir = request.form.get("target_dir", "")
+
+    if not addr:
+        return jsonify({"error": "addr required"}), 400
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    uploaded = request.files["file"]
+    if not uploaded.filename:
+        return jsonify({"error": "Empty filename"}), 400
+
+    try:
+        files = {"file": (uploaded.filename, uploaded.stream,
+                          uploaded.content_type)}
+        r = http_requests.post(
+            f"http://{addr}/files/upload",
+            data={"path": target_dir},
+            files=files,
+            timeout=60,
+        )
+        return jsonify(r.json()), r.status_code
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/files/worker/upload", methods=["POST"])
 def worker_upload():
     """Upload a local file to a worker.

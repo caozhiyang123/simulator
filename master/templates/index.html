@@ -121,9 +121,11 @@
     <h2>📂 File Sync</h2>
     <div style="display:flex;gap:16px;min-height:300px;">
       <!-- Left: Local files -->
-      <div style="flex:1;border:1px solid #ddd;border-radius:6px;padding:8px;overflow:auto;">
+      <div style="flex:1;border:1px solid #ddd;border-radius:6px;padding:8px;overflow:auto;" ondragover="event.preventDefault();event.dataTransfer.dropEffect='copy';document.getElementById('localFileList').style.background='#e8f4e8'" ondragleave="document.getElementById('localFileList').style.background=''" ondrop="handleLocalDrop(event)">
         <div style="font-weight:600;font-size:13px;margin-bottom:6px;">Local Files (Master)
-          <button class="btn-danger btn-sm" onclick="deleteSelectedLocal()" style="margin-left:8px;">🗑 Delete</button>
+          <button class="btn btn-sm" onclick="document.getElementById('localUploadInput').click()" style="margin-left:8px;">📤 Upload</button>
+          <button class="btn-danger btn-sm" onclick="deleteSelectedLocal()" style="margin-left:4px;">🗑 Delete</button>
+          <input type="file" id="localUploadInput" multiple style="display:none;" onchange="uploadToMaster(this.files)">
         </div>
         <div id="localBreadcrumb" style="font-size:12px;color:#666;margin-bottom:4px;cursor:pointer;"></div>
         <div id="localFileList" style="font-size:13px;"></div>
@@ -132,7 +134,9 @@
       <div style="flex:1;border:1px solid #ddd;border-radius:6px;padding:8px;overflow:auto;" ondragover="event.preventDefault();event.dataTransfer.dropEffect='copy';document.getElementById('remoteFileList').style.background='#e8f4e8'" ondragleave="document.getElementById('remoteFileList').style.background=''" ondrop="handleDrop(event)">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
           <span style="font-weight:600;font-size:13px;">Remote Files</span>
-          <select id="syncWorkerSelect" onchange="loadRemoteDir('')" style="font-size:12px;padding:2px 6px;"></select>
+          <select id="syncWorkerSelect" onchange="loadRemoteDir('')" style="font-size:12px;padding:2px 6px;max-width:300px;"></select>
+          <button class="btn btn-sm" onclick="document.getElementById('remoteUploadInput').click()" style="font-size:11px;">📤 Upload</button>
+          <input type="file" id="remoteUploadInput" multiple style="display:none;" onchange="uploadToRemote(this.files)">
           <button class="btn-danger btn-sm" onclick="deleteSelectedRemote()">🗑 Delete</button>
         </div>
         <div id="remoteBreadcrumb" style="font-size:12px;color:#666;margin-bottom:4px;cursor:pointer;"></div>
@@ -1478,6 +1482,12 @@ async function handleDropOnDir(event, dirPath) {
 }
 
 async function uploadDroppedFiles(event, targetDir) {
+  // Check for native file drop from OS (browser File API)
+  if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+    await uploadNativeFilesToRemote(event.dataTransfer.files, targetDir);
+    return;
+  }
+  // Internal drag from master file list
   var data = event.dataTransfer.getData('application/json');
   if (!data) return;
   var files = JSON.parse(data);
@@ -1489,8 +1499,8 @@ async function uploadDroppedFiles(event, targetDir) {
     var f = files[i];
     var formData = new FormData();
     formData.append('addr', addr);
-    formData.append('rel_dir', targetDir);  // now absolute path on worker
-    formData.append('local_path', f.path);  // absolute path on master
+    formData.append('rel_dir', targetDir);
+    formData.append('local_path', f.path);
     try {
       var r = await fetch('/files/worker/upload', {method: 'POST', body: formData});
       var result = await r.json();
@@ -1504,12 +1514,75 @@ async function uploadDroppedFiles(event, targetDir) {
     }
   }
   log('📂 Upload complete');
-  // Refresh remote dir
   loadRemoteDir(targetDir);
-  // Clear selection
   document.querySelectorAll('#localFileList .file-item.selected').forEach(function(el) {
     el.classList.remove('selected');
   });
+}
+
+async function handleLocalDrop(event) {
+  event.preventDefault();
+  document.getElementById('localFileList').style.background = '';
+  if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+    await uploadToMaster(event.dataTransfer.files);
+  }
+}
+
+async function uploadToMaster(files) {
+  if (!files || files.length === 0) return;
+  var targetDir = localCurrentPath || '';
+  log('📤 Uploading ' + files.length + ' file(s) to Master: ' + targetDir);
+  for (var i = 0; i < files.length; i++) {
+    var formData = new FormData();
+    formData.append('target_dir', targetDir);
+    formData.append('file', files[i]);
+    try {
+      var r = await fetch('/files/master/upload', {method: 'POST', body: formData});
+      var result = await r.json();
+      if (r.ok) {
+        log('  ✅ ' + files[i].name);
+      } else {
+        log('  ❌ ' + files[i].name + ': ' + (result.error || 'failed'));
+      }
+    } catch(e) {
+      log('  ❌ ' + files[i].name + ': ' + e.message);
+    }
+  }
+  log('📤 Upload to Master complete');
+  loadLocalDir(targetDir);
+}
+
+async function uploadToRemote(files) {
+  if (!files || files.length === 0) return;
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  var targetDir = remoteCurrentPath || '';
+  await uploadNativeFilesToRemote(files, targetDir);
+}
+
+async function uploadNativeFilesToRemote(files, targetDir) {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  log('📤 Uploading ' + files.length + ' file(s) to Remote ' + addr + ':' + targetDir);
+  for (var i = 0; i < files.length; i++) {
+    var formData = new FormData();
+    formData.append('addr', addr);
+    formData.append('target_dir', targetDir);
+    formData.append('file', files[i]);
+    try {
+      var r = await fetch('/files/remote/upload-browser', {method: 'POST', body: formData});
+      var result = await r.json();
+      if (r.ok) {
+        log('  ✅ ' + files[i].name + ' → ' + targetDir);
+      } else {
+        log('  ❌ ' + files[i].name + ': ' + (result.error || 'failed'));
+      }
+    } catch(e) {
+      log('  ❌ ' + files[i].name + ': ' + e.message);
+    }
+  }
+  log('📤 Upload to Remote complete');
+  loadRemoteDir(targetDir);
 }
 
 // ---------------------------------------------------------------------------
