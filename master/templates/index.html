@@ -123,7 +123,7 @@
       <!-- Left: Local files -->
       <div style="flex:1;border:1px solid #ddd;border-radius:6px;padding:8px;overflow:auto;" ondragover="event.preventDefault();event.dataTransfer.dropEffect='copy';document.getElementById('localFileList').style.background='#e8f4e8'" ondragleave="document.getElementById('localFileList').style.background=''" ondrop="handleLocalDrop(event)">
         <div style="font-weight:600;font-size:13px;margin-bottom:6px;">Local Files (Master)
-          <button class="btn btn-sm" onclick="document.getElementById('localUploadInput').click()" style="margin-left:8px;">📤 Upload</button>
+          <button class="btn btn-success btn-sm" onclick="document.getElementById('localUploadInput').click()" style="margin-left:8px;">📤 Upload</button>
           <button class="btn-danger btn-sm" onclick="deleteSelectedLocal()" style="margin-left:4px;">🗑 Delete</button>
           <input type="file" id="localUploadInput" multiple style="display:none;" onchange="uploadToMaster(this.files)">
         </div>
@@ -132,12 +132,12 @@
       </div>
       <!-- Right: Remote worker files -->
       <div style="flex:1;border:1px solid #ddd;border-radius:6px;padding:8px;overflow:auto;" ondragover="event.preventDefault();event.dataTransfer.dropEffect='copy';document.getElementById('remoteFileList').style.background='#e8f4e8'" ondragleave="document.getElementById('remoteFileList').style.background=''" ondrop="handleDrop(event)">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <div style="display:flex;align-items:start;gap:8px;margin-bottom:6px;">
           <span style="font-weight:600;font-size:13px;">Remote Files</span>
-          <select id="syncWorkerSelect" onchange="loadRemoteDir('')" style="font-size:12px;padding:2px 6px;max-width:300px;"></select>
-          <button class="btn btn-sm" onclick="document.getElementById('remoteUploadInput').click()" style="font-size:11px;">📤 Upload</button>
+          <select id="syncWorkerSelect" onchange="loadRemoteDir('')" style="font-size:12px;padding:2px 6px;max-width:300px;height:24px;line-height:20px;"></select>
+          <button class="btn btn-success btn-sm" onclick="document.getElementById('remoteUploadInput').click()" style="font-size:11px;height:24px;line-height:20px;">📤 Upload</button>
           <input type="file" id="remoteUploadInput" multiple style="display:none;" onchange="uploadToRemote(this.files)">
-          <button class="btn-danger btn-sm" onclick="deleteSelectedRemote()">🗑 Delete</button>
+          <button class="btn-danger btn-sm" onclick="deleteSelectedRemote()" style="font-size:11px;height:24px;line-height:20px;">🗑 Delete</button>
         </div>
         <div id="remoteBreadcrumb" style="font-size:12px;color:#666;margin-bottom:4px;cursor:pointer;"></div>
         <div id="remoteFileList" style="font-size:13px;min-height:200px;"></div>
