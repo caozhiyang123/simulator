@@ -11,3 +11,4 @@ worker/dist
 windows
 ubuntu
 master/sha1
+master/cicd/logs
