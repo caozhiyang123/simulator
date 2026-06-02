@@ -5,3 +5,21 @@ pytest
 hypothesis
 pypdf
 paramiko
+
+#env
+apt install python3.12-venv
+python3 -m venv venv
+source venv/bin/activate
+pip install flask
+pip install psutil
+
+虚拟环境可用。两种方式：
+方式1:直接用虚拟环境的 python 路径
+& "e:\python\workSpace\simulator\.venv\Scripts\python.exe" your_script.py
+
+方式2:先激活虚拟环境再执行
+& "e:\python\workSpace\simulator\.venv\Scripts\Activate.ps1"
+python your_script.py
+
+方式1更简单,不需要激活。比如要在虚拟环境中运行 master
+& "e:\python\workSpace\simulator\.venv\Scripts\python.exe" e:\python\workSpace\simulator\master\a

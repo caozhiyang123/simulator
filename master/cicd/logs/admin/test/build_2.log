@@ -1,0 +1,23 @@
+Started by user admin
+Running as SYSTEM
+Building in workspace /cicd/workspace/test
+
+SSH: Connecting with configuration [b2b-development] ...
+SSH: Connected
+SSH: Opening exec channel ...
+SSH: EXEC: channel open
+SSH: EXEC: STDOUT/STDERR from command [echo "test1"]
+paramiko not installed. Run: pip install paramiko
+SSH: EXEC: completed
+SSH: Disconnecting configuration ...
+
+SSH: Connecting with configuration [b2b-development] ...
+SSH: Connected
+SSH: Opening exec channel ...
+SSH: EXEC: channel open
+SSH: EXEC: STDOUT/STDERR from command [echo "test2"]
+paramiko not installed. Run: pip install paramiko
+SSH: EXEC: completed
+SSH: Disconnecting configuration ...
+
+Finished: UNSTABLE

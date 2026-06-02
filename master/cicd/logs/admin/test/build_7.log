@@ -1,0 +1,17 @@
+Started by user admin
+Running as SYSTEM
+Building in workspace /cicd/workspace/test
+
+SSH: Connecting with configuration [b2b-development] ...
+SSH: Connected
+SSH: Opening exec channel ...
+SSH: EXEC: channel open
+SSH: EXEC: STDOUT/STDERR from command [echo "create test.txt"
+sudo touch /home/ubuntu/temp/test.txt]
+create test.txt
+
+SSH: EXEC: completed
+SSH: EXEC: exit status: 0
+SSH: Disconnecting configuration ...
+
+Finished: SUCCESS

@@ -1983,18 +1983,41 @@ def cicd_run_item():
             username = server_info.get("username", "")
             # Use server-local key if configured, otherwise use global key
             srv_key_path = server_info.get("key_path", "")
+            srv_key_content = server_info.get("key_content", "")
             srv_passphrase = server_info.get("passphrase", "")
             key_path = srv_key_path if srv_key_path else ssh_key_config.get("path_to_key", "")
+            key_content = srv_key_content if srv_key_content else ssh_key_config.get("key_content", "")
             passphrase = srv_passphrase if srv_passphrase else ssh_key_config.get("passphrase", "")
             # Use server remote_directory as default if step doesn't specify one
             if not remote_dir:
                 remote_dir = server_info.get("remote_directory", "")
 
             try:
+                import io as _io
                 client = paramiko.SSHClient()
                 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                 connect_kwargs = {"hostname": hostname, "port": port, "username": username, "timeout": 30}
-                if key_path and os.path.isfile(key_path):
+                # Priority: key_content > key_path > agent
+                if key_content:
+                    # Load private key from string content
+                    key_file = _io.StringIO(key_content)
+                    pkey = None
+                    key_classes = [paramiko.RSAKey, paramiko.Ed25519Key, paramiko.ECDSAKey]
+                    if hasattr(paramiko, 'DSSKey'):
+                        key_classes.append(paramiko.DSSKey)
+                    for key_class in key_classes:
+                        try:
+                            key_file.seek(0)
+                            pkey = key_class.from_private_key(key_file, password=passphrase or None)
+                            break
+                        except Exception:
+                            continue
+                    if pkey:
+                        connect_kwargs["pkey"] = pkey
+                    else:
+                        results.append({"step": step_type, "success": False, "output": "Failed to parse SSH private key content"})
+                        continue
+                elif key_path and os.path.isfile(key_path):
                     connect_kwargs["key_filename"] = key_path
                     if passphrase:
                         connect_kwargs["passphrase"] = passphrase
@@ -2161,13 +2184,32 @@ def cicd_test_ssh():
     setting = _get_user_settings()
     ssh_key = setting.get("ssh_key", {})
     key_path = ssh_key.get("path_to_key", "")
+    key_content = ssh_key.get("key_content", "")
     passphrase = ssh_key.get("passphrase", "")
 
     try:
+        import io as _io
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         connect_kwargs = {"hostname": hostname, "port": port, "username": username, "timeout": 10}
-        if key_path and os.path.isfile(key_path):
+        if key_content:
+            key_file = _io.StringIO(key_content)
+            pkey = None
+            key_classes = [paramiko.RSAKey, paramiko.Ed25519Key, paramiko.ECDSAKey]
+            if hasattr(paramiko, 'DSSKey'):
+                key_classes.append(paramiko.DSSKey)
+            for key_class in key_classes:
+                try:
+                    key_file.seek(0)
+                    pkey = key_class.from_private_key(key_file, password=passphrase or None)
+                    break
+                except Exception:
+                    continue
+            if pkey:
+                connect_kwargs["pkey"] = pkey
+            else:
+                return jsonify({"error": "Failed to parse SSH private key content"}), 400
+        elif key_path and os.path.isfile(key_path):
             connect_kwargs["key_filename"] = key_path
             if passphrase:
                 connect_kwargs["passphrase"] = passphrase
