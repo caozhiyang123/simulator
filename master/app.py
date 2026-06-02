@@ -1504,6 +1504,348 @@ def all_sysinfo():
 
 
 # ---------------------------------------------------------------------------
+# CICD Module
+# ---------------------------------------------------------------------------
+CICD_DATA_PATH = os.path.join(_base_dir, "data", "cicd.json")
+
+
+def _load_cicd():
+    if not os.path.isfile(CICD_DATA_PATH):
+        return {"views": [], "items": []}
+    with open(CICD_DATA_PATH, "r", encoding="utf-8") as f:
+        return json_module.load(f)
+
+
+def _save_cicd(data):
+    os.makedirs(os.path.dirname(CICD_DATA_PATH), exist_ok=True)
+    with open(CICD_DATA_PATH, "w", encoding="utf-8") as f:
+        json_module.dump(data, f, ensure_ascii=False, indent=2)
+
+
+@app.route("/cicd/views", methods=["GET"])
+def cicd_list_views():
+    """List all CICD views."""
+    data = _load_cicd()
+    return jsonify({"views": data.get("views", [])})
+
+
+@app.route("/cicd/views", methods=["POST"])
+def cicd_create_view():
+    """Create a new CICD view."""
+    req = request.get_json(force=True)
+    name = req.get("name", "").strip()
+    parent = req.get("parent", "")  # parent view name, empty = top-level
+    if not name:
+        return jsonify({"error": "View name is required"}), 400
+    data = _load_cicd()
+    # Check duplicate
+    for v in data["views"]:
+        if v["name"] == name and v.get("parent", "") == parent:
+            return jsonify({"error": "View already exists"}), 409
+    data["views"].append({"name": name, "parent": parent, "items": req.get("items", [])})
+    _save_cicd(data)
+    return jsonify({"status": "ok", "views": data["views"]})
+
+
+@app.route("/cicd/views/update", methods=["POST"])
+def cicd_update_view():
+    """Update a view (e.g. add/remove items)."""
+    req = request.get_json(force=True)
+    name = req.get("name", "").strip()
+    parent = req.get("parent", "")
+    items = req.get("items", [])
+    data = _load_cicd()
+    found = False
+    for v in data["views"]:
+        if v["name"] == name and v.get("parent", "") == parent:
+            v["items"] = items
+            found = True
+            break
+    if not found:
+        return jsonify({"error": "View not found"}), 404
+    _save_cicd(data)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/cicd/views/delete", methods=["POST"])
+def cicd_delete_view():
+    """Delete a view."""
+    req = request.get_json(force=True)
+    name = req.get("name", "").strip()
+    parent = req.get("parent", "")
+    data = _load_cicd()
+    data["views"] = [v for v in data["views"] if not (v["name"] == name and v.get("parent", "") == parent)]
+    _save_cicd(data)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/cicd/items", methods=["GET"])
+def cicd_list_items():
+    """List all CICD items, optionally filtered by parent view."""
+    parent = request.args.get("parent", "")
+    data = _load_cicd()
+    items = data.get("items", [])
+    if parent:
+        # Filter items belonging to this parent view
+        view = None
+        for v in data.get("views", []):
+            if v["name"] == parent:
+                view = v
+                break
+        if view:
+            view_item_names = view.get("items", [])
+            items = [i for i in items if i["name"] in view_item_names]
+    return jsonify({"items": items})
+
+
+@app.route("/cicd/items", methods=["POST"])
+def cicd_create_item():
+    """Create a new CICD item (freestyle project)."""
+    req = request.get_json(force=True)
+    name = req.get("name", "").strip()
+    item_type = req.get("type", "freestyle")
+    parent_view = req.get("parent_view", "")
+    if not name:
+        return jsonify({"error": "Item name is required"}), 400
+    data = _load_cicd()
+    # Check duplicate
+    for i in data["items"]:
+        if i["name"] == name and i.get("parent_view", "") == parent_view:
+            return jsonify({"error": "Item already exists"}), 409
+    item = {
+        "name": name,
+        "type": item_type,
+        "parent_view": parent_view,
+        "enabled": True,
+        "description": "",
+        "scm": {"type": "none"},
+        "triggers": [],
+        "environment": {},
+        "build_steps": [],
+        "post_build": [],
+        "last_success": None,
+        "last_failure": None,
+        "last_duration": None,
+        "build_history": [],
+    }
+    data["items"].append(item)
+    # If parent_view specified, add to that view's items list
+    if parent_view:
+        for v in data["views"]:
+            if v["name"] == parent_view:
+                if name not in v.get("items", []):
+                    v.setdefault("items", []).append(name)
+                break
+    _save_cicd(data)
+    return jsonify({"status": "ok", "item": item})
+
+
+@app.route("/cicd/items/get", methods=["GET"])
+def cicd_get_item():
+    """Get a single CICD item by name."""
+    name = request.args.get("name", "")
+    parent_view = request.args.get("parent_view", "")
+    data = _load_cicd()
+    # Try exact match first
+    for i in data["items"]:
+        if i["name"] == name and i.get("parent_view", "") == parent_view:
+            return jsonify({"item": i})
+    # Fallback: match by name only
+    for i in data["items"]:
+        if i["name"] == name:
+            return jsonify({"item": i})
+    return jsonify({"error": "Item not found"}), 404
+
+
+@app.route("/cicd/items/update", methods=["POST"])
+def cicd_update_item():
+    """Update a CICD item configuration."""
+    req = request.get_json(force=True)
+    name = req.get("name", "").strip()
+    parent_view = req.get("parent_view", "")
+    data = _load_cicd()
+    found = False
+    # Try exact match first (name + parent_view)
+    for i in data["items"]:
+        if i["name"] == name and i.get("parent_view", "") == parent_view:
+            for key in ["enabled", "description", "scm", "triggers", "environment", "build_steps", "post_build", "parameters", "trigger_token"]:
+                if key in req:
+                    i[key] = req[key]
+            found = True
+            break
+    # Fallback: match by name only
+    if not found:
+        for i in data["items"]:
+            if i["name"] == name:
+                for key in ["enabled", "description", "scm", "triggers", "environment", "build_steps", "post_build", "parameters", "trigger_token"]:
+                    if key in req:
+                        i[key] = req[key]
+                found = True
+                break
+    if not found:
+        return jsonify({"error": "Item not found"}), 404
+    _save_cicd(data)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/cicd/items/delete", methods=["POST"])
+def cicd_delete_item():
+    """Delete a CICD item."""
+    req = request.get_json(force=True)
+    name = req.get("name", "").strip()
+    parent_view = req.get("parent_view", "")
+    data = _load_cicd()
+    data["items"] = [i for i in data["items"] if not (i["name"] == name and i.get("parent_view", "") == parent_view)]
+    # Remove from views
+    for v in data["views"]:
+        if name in v.get("items", []):
+            v["items"].remove(name)
+    _save_cicd(data)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/cicd/items/run", methods=["POST"])
+def cicd_run_item():
+    """Execute a CICD item's build steps."""
+    import subprocess
+    try:
+        import paramiko
+    except ImportError:
+        paramiko = None
+
+    req = request.get_json(force=True)
+    name = req.get("name", "").strip()
+    parent_view = req.get("parent_view", "")
+    data = _load_cicd()
+    item = None
+    # Try exact match first
+    for i in data["items"]:
+        if i["name"] == name and i.get("parent_view", "") == parent_view:
+            item = i
+            break
+    # Fallback: match by name only
+    if not item:
+        for i in data["items"]:
+            if i["name"] == name:
+                item = i
+                break
+    if not item:
+        return jsonify({"error": "Item not found"}), 404
+
+    results = []
+    build_number = len(item.get("build_history", [])) + 1
+    start_time = time.time()
+
+    for step in item.get("build_steps", []):
+        step_type = step.get("type", "")
+        if step_type == "ssh":
+            if paramiko is None:
+                results.append({"step": step_type, "success": False, "output": "paramiko not installed. Run: pip install paramiko"})
+                continue
+            # Send files or execute commands over SSH
+            ssh_config = step.get("config", {})
+            hostname = ssh_config.get("hostname", "")
+            port = int(ssh_config.get("port", 22))
+            username = ssh_config.get("username", "")
+            password = ssh_config.get("password", "")
+            key_path = ssh_config.get("key_path", "")
+            remote_dir = ssh_config.get("remote_directory", "")
+            exec_command = ssh_config.get("exec_command", "")
+            source_files = ssh_config.get("source_files", "")
+
+            try:
+                client = paramiko.SSHClient()
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                connect_kwargs = {"hostname": hostname, "port": port, "username": username}
+                if key_path and os.path.isfile(key_path):
+                    connect_kwargs["key_filename"] = key_path
+                elif password:
+                    connect_kwargs["password"] = password
+                client.connect(**connect_kwargs)
+
+                output_lines = []
+
+                # Transfer files if specified
+                if source_files:
+                    sftp = client.open_sftp()
+                    for src in source_files.split(","):
+                        src = src.strip()
+                        if src and os.path.isfile(src):
+                            remote_path = remote_dir.rstrip("/") + "/" + os.path.basename(src) if remote_dir else os.path.basename(src)
+                            sftp.put(src, remote_path)
+                            output_lines.append(f"Transferred: {src} -> {remote_path}")
+                    sftp.close()
+
+                # Execute command if specified
+                if exec_command:
+                    if remote_dir:
+                        exec_command = f"cd {remote_dir} && {exec_command}"
+                    stdin, stdout, stderr = client.exec_command(exec_command)
+                    out = stdout.read().decode("utf-8", errors="replace")
+                    err = stderr.read().decode("utf-8", errors="replace")
+                    exit_code = stdout.channel.recv_exit_status()
+                    output_lines.append(out)
+                    if err:
+                        output_lines.append(f"STDERR: {err}")
+                    results.append({"step": step_type, "success": exit_code == 0, "output": "\n".join(output_lines), "exit_code": exit_code})
+                else:
+                    results.append({"step": step_type, "success": True, "output": "\n".join(output_lines)})
+
+                client.close()
+            except Exception as exc:
+                results.append({"step": step_type, "success": False, "output": str(exc)})
+        else:
+            results.append({"step": step_type, "success": False, "output": "Unsupported step type"})
+
+    duration = round(time.time() - start_time, 1)
+    all_success = all(r.get("success") for r in results) if results else False
+
+    # Record build history
+    build_record = {
+        "number": build_number,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "duration": f"{duration}s",
+        "success": all_success,
+        "results": results,
+    }
+    item.setdefault("build_history", []).append(build_record)
+    if all_success:
+        item["last_success"] = build_record["timestamp"]
+        item["last_duration"] = build_record["duration"]
+    else:
+        item["last_failure"] = build_record["timestamp"]
+        item["last_duration"] = build_record["duration"]
+    _save_cicd(data)
+
+    return jsonify({"status": "ok" if all_success else "error", "build": build_record})
+
+
+@app.route("/cicd/nodes", methods=["GET"])
+def cicd_nodes():
+    """Get available nodes (master + workers) for CICD SSH targets."""
+    nodes = [{"name": "master(local)", "addr": "master"}]
+    for w in config.workers:
+        alias = w.get("alias", "")
+        name = alias if alias else w["addr"]
+        nodes.append({"name": name, "addr": w["addr"]})
+    return jsonify({"nodes": nodes})
+
+
+@app.route("/cicd/nodes/health", methods=["GET"])
+def cicd_nodes_health():
+    """Check health of all nodes for SSH server dropdown."""
+    health = {"master": True}  # master is always available
+    for w in config.workers:
+        addr = w["addr"]
+        try:
+            r = http_requests.get(f"http://{addr}/status", timeout=2)
+            health[addr] = r.status_code == 200
+        except Exception:
+            health[addr] = False
+    return jsonify({"health": health})
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":

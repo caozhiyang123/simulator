@@ -4,3 +4,4 @@ psutil
 pytest
 hypothesis
 pypdf
+paramiko
