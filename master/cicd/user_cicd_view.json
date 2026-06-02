@@ -1,0 +1,83 @@
+[
+  {
+    "username": "admin",
+    "views": [
+      {
+        "name": "development",
+        "parent": "",
+        "items": [
+          "test"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "name": "test",
+        "type": "freestyle",
+        "parent_view": "development",
+        "enabled": true,
+        "description": "test",
+        "scm": {
+          "type": "none"
+        },
+        "triggers": [],
+        "environment": {},
+        "build_steps": [
+          {
+            "type": "ssh",
+            "config": {
+              "hostname": "b2b-development",
+              "source_files": "",
+              "remove_prefix": "",
+              "remote_directory": "",
+              "exec_command": "echo \"test1\""
+            }
+          },
+          {
+            "type": "ssh",
+            "config": {
+              "hostname": "b2b-development",
+              "source_files": "",
+              "remove_prefix": "",
+              "remote_directory": "",
+              "exec_command": "echo \"test2\""
+            }
+          }
+        ],
+        "post_build": [],
+        "last_success": null,
+        "last_failure": "2026-06-02 16:13:41",
+        "last_duration": "0.0s",
+        "build_history": [
+          {
+            "number": 1,
+            "timestamp": "2026-06-02 16:13:41",
+            "duration": "0.0s",
+            "success": false,
+            "results": [
+              {
+                "step": "ssh",
+                "success": false,
+                "output": "paramiko not installed. Run: pip install paramiko"
+              },
+              {
+                "step": "ssh",
+                "success": false,
+                "output": "paramiko not installed. Run: pip install paramiko"
+              }
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "type": "boolean",
+            "name": "are you sure want to build it?",
+            "description": "",
+            "set_by_default": true
+          }
+        ],
+        "trigger_token": "f1b5d2272d1359c745c5a9326893b4bb"
+      }
+    ]
+  }
+]

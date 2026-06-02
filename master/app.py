@@ -191,6 +191,11 @@ def auth_login():
             session['username'] = username
             session['role'] = u.get("role", "worker")
             session['token'] = token
+            # Cleanup old CICD builds on login
+            try:
+                _cleanup_old_builds(username)
+            except Exception:
+                pass
             return jsonify({"status": "ok", "username": username, "role": u["role"]})
     return jsonify({"error": "Invalid username or password"}), 401
 
@@ -1506,20 +1511,169 @@ def all_sysinfo():
 # ---------------------------------------------------------------------------
 # CICD Module
 # ---------------------------------------------------------------------------
-CICD_DATA_PATH = os.path.join(_base_dir, "data", "cicd.json")
+CICD_VIEW_PATH = os.path.join(_base_dir, "cicd", "user_cicd_view.json")
+CICD_SETTING_PATH = os.path.join(_base_dir, "cicd", "user_cicd_setting.json")
+CICD_CONFIG_PATH = os.path.join(_base_dir, "cicd", "config.json")
+CICD_LOGS_DIR = os.path.join(_base_dir, "cicd", "logs")
 
 
-def _load_cicd():
-    if not os.path.isfile(CICD_DATA_PATH):
-        return {"views": [], "items": []}
-    with open(CICD_DATA_PATH, "r", encoding="utf-8") as f:
+def _load_cicd_config():
+    """Load CICD global config (max_builds, max_days)."""
+    if not os.path.isfile(CICD_CONFIG_PATH):
+        return {"max_builds": 50, "max_days": 30}
+    with open(CICD_CONFIG_PATH, "r", encoding="utf-8") as f:
         return json_module.load(f)
 
 
-def _save_cicd(data):
-    os.makedirs(os.path.dirname(CICD_DATA_PATH), exist_ok=True)
-    with open(CICD_DATA_PATH, "w", encoding="utf-8") as f:
+def _get_cicd_username():
+    """Get current logged-in username for CICD per-user data."""
+    return session.get("username", "admin")
+
+
+def _load_cicd_all():
+    """Load the full user_cicd_view.json array."""
+    if not os.path.isfile(CICD_VIEW_PATH):
+        return []
+    with open(CICD_VIEW_PATH, "r", encoding="utf-8") as f:
+        return json_module.load(f)
+
+
+def _save_cicd_all(data):
+    os.makedirs(os.path.dirname(CICD_VIEW_PATH), exist_ok=True)
+    with open(CICD_VIEW_PATH, "w", encoding="utf-8") as f:
         json_module.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _load_cicd():
+    """Load CICD data for current user. Returns {"views": [], "items": []}."""
+    username = _get_cicd_username()
+    all_data = _load_cicd_all()
+    for entry in all_data:
+        if entry.get("username") == username:
+            return {"views": entry.get("views", []), "items": entry.get("items", [])}
+    return {"views": [], "items": []}
+
+
+def _save_cicd(data):
+    """Save CICD data for current user."""
+    username = _get_cicd_username()
+    all_data = _load_cicd_all()
+    found = False
+    for entry in all_data:
+        if entry.get("username") == username:
+            entry["views"] = data.get("views", [])
+            entry["items"] = data.get("items", [])
+            found = True
+            break
+    if not found:
+        all_data.append({"username": username, "views": data.get("views", []), "items": data.get("items", [])})
+    _save_cicd_all(all_data)
+
+
+def _load_cicd_settings():
+    """Load all user settings."""
+    if not os.path.isfile(CICD_SETTING_PATH):
+        return []
+    with open(CICD_SETTING_PATH, "r", encoding="utf-8") as f:
+        return json_module.load(f)
+
+
+def _save_cicd_settings(data):
+    os.makedirs(os.path.dirname(CICD_SETTING_PATH), exist_ok=True)
+    with open(CICD_SETTING_PATH, "w", encoding="utf-8") as f:
+        json_module.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _get_user_settings():
+    """Get settings for current user."""
+    username = _get_cicd_username()
+    all_settings = _load_cicd_settings()
+    for entry in all_settings:
+        if entry.get("username") == username:
+            return entry.get("setting", {})
+    return {}
+
+
+def _save_user_settings(setting):
+    """Save settings for current user."""
+    username = _get_cicd_username()
+    all_settings = _load_cicd_settings()
+    found = False
+    for entry in all_settings:
+        if entry.get("username") == username:
+            entry["setting"] = setting
+            found = True
+            break
+    if not found:
+        all_settings.append({"username": username, "setting": setting})
+    _save_cicd_settings(all_settings)
+
+
+def _save_build_log(username, item_name, build_number, log_content):
+    """Save a build's console log to an individual file."""
+    log_dir = os.path.join(CICD_LOGS_DIR, username, item_name)
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, f"build_{build_number}.log")
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write(log_content)
+
+
+def _load_build_log(username, item_name, build_number):
+    """Load a build's console log from file."""
+    log_path = os.path.join(CICD_LOGS_DIR, username, item_name, f"build_{build_number}.log")
+    if os.path.isfile(log_path):
+        with open(log_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return None
+
+
+def _cleanup_old_builds(username):
+    """Remove build records exceeding max_builds or max_days for a user."""
+    from datetime import datetime, timedelta
+    cfg = _load_cicd_config()
+    max_builds = cfg.get("max_builds", 50)
+    max_days = cfg.get("max_days", 30)
+    cutoff_date = datetime.now() - timedelta(days=max_days)
+
+    all_data = _load_cicd_all()
+    changed = False
+    for entry in all_data:
+        if entry.get("username") != username:
+            continue
+        for item in entry.get("items", []):
+            history = item.get("build_history", [])
+            if not history:
+                continue
+            original_len = len(history)
+            # Remove builds older than max_days
+            filtered = []
+            for b in history:
+                ts = b.get("timestamp", "")
+                if ts:
+                    try:
+                        build_time = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+                        if build_time < cutoff_date:
+                            # Delete the log file too
+                            log_path = os.path.join(CICD_LOGS_DIR, username, item["name"], f"build_{b['number']}.log")
+                            if os.path.isfile(log_path):
+                                os.remove(log_path)
+                            continue
+                    except ValueError:
+                        pass
+                filtered.append(b)
+            # Keep only max_builds most recent
+            if len(filtered) > max_builds:
+                removed = filtered[:-max_builds]
+                filtered = filtered[-max_builds:]
+                for b in removed:
+                    log_path = os.path.join(CICD_LOGS_DIR, username, item["name"], f"build_{b['number']}.log")
+                    if os.path.isfile(log_path):
+                        os.remove(log_path)
+            if len(filtered) != original_len:
+                item["build_history"] = filtered
+                changed = True
+    if changed:
+        _save_cicd_all(all_data)
 
 
 @app.route("/cicd/views", methods=["GET"])
@@ -1663,6 +1817,33 @@ def cicd_update_item():
     req = request.get_json(force=True)
     name = req.get("name", "").strip()
     parent_view = req.get("parent_view", "")
+
+    # Validate dangerous commands in build_steps and post_build
+    dangerous_patterns = ["rm -rf", "rm -r", "rmdir /s", "del /f", "format ", "mkfs.", "dd if="]
+    for steps_key in ["build_steps", "post_build"]:
+        steps = req.get(steps_key, [])
+        for step in steps:
+            if step.get("type") == "ssh":
+                cmd = step.get("config", {}).get("exec_command", "").strip()
+                if cmd:
+                    # Check each line independently
+                    for line in cmd.splitlines():
+                        line_lower = line.strip().lower()
+                        if not line_lower:
+                            continue
+                        # Check if line is exactly "rm" or starts with "rm " or "rm;"
+                        if line_lower == "rm" or line_lower.startswith("rm ") or line_lower.startswith("rm;"):
+                            return jsonify({"error": f"Dangerous command 'rm' detected in {steps_key}. Forbidden for safety."}), 400
+                        for dp in dangerous_patterns:
+                            if dp in line_lower:
+                                return jsonify({"error": f"Dangerous command '{dp.strip()}' detected in {steps_key}. Forbidden for safety."}), 400
+                        # Also check commands chained with && or ; or |
+                        parts = line_lower.replace("&&", ";").replace("|", ";").split(";")
+                        for part in parts:
+                            part = part.strip()
+                            if part == "rm" or part.startswith("rm "):
+                                return jsonify({"error": f"Dangerous command 'rm' detected in {steps_key}. Forbidden for safety."}), 400
+
     data = _load_cicd()
     found = False
     # Try exact match first (name + parent_view)
@@ -1744,23 +1925,79 @@ def cicd_run_item():
                 continue
             # Send files or execute commands over SSH
             ssh_config = step.get("config", {})
-            hostname = ssh_config.get("hostname", "")
-            port = int(ssh_config.get("port", 22))
-            username = ssh_config.get("username", "")
-            password = ssh_config.get("password", "")
-            key_path = ssh_config.get("key_path", "")
+            server_name = ssh_config.get("hostname", "")  # This is actually the SSH server name from settings
             remote_dir = ssh_config.get("remote_directory", "")
             exec_command = ssh_config.get("exec_command", "")
             source_files = ssh_config.get("source_files", "")
 
+            # Look up SSH server details from user settings
+            user_setting = _get_user_settings()
+            ssh_key_config = user_setting.get("ssh_key", {})
+            global_disable_exec = user_setting.get("disable_exec", False)
+            ssh_servers = user_setting.get("ssh_servers", [])
+            server_info = None
+            for srv in ssh_servers:
+                if srv.get("name") == server_name:
+                    server_info = srv
+                    break
+            if not server_info:
+                results.append({"step": step_type, "success": False, "output": f"SSH Server '{server_name}' not found in settings"})
+                continue
+
+            # Global disable_exec overrides everything
+            if global_disable_exec and exec_command:
+                results.append({"step": step_type, "success": False, "output": "Exec commands are disabled globally in settings (Disable exec is checked). Build failed."})
+                continue
+
+            # Check for dangerous commands
+            if exec_command:
+                dangerous_patterns = ["rm -rf", "rm -r", "rmdir /s", "del /f", "format ", "mkfs.", "dd if="]
+                is_dangerous = False
+                for line in exec_command.splitlines():
+                    line_lower = line.strip().lower()
+                    if not line_lower:
+                        continue
+                    if line_lower == "rm" or line_lower.startswith("rm ") or line_lower.startswith("rm;"):
+                        is_dangerous = True
+                        break
+                    for dp in dangerous_patterns:
+                        if dp in line_lower:
+                            is_dangerous = True
+                            break
+                    if is_dangerous:
+                        break
+                    parts = line_lower.replace("&&", ";").replace("|", ";").split(";")
+                    for part in parts:
+                        part = part.strip()
+                        if part == "rm" or part.startswith("rm "):
+                            is_dangerous = True
+                            break
+                    if is_dangerous:
+                        break
+                if is_dangerous:
+                    results.append({"step": step_type, "success": False, "output": "Dangerous command detected. Commands containing rm, rm -rf, del /f, format, mkfs, dd if= are forbidden. Build failed."})
+                    continue
+
+            hostname = server_info.get("hostname", "")
+            port = int(server_info.get("port", 22))
+            username = server_info.get("username", "")
+            # Use server-local key if configured, otherwise use global key
+            srv_key_path = server_info.get("key_path", "")
+            srv_passphrase = server_info.get("passphrase", "")
+            key_path = srv_key_path if srv_key_path else ssh_key_config.get("path_to_key", "")
+            passphrase = srv_passphrase if srv_passphrase else ssh_key_config.get("passphrase", "")
+            # Use server remote_directory as default if step doesn't specify one
+            if not remote_dir:
+                remote_dir = server_info.get("remote_directory", "")
+
             try:
                 client = paramiko.SSHClient()
                 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                connect_kwargs = {"hostname": hostname, "port": port, "username": username}
+                connect_kwargs = {"hostname": hostname, "port": port, "username": username, "timeout": 30}
                 if key_path and os.path.isfile(key_path):
                     connect_kwargs["key_filename"] = key_path
-                elif password:
-                    connect_kwargs["password"] = password
+                    if passphrase:
+                        connect_kwargs["passphrase"] = passphrase
                 client.connect(**connect_kwargs)
 
                 output_lines = []
@@ -1817,7 +2054,45 @@ def cicd_run_item():
         item["last_duration"] = build_record["duration"]
     _save_cicd(data)
 
+    # Save console log to individual file
+    username = _get_cicd_username()
+    log_lines = []
+    log_lines.append(f"Started by user {username}")
+    log_lines.append(f"Running as SYSTEM")
+    log_lines.append(f"Building in workspace /cicd/workspace/{name}")
+    log_lines.append("")
+    for idx, r in enumerate(results):
+        if r.get("step") == "ssh":
+            step_config = item.get("build_steps", [{}])[idx].get("config", {}) if idx < len(item.get("build_steps", [])) else {}
+            log_lines.append(f"SSH: Connecting with configuration [{step_config.get('hostname', 'unknown')}] ...")
+            log_lines.append("SSH: Connected")
+            log_lines.append("SSH: Opening exec channel ...")
+            log_lines.append("SSH: EXEC: channel open")
+            if step_config.get("exec_command"):
+                log_lines.append(f"SSH: EXEC: STDOUT/STDERR from command [{step_config['exec_command']}]")
+            if r.get("output"):
+                log_lines.append(r["output"])
+            log_lines.append("SSH: EXEC: completed")
+            if "exit_code" in r:
+                log_lines.append(f"SSH: EXEC: exit status: {r['exit_code']}")
+            log_lines.append(f"SSH: Disconnecting configuration ...")
+            log_lines.append("")
+    log_lines.append(f"Finished: {'SUCCESS' if all_success else 'UNSTABLE'}")
+    _save_build_log(username, name, build_number, "\n".join(log_lines))
+
     return jsonify({"status": "ok" if all_success else "error", "build": build_record})
+
+
+@app.route("/cicd/build-log", methods=["GET"])
+def cicd_build_log():
+    """Get console log for a specific build."""
+    item_name = request.args.get("item", "")
+    build_number = request.args.get("build", 0, type=int)
+    username = _get_cicd_username()
+    log = _load_build_log(username, item_name, build_number)
+    if log is None:
+        return jsonify({"error": "Log not found"}), 404
+    return jsonify({"log": log})
 
 
 @app.route("/cicd/nodes", methods=["GET"])
@@ -1843,6 +2118,64 @@ def cicd_nodes_health():
         except Exception:
             health[addr] = False
     return jsonify({"health": health})
+
+
+@app.route("/cicd/settings", methods=["GET"])
+def cicd_get_settings():
+    """Get CICD settings for current user."""
+    setting = _get_user_settings()
+    return jsonify({"setting": setting})
+
+
+@app.route("/cicd/settings", methods=["POST"])
+def cicd_save_settings():
+    """Save CICD settings for current user."""
+    req = request.get_json(force=True)
+    setting = req.get("setting", {})
+    _save_user_settings(setting)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/cicd/settings/ssh-servers", methods=["GET"])
+def cicd_get_ssh_servers():
+    """Get SSH servers list from current user's settings."""
+    setting = _get_user_settings()
+    servers = setting.get("ssh_servers", [])
+    return jsonify({"ssh_servers": servers})
+
+
+@app.route("/cicd/settings/test-ssh", methods=["POST"])
+def cicd_test_ssh():
+    """Test SSH connection to a server."""
+    try:
+        import paramiko
+    except ImportError:
+        return jsonify({"error": "paramiko not installed"}), 500
+
+    req = request.get_json(force=True)
+    hostname = req.get("hostname", "")
+    port = int(req.get("port", 22))
+    username = req.get("username", "")
+
+    # Get SSH key from user settings
+    setting = _get_user_settings()
+    ssh_key = setting.get("ssh_key", {})
+    key_path = ssh_key.get("path_to_key", "")
+    passphrase = ssh_key.get("passphrase", "")
+
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        connect_kwargs = {"hostname": hostname, "port": port, "username": username, "timeout": 10}
+        if key_path and os.path.isfile(key_path):
+            connect_kwargs["key_filename"] = key_path
+            if passphrase:
+                connect_kwargs["passphrase"] = passphrase
+        client.connect(**connect_kwargs)
+        client.close()
+        return jsonify({"message": f"Successfully connected to {hostname}:{port}"})
+    except Exception as exc:
+        return jsonify({"error": f"Connection failed: {str(exc)}"}), 400
 
 
 # ---------------------------------------------------------------------------

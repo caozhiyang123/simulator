@@ -158,8 +158,11 @@ async function cicdOpenItemDetail(itemName, parentView) {
   buildsHtml += '<div style="border:1px solid #eee;border-radius:6px;padding:8px;max-height:350px;overflow-y:auto;">';
   if (!builds.length) { buildsHtml += '<div style="color:#999;font-size:12px;padding:8px;">No builds yet</div>'; }
   builds.slice().reverse().forEach(function(b) {
-    var bIcon = b.success ? '<span style="color:#27ae60;">✅</span>' : '<span style="color:#e74c3c;">⊘</span>';
-    buildsHtml += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;">' + bIcon + ' <span style="color:#4a90d9;">#' + b.number + '</span> <span style="color:#888;">' + (b.timestamp || '') + '</span></div>';
+    var bIcon = b.success ? '<span style="color:#27ae60;">\u2705</span>' : '<span style="color:#e74c3c;">\u2298</span>';
+    buildsHtml += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-size:12px;position:relative;">';
+    buildsHtml += '<div style="display:flex;align-items:center;gap:8px;">' + bIcon + ' <span style="color:#4a90d9;">#' + b.number + '</span> <span style="color:#888;">' + (b.timestamp || '') + '</span></div>';
+    buildsHtml += '<span style="cursor:pointer;color:#888;font-size:14px;padding:2px 6px;" onclick="cicdToggleBuildMenu(event,' + b.number + ',\'' + itemName + '\',\'' + (parentView||'') + '\')">\u2228</span>';
+    buildsHtml += '</div>';
   });
   buildsHtml += '</div>';
 
@@ -218,8 +221,11 @@ function cicdShowBuildWithParams(itemName, parentView) {
   buildsHtml += '<div style="border:1px solid #eee;border-radius:6px;padding:8px;max-height:300px;overflow-y:auto;">';
   if (!builds.length) buildsHtml += '<div style="color:#999;font-size:12px;">No builds yet</div>';
   builds.slice().reverse().forEach(function(b) {
-    var bIcon = b.success ? '<span style="color:#27ae60;">✅</span>' : '<span style="color:#e74c3c;">⊘</span>';
-    buildsHtml += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;">' + bIcon + ' #' + b.number + ' <span style="color:#888;">' + (b.timestamp||'') + '</span></div>';
+    var bIcon = b.success ? '<span style="color:#27ae60;">\u2705</span>' : '<span style="color:#e74c3c;">\u2298</span>';
+    buildsHtml += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-size:12px;">';
+    buildsHtml += '<div style="display:flex;align-items:center;gap:8px;">' + bIcon + ' #' + b.number + ' <span style="color:#888;">' + (b.timestamp||'') + '</span></div>';
+    buildsHtml += '<span style="cursor:pointer;color:#888;font-size:14px;padding:2px 6px;" onclick="cicdToggleBuildMenu(event,' + b.number + ',\'' + itemName + '\',\'' + (parentView||'') + '\')">\u2228</span>';
+    buildsHtml += '</div>';
   });
   buildsHtml += '</div>';
 
@@ -470,26 +476,18 @@ async function cicdOpenItemConfig(itemName, parentView) {
 // ---------------------------------------------------------------------------
 async function cicdLoadSshServers() {
   try {
-    var res = await fetch('/config/nodes');
-    var nodesData = await res.json();
-    var nodes = nodesData.nodes || [];
-    // Check health of each node
-    var healthRes = await fetch('/cicd/nodes/health');
-    var healthData = await healthRes.json();
-    var health = healthData.health || {};
+    var res = await fetch('/cicd/settings/ssh-servers');
+    var data = await res.json();
+    var servers = data.ssh_servers || [];
 
     // Populate all SSH server selects
     var selects = document.querySelectorAll('select[id^="cicdSsh"], select[id^="cicdPostSsh"]');
     selects.forEach(function(sel) {
       var currentVal = sel.getAttribute('data-value') || sel.value;
       var opts = '<option value="">-- Select SSH Server --</option>';
-      nodes.forEach(function(n) {
-        var addr = n.addr;
-        var name = n.alias || addr;
-        var isHealthy = health[addr] === true;
-        var dot = isHealthy ? '🟢' : '🔴';
-        var selected = (currentVal === addr) ? ' selected' : '';
-        opts += '<option value="' + addr + '"' + selected + '>' + dot + ' ' + name + ' (' + addr + ')</option>';
+      servers.forEach(function(s) {
+        var selected = (currentVal === s.name) ? ' selected' : '';
+        opts += '<option value="' + s.name + '"' + selected + '>' + s.name + ' (' + s.hostname + ')</option>';
       });
       sel.innerHTML = opts;
       if (currentVal) sel.value = currentVal;
@@ -579,6 +577,7 @@ function cicdRenderBuildSteps(steps) {
       html += '<label style="font-size:12px;">Remote directory \uFF1F</label><input type="text" id="cicdSsh' + idx + 'RemoteDir" value="' + (cfg.remote_directory||'') + '" style="margin-bottom:6px;">';
       html += '<label style="font-size:12px;">Exec command \uFF1F</label><textarea id="cicdSsh' + idx + 'Cmd" rows="4" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;font-family:monospace;font-size:12px;resize:vertical;">' + (cfg.exec_command||'') + '</textarea>';
       html += '<div style="font-size:11px;color:#e74c3c;margin-top:4px;">\u26A0 Either Source files, Exec command or both must be supplied</div>';
+      html += '<div style="font-size:11px;color:#e74c3c;margin-top:2px;">\u26A0 Dangerous commands forbidden: rm, rm -rf, rm -r, rmdir /s, del /f, format, mkfs, dd if=</div>';
       html += '<div style="font-size:11px;color:#4a90d9;margin-top:4px;">All of the transfer fields (except for Exec timeout) support substitution of environment variables</div>';
       html += '</div>';
       html += '<div style="margin-top:8px;"><button class="btn-primary btn-sm" onclick="showAlert(\'Coming soon\')">Add Transfer Set</button></div>';
@@ -682,7 +681,58 @@ function cicdCollectParams() {
   return params;
 }
 
+// Check dangerous commands per-line, returns true if dangerous (and shows alert)
+function cicdCheckDangerousCmd(cmd, label) {
+  var dangerousPatterns = ['rm -rf', 'rm -r', 'rmdir /s', 'del /f', 'format ', 'mkfs.', 'dd if='];
+  var lines = cmd.split('\n');
+  for (var li = 0; li < lines.length; li++) {
+    var lineLower = lines[li].trim().toLowerCase();
+    if (!lineLower) continue;
+    // Check if line equals "rm" or starts with "rm " or "rm;"
+    if (lineLower === 'rm' || lineLower.indexOf('rm ') === 0 || lineLower.indexOf('rm;') === 0) {
+      showAlert('Dangerous command "rm" detected in ' + label + ' (line ' + (li+1) + '). Forbidden for safety.');
+      return true;
+    }
+    // Check patterns
+    for (var j = 0; j < dangerousPatterns.length; j++) {
+      if (lineLower.indexOf(dangerousPatterns[j]) >= 0) {
+        showAlert('Dangerous command "' + dangerousPatterns[j].trim() + '" detected in ' + label + ' (line ' + (li+1) + '). Forbidden for safety.');
+        return true;
+      }
+    }
+    // Check commands chained with && or ; or |
+    var parts = lineLower.replace(/&&/g, ';').replace(/\|/g, ';').split(';');
+    for (var k = 0; k < parts.length; k++) {
+      var part = parts[k].trim();
+      if (part === 'rm' || part.indexOf('rm ') === 0) {
+        showAlert('Dangerous command "rm" detected in ' + label + ' (line ' + (li+1) + '). Forbidden for safety.');
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 async function cicdSaveItemConfig() {
+  // Client-side dangerous command validation
+  var dangerousPatterns = ['rm -rf', 'rm -r', 'rmdir /s', 'del /f', 'format ', 'mkfs.', 'dd if='];
+  var allStepCmds = [];
+  _cicdBuildSteps.forEach(function(step, idx) {
+    if (step.type === 'ssh') {
+      var cmd = (document.getElementById('cicdSsh'+idx+'Cmd')||{}).value||'';
+      if (cmd) allStepCmds.push({cmd: cmd, label: 'Build Step #'+(idx+1)});
+    }
+  });
+  _cicdPostBuildSteps.forEach(function(step, idx) {
+    if (step.type === 'ssh') {
+      var cmd = (document.getElementById('cicdPostSsh'+idx+'Cmd')||{}).value||'';
+      if (cmd) allStepCmds.push({cmd: cmd, label: 'Post-build Step #'+(idx+1)});
+    }
+  });
+  for (var i = 0; i < allStepCmds.length; i++) {
+    if (cicdCheckDangerousCmd(allStepCmds[i].cmd, allStepCmds[i].label)) return;
+  }
+
   var payload = {
     name: _cicdCurrentItem,
     parent_view: _cicdCurrentView || '',
@@ -702,6 +752,24 @@ async function cicdSaveItemConfig() {
 }
 
 async function cicdApplyItemConfig() {
+  // Client-side dangerous command validation
+  var allStepCmds = [];
+  _cicdBuildSteps.forEach(function(step, idx) {
+    if (step.type === 'ssh') {
+      var cmd = (document.getElementById('cicdSsh'+idx+'Cmd')||{}).value||'';
+      if (cmd) allStepCmds.push({cmd: cmd, label: 'Build Step #'+(idx+1)});
+    }
+  });
+  _cicdPostBuildSteps.forEach(function(step, idx) {
+    if (step.type === 'ssh') {
+      var cmd = (document.getElementById('cicdPostSsh'+idx+'Cmd')||{}).value||'';
+      if (cmd) allStepCmds.push({cmd: cmd, label: 'Post-build Step #'+(idx+1)});
+    }
+  });
+  for (var i = 0; i < allStepCmds.length; i++) {
+    if (cicdCheckDangerousCmd(allStepCmds[i].cmd, allStepCmds[i].label)) return;
+  }
+
   var payload = {
     name: _cicdCurrentItem,
     parent_view: _cicdCurrentView || '',
@@ -745,3 +813,371 @@ async function cicdShowEditView(viewName) {
 }
 
 function cicdInit() { cicdLoadHome(); }
+
+
+// ---------------------------------------------------------------------------
+// CICD Settings Page
+// ---------------------------------------------------------------------------
+async function cicdLoadSettingsPage() {
+  var container = document.getElementById('cicdSettingsContent');
+  var bc = document.getElementById('cicdSettingsBreadcrumb');
+  bc.innerHTML = '<span style="cursor:pointer;color:#4a90d9;" onclick="cicdLoadSettingsPage()">Setting</span>';
+
+  var html = '<h2 style="margin-bottom:20px;">Setting</h2>';
+
+  // System Configuration
+  html += '<div style="margin-bottom:24px;"><h3 style="font-size:14px;color:#666;margin-bottom:12px;">System Configuration</h3>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;">';
+  html += '<div style="cursor:pointer;padding:12px;border-radius:6px;" onmouseover="this.style.background=\'#f0f7ff\'" onmouseout="this.style.background=\'\'" onclick="cicdOpenSystemSettings()"><div style="font-size:13px;font-weight:600;color:#4a90d9;">⚙ System</div><div style="font-size:11px;color:#888;">Configure global settings and paths.</div></div>';
+  html += '<div style="padding:12px;border-radius:6px;opacity:0.5;"><div style="font-size:13px;font-weight:600;">🔧 Tools</div><div style="font-size:11px;color:#888;">Configure tools, their locations and automatic installers.</div></div>';
+  html += '<div style="padding:12px;border-radius:6px;opacity:0.5;"><div style="font-size:13px;font-weight:600;">🧩 Plugins</div><div style="font-size:11px;color:#888;">Add, remove, disable or enable plugins.</div></div>';
+  html += '<div style="padding:12px;border-radius:6px;opacity:0.5;"><div style="font-size:13px;font-weight:600;">🖥 Nodes</div><div style="font-size:11px;color:#888;">Add, remove, control and monitor nodes.</div></div>';
+  html += '</div></div>';
+
+  // Security
+  html += '<div style="margin-bottom:24px;"><h3 style="font-size:14px;color:#666;margin-bottom:12px;">Security</h3>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;">';
+  html += '<div style="padding:12px;border-radius:6px;opacity:0.5;"><div style="font-size:13px;font-weight:600;">🔒 Security</div><div style="font-size:11px;color:#888;">Secure access/use the system.</div></div>';
+  html += '<div style="padding:12px;border-radius:6px;opacity:0.5;"><div style="font-size:13px;font-weight:600;">🔑 Credential Management</div><div style="font-size:11px;color:#888;">Configure credentials.</div></div>';
+  html += '<div style="padding:12px;border-radius:6px;opacity:0.5;"><div style="font-size:13px;font-weight:600;">👥 Users</div><div style="font-size:11px;color:#888;">Create/delete/modify users.</div></div>';
+  html += '</div></div>';
+
+  // Status Information
+  html += '<div style="margin-bottom:24px;"><h3 style="font-size:14px;color:#666;margin-bottom:12px;">Status Information</h3>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;">';
+  html += '<div style="padding:12px;border-radius:6px;opacity:0.5;"><div style="font-size:13px;font-weight:600;">ℹ System Information</div><div style="font-size:11px;color:#888;">Displays environmental information.</div></div>';
+  html += '<div style="padding:12px;border-radius:6px;opacity:0.5;"><div style="font-size:13px;font-weight:600;">📋 System Log</div><div style="font-size:11px;color:#888;">System log captures output.</div></div>';
+  html += '</div></div>';
+
+  // Tools and Actions
+  html += '<div style="margin-bottom:24px;"><h3 style="font-size:14px;color:#666;margin-bottom:12px;">Tools and Actions</h3>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;">';
+  html += '<div style="padding:12px;border-radius:6px;opacity:0.5;"><div style="font-size:13px;font-weight:600;">🔄 Reload Configuration from Disk</div><div style="font-size:11px;color:#888;">Discard all loaded data and reload from file system.</div></div>';
+  html += '<div style="padding:12px;border-radius:6px;opacity:0.5;"><div style="font-size:13px;font-weight:600;">⟨/⟩ Script Console</div><div style="font-size:11px;color:#888;">Executes arbitrary script.</div></div>';
+  html += '</div></div>';
+
+  container.innerHTML = html;
+}
+
+async function cicdOpenSystemSettings() {
+  var container = document.getElementById('cicdSettingsContent');
+  var bc = document.getElementById('cicdSettingsBreadcrumb');
+  bc.innerHTML = '<span style="cursor:pointer;color:#4a90d9;" onclick="cicdLoadSettingsPage()">Setting</span> / <span style="color:#666;">System</span>';
+
+  var res = await fetch('/cicd/settings');
+  var data = await res.json();
+  var setting = data.setting || {};
+  var sshKey = setting.ssh_key || {};
+  var sshServers = setting.ssh_servers || [];
+
+  var html = '<h2 style="margin-bottom:20px;">System</h2>';
+
+  // Publish over SSH section
+  html += '<div style="border:1px solid #eee;border-radius:8px;padding:20px;margin-bottom:20px;">';
+  html += '<h3 style="margin:0 0 8px;">Publish over SSH</h3>';
+  html += '<p style="font-size:12px;color:#4a90d9;margin-bottom:16px;">A configuration to use to connect to a SSH server</p>';
+
+  // SSH Key (global)
+  html += '<label style="font-size:12px;font-weight:600;">SSH Key ？</label>';
+  html += '<div style="margin-bottom:12px;"><label style="font-size:12px;">Passphrase ？</label>';
+  html += '<div style="display:flex;gap:8px;align-items:center;"><div style="flex:1;padding:8px;background:#f8f9fa;border:1px solid #ddd;border-radius:4px;font-size:12px;">\uD83D\uDD12 Hidden</div>';
+  html += '<button class="btn-primary btn-sm" onclick="document.getElementById(\'cicdSshPassphrase\').style.display=\'\'">Change password</button></div>';
+  html += '<input type="password" id="cicdSshPassphrase" value="' + (sshKey.passphrase||'') + '" style="display:none;margin-top:4px;"></div>';
+
+  html += '<label style="font-size:12px;">Path to key ？</label>';
+  html += '<input type="text" id="cicdSshKeyPath" value="' + (sshKey.path_to_key||'') + '" style="margin-bottom:12px;">';
+
+  html += '<label style="font-size:12px;">Key ？</label>';
+  html += '<textarea id="cicdSshKeyContent" rows="5" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-family:monospace;font-size:12px;margin-bottom:12px;">' + (sshKey.key_content||'') + '</textarea>';
+
+  // Global Disable exec with tooltip
+  html += '<div style="margin-bottom:12px;display:flex;align-items:center;gap:6px;">';
+  html += '<label style="font-size:12px;margin:0;"><input type="checkbox" id="cicdSshDisableExec"' + (setting.disable_exec?' checked':'') + '> Disable exec</label>';
+  html += '<span style="cursor:help;color:#4a90d9;font-size:12px;border:1px solid #4a90d9;border-radius:50%;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;" title="Remove the ability to run Exec commands from this plugin.\nThe Disable exec in the advanced settings for individual configurations will be ignored.">?</span>';
+  html += '</div>';
+
+  // SSH Servers list
+  html += '<h3 style="margin:16px 0 12px;">SSH Servers</h3>';
+  html += '<div id="cicdSshServersList">';
+  sshServers.forEach(function(s, idx) {
+    html += cicdRenderSshServerForm(s, idx);
+  });
+  html += '</div>';
+
+  html += '<div style="margin-top:12px;"><a href="javascript:void(0)" onclick="cicdAddSshServer()" style="color:#4a90d9;font-size:13px;text-decoration:none;">New</a></div>';
+
+  html += '</div>';
+
+  // Save/Apply
+  html += '<div style="display:flex;gap:8px;"><button class="btn-primary" onclick="cicdSaveSystemSettings()">Save</button><button class="btn-warning" onclick="cicdSaveSystemSettings()">application</button></div>';
+
+  container.innerHTML = html;
+}
+
+function cicdRenderSshServerForm(s, idx) {
+  var html = '<div style="border:1px solid #ddd;border-radius:8px;padding:16px;margin-bottom:12px;position:relative;" id="cicdSshServerBlock' + idx + '">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+  html += '<span style="font-weight:600;font-size:13px;">\u2261 SSH Server</span>';
+  html += '<span style="cursor:pointer;color:#e74c3c;font-size:16px;" onclick="cicdRemoveSshServer(' + idx + ')" title="Remove">\u2715</span>';
+  html += '</div>';
+  html += '<label style="font-size:12px;">Name \uFF1F</label>';
+  html += '<input type="text" id="cicdSrvName' + idx + '" value="' + (s.name||'') + '" style="margin-bottom:8px;">';
+  html += '<label style="font-size:12px;">Hostname \uFF1F</label>';
+  html += '<input type="text" id="cicdSrvHost' + idx + '" value="' + (s.hostname||'') + '" style="margin-bottom:8px;">';
+  html += '<label style="font-size:12px;">Username \uFF1F</label>';
+  html += '<input type="text" id="cicdSrvUser' + idx + '" value="' + (s.username||'') + '" style="margin-bottom:8px;">';
+  html += '<label style="font-size:12px;">Remote Directory \uFF1F</label>';
+  html += '<input type="text" id="cicdSrvRemoteDir' + idx + '" value="' + (s.remote_directory||'') + '" style="margin-bottom:8px;">';
+  html += '<div style="margin-bottom:8px;"><label style="font-size:12px;"><input type="checkbox" id="cicdSrvAvoid' + idx + '"' + (s.avoid_duplicates?' checked':'') + '> Avoid sending files that have not changed \uFF1F</label></div>';
+
+  // Advanced section (local override of global SSH key config)
+  html += '<div><button class="btn-primary btn-sm" onclick="cicdToggleSrvAdv(' + idx + ')" id="cicdSrvAdvBtn' + idx + '" style="font-size:11px;padding:3px 8px;">advanced \u2228</button></div>';
+  html += '<div id="cicdSrvAdvPanel' + idx + '" style="display:none;margin-top:12px;padding:12px;border:1px solid #eee;border-radius:4px;">';
+  html += '<div style="margin-bottom:8px;"><label style="font-size:12px;"><input type="checkbox" id="cicdSrvUsePass' + idx + '"' + (s.use_password?' checked':'') + '> Use password authentication, or use a different key \uFF1F</label></div>';
+  html += '<label style="font-size:12px;">Passphrase \uFF1F</label>';
+  html += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;"><div style="flex:1;padding:8px;background:#f8f9fa;border:1px solid #ddd;border-radius:4px;font-size:12px;">\uD83D\uDD12 Hidden</div>';
+  html += '<button class="btn-primary btn-sm" onclick="document.getElementById(\'cicdSrvPassphrase' + idx + '\').style.display=\'\'">Change password</button></div>';
+  html += '<input type="password" id="cicdSrvPassphrase' + idx + '" value="' + (s.passphrase||'') + '" style="display:none;margin-bottom:8px;">';
+  html += '<label style="font-size:12px;">Path to key \uFF1F</label><input type="text" id="cicdSrvKeyPath' + idx + '" value="' + (s.key_path||'') + '" style="margin-bottom:8px;">';
+  html += '<label style="font-size:12px;">Key \uFF1F</label><textarea id="cicdSrvKeyContent' + idx + '" rows="3" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;font-family:monospace;font-size:12px;margin-bottom:8px;">' + (s.key_content||'') + '</textarea>';
+  html += '<label style="font-size:12px;">Jump host \uFF1F</label><input type="text" id="cicdSrvJumpHost' + idx + '" value="' + (s.jump_host||'') + '" style="margin-bottom:8px;">';
+  html += '<label style="font-size:12px;">Port \uFF1F</label><input type="number" id="cicdSrvPort' + idx + '" value="' + (s.port||22) + '" style="margin-bottom:8px;">';
+  html += '<label style="font-size:12px;">Timeout (ms) \uFF1F</label><input type="number" id="cicdSrvTimeout' + idx + '" value="' + (s.timeout||300000) + '" style="margin-bottom:8px;">';
+  html += '<div style="margin-bottom:8px;display:flex;align-items:center;gap:6px;"><label style="font-size:12px;margin:0;"><input type="checkbox" id="cicdSrvDisableExec' + idx + '"' + (s.disable_exec?' checked':'') + '> Disable exec \uFF1F</label></div>';
+  html += '<div style="background:#f0f7ff;border-radius:4px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:#555;">Remove the ability to run Exec commands in this configuration. <span style="float:right;color:#4a90d9;">(from Publish Over SSH)</span></div>';
+  html += '<label style="font-size:12px;">Proxy type \uFF1F</label><select id="cicdSrvProxyType' + idx + '" style="margin-bottom:8px;"><option value="">---</option><option value="SOCKS5"' + (s.proxy_type==='SOCKS5'?' selected':'') + '>SOCKS5</option><option value="HTTP"' + (s.proxy_type==='HTTP'?' selected':'') + '>HTTP</option></select>';
+  html += '<label style="font-size:12px;">Proxy host \uFF1F</label><input type="text" id="cicdSrvProxyHost' + idx + '" value="' + (s.proxy_host||'') + '" style="margin-bottom:8px;">';
+  html += '<label style="font-size:12px;">Proxy port \uFF1F</label><input type="number" id="cicdSrvProxyPort' + idx + '" value="' + (s.proxy_port||0) + '" style="margin-bottom:8px;">';
+  html += '<label style="font-size:12px;">Proxy user \uFF1F</label><input type="text" id="cicdSrvProxyUser' + idx + '" value="' + (s.proxy_user||'') + '" style="margin-bottom:8px;">';
+  html += '<label style="font-size:12px;">Proxy password</label>';
+  html += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;"><div style="flex:1;padding:8px;background:#f8f9fa;border:1px solid #ddd;border-radius:4px;font-size:12px;">\uD83D\uDD12 Hidden</div>';
+  html += '<button class="btn-primary btn-sm" onclick="document.getElementById(\'cicdSrvProxyPass' + idx + '\').style.display=\'\'">Change password</button></div>';
+  html += '<input type="password" id="cicdSrvProxyPass' + idx + '" value="' + (s.proxy_password||'') + '" style="display:none;margin-bottom:8px;">';
+  html += '</div>';
+
+  // Test configuration button
+  html += '<div style="margin-top:8px;text-align:right;"><button class="btn-primary btn-sm" onclick="cicdTestSshServer(' + idx + ')">Test Configuration</button></div>';
+  html += '</div>';
+  return html;
+}
+
+function cicdToggleSrvAdv(idx) {
+  var p = document.getElementById('cicdSrvAdvPanel' + idx), b = document.getElementById('cicdSrvAdvBtn' + idx);
+  if (p.style.display === 'none') { p.style.display = ''; b.textContent = 'advanced \u2227'; } else { p.style.display = 'none'; b.textContent = 'advanced \u2228'; }
+}
+
+var _cicdSshServerCount = 0;
+
+function cicdAddSshServer() {
+  var list = document.getElementById('cicdSshServersList');
+  var count = list.querySelectorAll('[id^="cicdSshServerBlock"]').length;
+  var newHtml = cicdRenderSshServerForm({}, count);
+  list.insertAdjacentHTML('beforeend', newHtml);
+}
+
+function cicdRemoveSshServer(idx) {
+  var el = document.getElementById('cicdSshServerBlock' + idx);
+  if (el) el.remove();
+}
+
+async function cicdTestSshServer(idx) {
+  var hostname = (document.getElementById('cicdSrvHost' + idx)||{}).value||'';
+  var port = parseInt((document.getElementById('cicdSrvPort' + idx)||{}).value)||22;
+  var username = (document.getElementById('cicdSrvUser' + idx)||{}).value||'';
+  if (!hostname) { showAlert('Hostname is required'); return; }
+  showAlert('Testing SSH connection to ' + hostname + ':' + port + '...');
+  // Simple test via backend
+  var res = await fetch('/cicd/settings/test-ssh', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({hostname:hostname,port:port,username:username}) });
+  var data = await res.json();
+  showAlert(data.message || data.error || 'Test complete');
+}
+
+function cicdCollectSshServers() {
+  var servers = [];
+  var blocks = document.querySelectorAll('[id^="cicdSshServerBlock"]');
+  blocks.forEach(function(block) {
+    var realIdx = block.id.replace('cicdSshServerBlock', '');
+    servers.push({
+      name: (document.getElementById('cicdSrvName' + realIdx)||{}).value||'',
+      hostname: (document.getElementById('cicdSrvHost' + realIdx)||{}).value||'',
+      username: (document.getElementById('cicdSrvUser' + realIdx)||{}).value||'',
+      remote_directory: (document.getElementById('cicdSrvRemoteDir' + realIdx)||{}).value||'',
+      avoid_duplicates: (document.getElementById('cicdSrvAvoid' + realIdx)||{}).checked||false,
+      use_password: (document.getElementById('cicdSrvUsePass' + realIdx)||{}).checked||false,
+      passphrase: (document.getElementById('cicdSrvPassphrase' + realIdx)||{}).value||'',
+      key_path: (document.getElementById('cicdSrvKeyPath' + realIdx)||{}).value||'',
+      key_content: (document.getElementById('cicdSrvKeyContent' + realIdx)||{}).value||'',
+      jump_host: (document.getElementById('cicdSrvJumpHost' + realIdx)||{}).value||'',
+      port: parseInt((document.getElementById('cicdSrvPort' + realIdx)||{}).value)||22,
+      timeout: parseInt((document.getElementById('cicdSrvTimeout' + realIdx)||{}).value)||300000,
+      disable_exec: (document.getElementById('cicdSrvDisableExec' + realIdx)||{}).checked||false,
+      proxy_type: (document.getElementById('cicdSrvProxyType' + realIdx)||{}).value||'',
+      proxy_host: (document.getElementById('cicdSrvProxyHost' + realIdx)||{}).value||'',
+      proxy_port: parseInt((document.getElementById('cicdSrvProxyPort' + realIdx)||{}).value)||0,
+      proxy_user: (document.getElementById('cicdSrvProxyUser' + realIdx)||{}).value||'',
+      proxy_password: (document.getElementById('cicdSrvProxyPass' + realIdx)||{}).value||''
+    });
+  });
+  return servers;
+}
+
+async function cicdSaveSystemSettings() {
+  var setting = {
+    ssh_key: {
+      passphrase: (document.getElementById('cicdSshPassphrase')||{}).value||'',
+      path_to_key: (document.getElementById('cicdSshKeyPath')||{}).value||'',
+      key_content: (document.getElementById('cicdSshKeyContent')||{}).value||''
+    },
+    disable_exec: (document.getElementById('cicdSshDisableExec')||{}).checked||false,
+    ssh_servers: cicdCollectSshServers()
+  };
+  var res = await fetch('/cicd/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({setting:setting}) });
+  var data = await res.json();
+  if (data.error) { showAlert(data.error); return; }
+  showAlert('Settings saved!');
+}
+
+
+// ---------------------------------------------------------------------------
+// Build history dropdown menu & Console Output
+// ---------------------------------------------------------------------------
+function cicdToggleBuildMenu(event, buildNumber, itemName, parentView) {
+  event.stopPropagation();
+  // Remove any existing menu
+  var existing = document.getElementById('cicdBuildDropdown');
+  if (existing) { existing.remove(); return; }
+
+  var menu = document.createElement('div');
+  menu.id = 'cicdBuildDropdown';
+  menu.style.cssText = 'position:fixed;background:#fff;border:1px solid #ddd;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);padding:6px 0;z-index:1000;min-width:220px;';
+  menu.style.left = event.clientX + 'px';
+  menu.style.top = event.clientY + 'px';
+
+  var items = [
+    {icon: '⟨/⟩', label: 'Changes', action: "showAlert('Coming soon')"},
+    {icon: '📋', label: 'Console Output', action: "cicdShowConsoleOutput(" + buildNumber + ",'" + itemName + "','" + parentView + "')"},
+    {icon: '✏', label: 'Edit Build Information', action: "showAlert('Coming soon')"},
+    {icon: '🗑', label: "Delete Build '#" + buildNumber + "'", action: "showAlert('Coming soon')"},
+    {icon: '⚙', label: 'Parameters', action: "showAlert('Coming soon')"},
+    {icon: '⏱', label: 'Timings', action: "showAlert('Coming soon')"}
+  ];
+
+  items.forEach(function(item) {
+    var row = document.createElement('div');
+    row.style.cssText = 'padding:8px 16px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:10px;';
+    row.onmouseover = function() { this.style.background = '#f0f7ff'; };
+    row.onmouseout = function() { this.style.background = ''; };
+    row.innerHTML = '<span>' + item.icon + '</span><span>' + item.label + '</span>';
+    row.onclick = function(e) { e.stopPropagation(); menu.remove(); eval(item.action); };
+    menu.appendChild(row);
+  });
+
+  document.body.appendChild(menu);
+  // Close on click outside
+  setTimeout(function() {
+    document.addEventListener('click', function closeMenu() {
+      var m = document.getElementById('cicdBuildDropdown');
+      if (m) m.remove();
+      document.removeEventListener('click', closeMenu);
+    });
+  }, 10);
+}
+
+async function cicdShowConsoleOutput(buildNumber, itemName, parentView) {
+  var item = _cicdCurrentItemData;
+  if (!item) { showAlert('Item data not loaded'); return; }
+
+  var build = null;
+  (item.build_history || []).forEach(function(b) {
+    if (b.number === buildNumber) build = b;
+  });
+  if (!build) { showAlert('Build #' + buildNumber + ' not found'); return; }
+
+  // Try loading console log from file first
+  var outputText = '';
+  try {
+    var logRes = await fetch('/cicd/build-log?item=' + encodeURIComponent(itemName) + '&build=' + buildNumber);
+    if (logRes.ok) {
+      var logData = await logRes.json();
+      outputText = logData.log || '';
+    }
+  } catch(e) {}
+
+  // Fallback: build output from build_history results
+  if (!outputText) {
+    var outputLines = [];
+    outputLines.push('Started by user ' + (document.getElementById('userInfo') ? document.getElementById('userInfo').textContent.replace('\uD83D\uDC64 ', '') : 'unknown'));
+    outputLines.push('Running as SYSTEM');
+    outputLines.push('Building in workspace /cicd/workspace/' + itemName);
+    outputLines.push('');
+    var results = build.results || [];
+    results.forEach(function(r, idx) {
+      if (r.step === 'ssh') {
+        outputLines.push('SSH: Connecting with configuration [' + (item.build_steps && item.build_steps[idx] ? item.build_steps[idx].config.hostname : 'unknown') + '] ...');
+        outputLines.push('SSH: Connected');
+        outputLines.push('SSH: Opening exec channel ...');
+        outputLines.push('SSH: EXEC: channel open');
+        if (item.build_steps && item.build_steps[idx] && item.build_steps[idx].config.exec_command) {
+          outputLines.push('SSH: EXEC: STDOUT/STDERR from command [' + item.build_steps[idx].config.exec_command + ']');
+        }
+        if (r.output) {
+          r.output.split('\n').forEach(function(line) { outputLines.push(line); });
+        }
+        outputLines.push('SSH: EXEC: completed');
+        if (r.exit_code !== undefined) outputLines.push('SSH: EXEC: exit status: ' + r.exit_code);
+        outputLines.push('SSH: Disconnecting configuration ...');
+        outputLines.push('');
+      }
+    });
+    outputLines.push('Finished: ' + (build.success ? 'SUCCESS' : 'UNSTABLE'));
+    outputText = outputLines.join('\n');
+  }
+
+  // Render console output page
+  cicdHideAll();
+  var detailEl = document.getElementById('cicdItemDetail');
+  if (!detailEl) { detailEl = document.createElement('div'); detailEl.id = 'cicdItemDetail'; document.getElementById('cicdApp').appendChild(detailEl); }
+  detailEl.style.display = '';
+
+  var statusIcon = build.success ? '\u2705' : '\u2298';
+  var html = '<div>';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #eee;">';
+  html += '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:18px;">' + statusIcon + '</span><h2 style="margin:0;font-size:18px;">Console Output</h2></div>';
+  html += '<div style="display:flex;gap:12px;">';
+  html += '<button class="btn-primary btn-sm" onclick="cicdDownloadConsole(' + buildNumber + ')">📥 Download</button>';
+  html += '<button class="btn-primary btn-sm" onclick="cicdCopyConsole()">📋 Copy</button>';
+  html += '<button class="btn-primary btn-sm" onclick="cicdViewPlainText()">View as plain text</button>';
+  html += '</div></div>';
+  html += '<pre id="cicdConsoleText" style="background:#1e1e2e;color:#cdd6f4;padding:16px;border-radius:8px;font-family:\'Cascadia Code\',monospace;font-size:12px;overflow:auto;max-height:600px;white-space:pre-wrap;word-break:break-all;line-height:1.6;">' + outputText.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>';
+  html += '<div style="margin-top:12px;"><button class="btn-primary" onclick="cicdOpenItemDetail(\'' + itemName + '\',\'' + parentView + '\')">← Back</button></div>';
+  html += '</div>';
+
+  detailEl.innerHTML = html;
+}
+
+function cicdDownloadConsole(buildNumber) {
+  var text = document.getElementById('cicdConsoleText').textContent;
+  var blob = new Blob([text], {type: 'text/plain'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'build_' + buildNumber + '_console.txt';
+  a.click();
+}
+
+function cicdCopyConsole() {
+  var text = document.getElementById('cicdConsoleText').textContent;
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); showAlert('Console output copied to clipboard!'); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+function cicdViewPlainText() {
+  var text = document.getElementById('cicdConsoleText').textContent;
+  var win = window.open('', '_blank');
+  win.document.write('<pre>' + text.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>');
+}

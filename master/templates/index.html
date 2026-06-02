@@ -82,6 +82,7 @@
   <h1 style="margin:0;font-size:20px;display:inline-block;">🎰 Distributed Simulator Control Panel</h1>
   <div style="position:absolute;right:20px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:12px;font-size:13px;">
     <span id="userInfo" style="color:#666;">👤 Loading...</span>
+    <span style="cursor:pointer;font-size:16px;" onclick="switchPage('cicdsettings')" title="Settings">⚙️</span>
     <button onclick="doLogout()" style="background:#e74c3c;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">Logout</button>
     <select id="bgSelect" onchange="changeBg(this.value)" style="padding:4px 8px;border-radius:4px;border:1px solid #ccc;font-size:12px;">
       <option value="gray">Gray</option>
@@ -761,8 +762,19 @@
         <!-- CICD Item Detail Page (dynamic) -->
         <div id="cicdItemDetail" style="display:none;"></div>
 
+        <!-- CICD Settings Page -->
+        <div id="cicdSettingsPage" style="display:none;"></div>
+
       </div>
     </div><!-- end pageCicd -->
+
+    <!-- CICD SETTINGS PAGE (accessible from user icon) -->
+    <div class="page-panel" id="pageCicdsettings">
+      <div id="cicdSettingsBreadcrumb" style="font-size:13px;color:#666;margin-bottom:12px;">
+        <span style="cursor:pointer;color:#4a90d9;" onclick="switchPage('cicdsettings')">Setting</span>
+      </div>
+      <div id="cicdSettingsContent"></div>
+    </div><!-- end pageCicdsettings -->
 
     <!-- FAMILY PAGE -->
     <div class="page-panel" id="pageFamily">
@@ -2260,6 +2272,7 @@ function switchPage(page) {
   if (page === 'sha1') loadSha1History();
   if (page === 'family') loadFamilyGallery();
   if (page === 'cicd') cicdInit();
+  if (page === 'cicdsettings') cicdLoadSettingsPage();
 }
 
 // ---------------------------------------------------------------------------

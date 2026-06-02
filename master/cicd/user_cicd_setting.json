@@ -1,0 +1,35 @@
+[
+  {
+    "username": "admin",
+    "setting": {
+      "ssh_key": {
+        "passphrase": "",
+        "path_to_key": "",
+        "key_content": "-----BEGIN OPENSSH PRIVATE KEY-----\n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\n-----END OPENSSH PRIVATE KEY-----\n"
+      },
+      "disable_exec": false,
+      "ssh_servers": [
+        {
+          "name": "b2b-development",
+          "hostname": "54.210.237.121",
+          "username": "ubuntu",
+          "remote_directory": "",
+          "avoid_duplicates": false,
+          "use_password": false,
+          "passphrase": "",
+          "key_path": "",
+          "key_content": "",
+          "jump_host": "",
+          "port": 22,
+          "timeout": 300000,
+          "disable_exec": false,
+          "proxy_type": "",
+          "proxy_host": "",
+          "proxy_port": 0,
+          "proxy_user": "",
+          "proxy_password": ""
+        }
+      ]
+    }
+  }
+]
