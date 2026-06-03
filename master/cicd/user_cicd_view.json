@@ -35,9 +35,9 @@
           }
         ],
         "post_build": [],
-        "last_success": "2026-06-02 17:32:39",
+        "last_success": "2026-06-02 17:59:20",
         "last_failure": "2026-06-02 17:32:18",
-        "last_duration": "3.5s",
+        "last_duration": "3.4s",
         "build_history": [
           {
             "number": 1,
@@ -148,6 +148,20 @@
             "number": 7,
             "timestamp": "2026-06-02 17:32:39",
             "duration": "3.5s",
+            "success": true,
+            "results": [
+              {
+                "step": "ssh",
+                "success": true,
+                "output": "create test.txt\n",
+                "exit_code": 0
+              }
+            ]
+          },
+          {
+            "number": 8,
+            "timestamp": "2026-06-02 17:59:20",
+            "duration": "3.4s",
             "success": true,
             "results": [
               {
