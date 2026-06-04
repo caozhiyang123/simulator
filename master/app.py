@@ -2306,4 +2306,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     run_port = args.port
     print(f"Master listening on 0.0.0.0:{run_port}")
-    app.run(host="0.0.0.0", port=run_port)
+    app.run(host="0.0.0.0", port=run_port, threaded=True)
