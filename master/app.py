@@ -1042,6 +1042,82 @@ def local_delete():
     return jsonify({"results": results})
 
 
+@app.route("/files/local/mkdir", methods=["POST"])
+def local_mkdir():
+    """Create a directory locally.
+
+    Request body: {"path": "absolute/path"}
+    """
+    data = request.get_json(force=True)
+    dir_path = data.get("path", "")
+    if not dir_path:
+        return jsonify({"error": "path is required"}), 400
+    full = os.path.normpath(dir_path)
+    try:
+        os.makedirs(full, exist_ok=True)
+        return jsonify({"status": "ok", "path": full.replace("\\", "/")})
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/local/create", methods=["POST"])
+def local_create_file():
+    """Create an empty file locally.
+
+    Request body: {"path": "absolute/path", "content": ""}
+    """
+    data = request.get_json(force=True)
+    file_path = data.get("path", "")
+    content = data.get("content", "")
+    if not file_path:
+        return jsonify({"error": "path is required"}), 400
+    full = os.path.normpath(file_path)
+    try:
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w", encoding="utf-8") as f:
+            f.write(content)
+        return jsonify({"status": "ok", "path": full.replace("\\", "/")})
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/worker/mkdir", methods=["POST"])
+def worker_mkdir():
+    """Create a directory on a remote worker.
+
+    Request body: {"addr": "ip:port", "path": "absolute/path"}
+    """
+    data = request.get_json(force=True)
+    addr = data.get("addr", "")
+    dir_path = data.get("path", "")
+    if not addr or not dir_path:
+        return jsonify({"error": "addr and path are required"}), 400
+    try:
+        r = http_requests.post(f"http://{addr}/files/mkdir", json={"path": dir_path}, timeout=10)
+        return jsonify(r.json()), r.status_code
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/worker/create", methods=["POST"])
+def worker_create_file():
+    """Create an empty file on a remote worker.
+
+    Request body: {"addr": "ip:port", "path": "absolute/path", "content": ""}
+    """
+    data = request.get_json(force=True)
+    addr = data.get("addr", "")
+    file_path = data.get("path", "")
+    content = data.get("content", "")
+    if not addr or not file_path:
+        return jsonify({"error": "addr and path are required"}), 400
+    try:
+        r = http_requests.post(f"http://{addr}/files/write", json={"path": file_path, "content": content}, timeout=10)
+        return jsonify(r.json()), r.status_code
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/files/local/read", methods=["GET"])
 def local_read():
     """Read a local file content for preview or transfer.

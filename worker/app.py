@@ -196,6 +196,24 @@ def read_file():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/files/mkdir", methods=["POST"])
+def mkdir():
+    """Create a directory on this worker.
+
+    Request body: {"path": "absolute/path"}
+    """
+    data = request.get_json(force=True)
+    dir_path = data.get("path", "")
+    if not dir_path:
+        return jsonify({"error": "path is required"}), 400
+    full = os.path.normpath(dir_path)
+    try:
+        os.makedirs(full, exist_ok=True)
+        return jsonify({"status": "ok", "path": full.replace("\\", "/")})
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/files/write", methods=["POST"])
 def write_file():
     """Write content to a file on this worker.
@@ -207,6 +225,7 @@ def write_file():
     content = data.get("content", "")
     full = os.path.normpath(file_path)
     try:
+        os.makedirs(os.path.dirname(full), exist_ok=True)
         with open(full, "w", encoding="utf-8") as f:
             f.write(content)
         return jsonify({"status": "ok", "path": file_path})

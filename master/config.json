@@ -1,5 +1,4 @@
 {
-  "port": 5555,
   "master": {
     "vcpu": 8,
     "percentage": 100
@@ -24,7 +23,7 @@
       "password": null
     },
     {
-      "addr": "10.147.18.17:5001",
+      "addr": "10.147.18.17:5002",
       "vcpu": 12,
       "alias": "Yamy",
       "percentage": 0.0,
