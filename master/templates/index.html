@@ -139,6 +139,8 @@
           <button class="btn-danger btn-sm" onclick="deleteSelectedLocal()">🗑 Delete</button>
           <button class="btn-primary btn-sm" onclick="createLocalFolder()">📁 New Folder</button>
           <button class="btn-primary btn-sm" onclick="createLocalFile()">📄 New File</button>
+          <button class="btn-warning btn-sm" onclick="renameSelectedLocal()">✏ Rename</button>
+          <button class="btn-primary btn-sm" onclick="duplicateSelectedLocal()">📋 Duplicate</button>
           <input type="file" id="localUploadInput" multiple style="display:none;" onchange="uploadToMaster(this.files)">
         </div>
         <div id="localBreadcrumb" style="font-size:12px;color:#666;margin-bottom:4px;cursor:pointer;"></div>
@@ -156,6 +158,8 @@
           <button class="btn-danger btn-sm" onclick="deleteSelectedRemote()">🗑 Delete</button>
           <button class="btn-primary btn-sm" onclick="createRemoteFolder()">📁 New Folder</button>
           <button class="btn-primary btn-sm" onclick="createRemoteFile()">📄 New File</button>
+          <button class="btn-warning btn-sm" onclick="renameSelectedRemote()">✏ Rename</button>
+          <button class="btn-primary btn-sm" onclick="duplicateSelectedRemote()">📋 Duplicate</button>
         </div>
         <div id="remoteBreadcrumb" style="font-size:12px;color:#666;margin-bottom:4px;cursor:pointer;"></div>
         <div id="remoteFileList" style="font-size:13px;min-height:200px;"></div>
@@ -2187,6 +2191,66 @@ async function createRemoteFile() {
   var r = await api('/files/worker/create', 'POST', {addr: addr, path: path, content: ''});
   if (r.ok) { log('📄 Created remote file: ' + name); loadRemoteDir(remoteCurrentPath); }
   else { showAlert(r.data.error || 'Failed to create file'); }
+}
+
+async function renameSelectedLocal() {
+  var selected = document.querySelectorAll('#localFileList .local-selectable.selected');
+  if (selected.length !== 1) { showAlert('Please select exactly one file or folder to rename'); return; }
+  var oldPath = selected[0].dataset.path;
+  var oldName = oldPath.split('/').pop().split('\\').pop();
+  var newName = prompt('Enter new name:', oldName);
+  if (!newName || !newName.trim() || newName.trim() === oldName) return;
+  var newPath = oldPath.substring(0, oldPath.length - oldName.length) + newName.trim();
+  var r = await api('/files/local/rename', 'POST', {old_path: oldPath, new_path: newPath});
+  if (r.ok) { log('✏ Renamed: ' + oldName + ' → ' + newName.trim()); loadLocalDir(localCurrentPath); }
+  else { showAlert(r.data.error || 'Failed to rename'); }
+}
+
+async function renameSelectedRemote() {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  var selected = document.querySelectorAll('#remoteFileList .remote-selectable.selected');
+  if (selected.length !== 1) { showAlert('Please select exactly one file or folder to rename'); return; }
+  var oldPath = selected[0].dataset.path;
+  var oldName = oldPath.split('/').pop().split('\\').pop();
+  var newName = prompt('Enter new name:', oldName);
+  if (!newName || !newName.trim() || newName.trim() === oldName) return;
+  var newPath = oldPath.substring(0, oldPath.length - oldName.length) + newName.trim();
+  var r = await api('/files/worker/rename', 'POST', {addr: addr, old_path: oldPath, new_path: newPath});
+  if (r.ok) { log('✏ Renamed: ' + oldName + ' → ' + newName.trim()); loadRemoteDir(remoteCurrentPath); }
+  else { showAlert(r.data.error || 'Failed to rename'); }
+}
+
+async function duplicateSelectedLocal() {
+  var selected = document.querySelectorAll('#localFileList .local-selectable.selected');
+  if (selected.length !== 1) { showAlert('Please select exactly one file or folder to duplicate'); return; }
+  var srcPath = selected[0].dataset.path;
+  var srcName = srcPath.split('/').pop().split('\\').pop();
+  var dotIdx = srcName.lastIndexOf('.');
+  var defaultName = dotIdx > 0 ? srcName.substring(0, dotIdx) + '_copy' + srcName.substring(dotIdx) : srcName + '_copy';
+  var newName = prompt('Enter name for the copy:', defaultName);
+  if (!newName || !newName.trim()) return;
+  var newPath = srcPath.substring(0, srcPath.length - srcName.length) + newName.trim();
+  var r = await api('/files/local/duplicate', 'POST', {source: srcPath, dest: newPath});
+  if (r.ok) { log('📋 Duplicated: ' + srcName + ' → ' + newName.trim()); loadLocalDir(localCurrentPath); }
+  else { showAlert(r.data.error || 'Failed to duplicate'); }
+}
+
+async function duplicateSelectedRemote() {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  var selected = document.querySelectorAll('#remoteFileList .remote-selectable.selected');
+  if (selected.length !== 1) { showAlert('Please select exactly one file or folder to duplicate'); return; }
+  var srcPath = selected[0].dataset.path;
+  var srcName = srcPath.split('/').pop().split('\\').pop();
+  var dotIdx = srcName.lastIndexOf('.');
+  var defaultName = dotIdx > 0 ? srcName.substring(0, dotIdx) + '_copy' + srcName.substring(dotIdx) : srcName + '_copy';
+  var newName = prompt('Enter name for the copy:', defaultName);
+  if (!newName || !newName.trim()) return;
+  var newPath = srcPath.substring(0, srcPath.length - srcName.length) + newName.trim();
+  var r = await api('/files/worker/duplicate', 'POST', {addr: addr, source: srcPath, dest: newPath});
+  if (r.ok) { log('📋 Duplicated: ' + srcName + ' → ' + newName.trim()); loadRemoteDir(remoteCurrentPath); }
+  else { showAlert(r.data.error || 'Failed to duplicate'); }
 }
 
 function initFileSyncWorkerSelect() {

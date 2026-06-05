@@ -1084,6 +1084,90 @@ def local_create_file():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/files/local/rename", methods=["POST"])
+def local_rename():
+    """Rename a local file or directory.
+
+    Request body: {"old_path": "absolute/old", "new_path": "absolute/new"}
+    """
+    data = request.get_json(force=True)
+    old_path = os.path.normpath(data.get("old_path", ""))
+    new_path = os.path.normpath(data.get("new_path", ""))
+    if not old_path or not new_path:
+        return jsonify({"error": "old_path and new_path are required"}), 400
+    if not os.path.exists(old_path):
+        return jsonify({"error": "Source not found"}), 404
+    try:
+        os.rename(old_path, new_path)
+        return jsonify({"status": "ok", "path": new_path.replace("\\", "/")})
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/local/duplicate", methods=["POST"])
+def local_duplicate():
+    """Duplicate (copy) a local file or directory.
+
+    Request body: {"source": "absolute/path", "dest": "absolute/new_path"}
+    """
+    import shutil
+    data = request.get_json(force=True)
+    source = os.path.normpath(data.get("source", ""))
+    dest = os.path.normpath(data.get("dest", ""))
+    if not source or not dest:
+        return jsonify({"error": "source and dest are required"}), 400
+    if not os.path.exists(source):
+        return jsonify({"error": "Source not found"}), 404
+    try:
+        if os.path.isdir(source):
+            shutil.copytree(source, dest)
+        else:
+            shutil.copy2(source, dest)
+        return jsonify({"status": "ok", "path": dest.replace("\\", "/")})
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/worker/rename", methods=["POST"])
+def worker_rename():
+    """Rename a file or directory on a remote worker.
+
+    Request body: {"addr": "ip:port", "old_path": "path", "new_path": "path"}
+    """
+    data = request.get_json(force=True)
+    addr = data.get("addr", "")
+    if not addr:
+        return jsonify({"error": "addr is required"}), 400
+    try:
+        r = http_requests.post(f"http://{addr}/files/rename", json={
+            "old_path": data.get("old_path", ""),
+            "new_path": data.get("new_path", "")
+        }, timeout=10)
+        return jsonify(r.json()), r.status_code
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/worker/duplicate", methods=["POST"])
+def worker_duplicate():
+    """Duplicate a file or directory on a remote worker.
+
+    Request body: {"addr": "ip:port", "source": "path", "dest": "path"}
+    """
+    data = request.get_json(force=True)
+    addr = data.get("addr", "")
+    if not addr:
+        return jsonify({"error": "addr is required"}), 400
+    try:
+        r = http_requests.post(f"http://{addr}/files/duplicate", json={
+            "source": data.get("source", ""),
+            "dest": data.get("dest", "")
+        }, timeout=10)
+        return jsonify(r.json()), r.status_code
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/files/worker/mkdir", methods=["POST"])
 def worker_mkdir():
     """Create a directory on a remote worker.

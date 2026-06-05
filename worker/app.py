@@ -259,6 +259,50 @@ def delete_files():
     return jsonify({"results": results})
 
 
+@app.route("/files/rename", methods=["POST"])
+def rename_file():
+    """Rename a file or directory on this worker.
+
+    Request body: {"old_path": "absolute/old", "new_path": "absolute/new"}
+    """
+    data = request.get_json(force=True)
+    old_path = os.path.normpath(data.get("old_path", ""))
+    new_path = os.path.normpath(data.get("new_path", ""))
+    if not old_path or not new_path:
+        return jsonify({"error": "old_path and new_path are required"}), 400
+    if not os.path.exists(old_path):
+        return jsonify({"error": "Source not found"}), 404
+    try:
+        os.rename(old_path, new_path)
+        return jsonify({"status": "ok", "path": new_path.replace("\\", "/")})
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/duplicate", methods=["POST"])
+def duplicate_file():
+    """Duplicate (copy) a file or directory on this worker.
+
+    Request body: {"source": "absolute/path", "dest": "absolute/new_path"}
+    """
+    import shutil
+    data = request.get_json(force=True)
+    source = os.path.normpath(data.get("source", ""))
+    dest = os.path.normpath(data.get("dest", ""))
+    if not source or not dest:
+        return jsonify({"error": "source and dest are required"}), 400
+    if not os.path.exists(source):
+        return jsonify({"error": "Source not found"}), 404
+    try:
+        if os.path.isdir(source):
+            shutil.copytree(source, dest)
+        else:
+            shutil.copy2(source, dest)
+        return jsonify({"status": "ok", "path": dest.replace("\\", "/")})
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/sysinfo", methods=["GET"])
 def sysinfo():
     """Return system CPU and memory info."""
