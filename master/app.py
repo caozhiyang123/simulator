@@ -55,6 +55,9 @@ app = Flask(__name__,
             static_folder=os.path.join(_bundle_dir, 'static'))
 app.secret_key = os.environ.get("SECRET_KEY", "simulator-cluster-secret-2026")
 
+# Static files cache: 7 days (images, JS, CSS won't re-download on every visit)
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 604800
+
 config = ClusterConfig(CONFIG_PATH)
 splitter = TaskSplitter()
 merger = ResultMerger()
@@ -1116,6 +1119,112 @@ def worker_create_file():
         return jsonify(r.json()), r.status_code
     except http_requests.RequestException as exc:
         return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/batch-check", methods=["POST"])
+def batch_check():
+    """Recursively find all files matching the source filename.
+
+    Request body: {"source": "path", "target_dirs": ["dir1", "dir2"], "exclude_dirs": ["ex1"]}
+    """
+    data = request.get_json(force=True)
+    source = data.get("source", "").strip()
+    target_dirs = data.get("target_dirs", [])
+    exclude_dirs = data.get("exclude_dirs", [])
+    # Backward compat: support single target_dir
+    if not target_dirs and data.get("target_dir"):
+        target_dirs = [data.get("target_dir", "").strip()]
+
+    if not source:
+        return jsonify({"error": "source file path is required"}), 400
+    if not target_dirs:
+        return jsonify({"error": "at least one target directory is required"}), 400
+
+    # Normalize exclude dirs for comparison
+    exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
+
+    filename = os.path.basename(source)
+    found = []
+
+    for td in target_dirs:
+        td = os.path.normpath(td.strip())
+        if not os.path.isdir(td):
+            continue
+        for root, dirs, files in os.walk(td, followlinks=True):
+            # Check if current root is under an excluded directory
+            root_norm = os.path.normpath(root).lower()
+            skip = False
+            for ex in exclude_normalized:
+                if root_norm == ex or root_norm.startswith(ex + os.sep):
+                    skip = True
+                    break
+            if skip:
+                continue
+            for f in files:
+                if f == filename:
+                    found.append(os.path.join(root, f).replace("\\", "/"))
+
+    return jsonify({"status": "ok", "found": found, "count": len(found)})
+
+
+@app.route("/files/batch-override", methods=["POST"])
+def batch_override():
+    """Recursively find and replace files matching the source filename.
+
+    Request body: {"source": "path", "target_dirs": ["dir1"], "exclude_dirs": ["ex1"]}
+    """
+    import shutil
+    data = request.get_json(force=True)
+    source = data.get("source", "").strip()
+    target_dirs = data.get("target_dirs", [])
+    exclude_dirs = data.get("exclude_dirs", [])
+    # Backward compat
+    if not target_dirs and data.get("target_dir"):
+        target_dirs = [data.get("target_dir", "").strip()]
+
+    if not source:
+        return jsonify({"error": "source file path is required"}), 400
+    if not target_dirs:
+        return jsonify({"error": "at least one target directory is required"}), 400
+
+    source = os.path.normpath(source)
+    if not os.path.isfile(source):
+        return jsonify({"error": f"Source file not found: {source}"}), 404
+
+    # Normalize exclude dirs
+    exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
+
+    filename = os.path.basename(source)
+    replaced = []
+    errors = []
+
+    for td in target_dirs:
+        td = os.path.normpath(td.strip())
+        if not os.path.isdir(td):
+            errors.append(f"Directory not found: {td}")
+            continue
+        for root, dirs, files in os.walk(td, followlinks=True):
+            # Check if current root is under an excluded directory
+            root_norm = os.path.normpath(root).lower()
+            skip = False
+            for ex in exclude_normalized:
+                if root_norm == ex or root_norm.startswith(ex + os.sep):
+                    skip = True
+                    break
+            if skip:
+                continue
+            for f in files:
+                if f == filename:
+                    target_path = os.path.join(root, f)
+                    if os.path.normpath(target_path) == source:
+                        continue
+                    try:
+                        shutil.copy2(source, target_path)
+                        replaced.append(target_path.replace("\\", "/"))
+                    except Exception as exc:
+                        errors.append(f"{target_path.replace(chr(92), '/')} - {str(exc)}")
+
+    return jsonify({"status": "ok", "replaced": replaced, "errors": errors, "count": len(replaced)})
 
 
 @app.route("/files/local/read", methods=["GET"])

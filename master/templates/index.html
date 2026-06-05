@@ -112,6 +112,7 @@
       <div id="pluginSubmenu" style="display:none;position:absolute;left:56px;top:0;background:#1a1a2e;border:1px solid #333;border-radius:6px;padding:4px;z-index:100;white-space:nowrap;">
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('compare');hidePluginMenu()">🔍 Compare</div>
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('formatjson');hidePluginMenu()">📋 Format JSON</div>
+        <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('batchoverride');hidePluginMenu()">📦 Batch Override File</div>
       </div>
     </div>
     <button class="sidebar-btn" onclick="switchPage('cicd')" id="navCicd">🚀<span>CICD</span></button>
@@ -468,6 +469,38 @@
         <div id="formatJsonError" style="margin-top:8px;font-size:12px;color:#e74c3c;display:none;"></div>
       </div>
     </div><!-- end pageFormatjson -->
+
+    <!-- BATCH OVERRIDE FILE PAGE -->
+    <div class="page-panel" id="pageBatchoverride">
+      <div class="card full-width">
+        <h2>📦 Batch Override File</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:16px;">Replace a file across multiple subdirectories by matching the filename recursively.</p>
+        <label>Source File (full path of the file to use as replacement)</label>
+        <input type="text" id="batchOverrideSrc" placeholder="e.g. D:\tools2\b2b\B2BBMM\B2BSimulator\simulator\B2BGameSimulator\lib\VBWildBallLogic.jar" style="margin-bottom:12px;">
+
+        <label>Target Directories (directories to recursively search in)</label>
+        <div id="batchTargetDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchTargetDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Exclude Directories (skip these directories during search)</label>
+        <div id="batchExcludeDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-exclude-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim/SimC1" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchExcludeDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <button class="btn-primary" onclick="doBatchCheckFiles()" style="margin-right:8px;">🔍 Check All Files</button>
+          <button class="btn-primary" onclick="doBatchOverride()">📦 Batch Override</button>
+        </div>
+        <div id="batchOverrideResult" style="margin-top:16px;font-size:12px;"></div>
+      </div>
+    </div><!-- end pageBatchoverride -->
 
     <!-- CICD PAGE -->
     <div class="page-panel" id="pageCicd">
@@ -3216,6 +3249,104 @@ function formatJsonPrettify() {
 function clearFormatJson() {
   document.getElementById('formatJsonArea').value = '';
   document.getElementById('formatJsonError').style.display = 'none';
+}
+
+// ---------------------------------------------------------------------------
+// Batch Override File
+// ---------------------------------------------------------------------------
+async function doBatchCheckFiles() {
+  var src = document.getElementById('batchOverrideSrc').value.trim();
+  var dirs = getBatchTargetDirs();
+  var excludes = getBatchExcludeDirs();
+  if (!src) { showAlert('Please enter the source file path'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var resultEl = document.getElementById('batchOverrideResult');
+  resultEl.innerHTML = '<div style="color:#888;">Searching for matching files...</div>';
+
+  var res = await fetch('/files/batch-check', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({source: src, target_dirs: dirs, exclude_dirs: excludes})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  var found = data.found || [];
+  var html = '<div style="color:#4a90d9;font-weight:600;margin-bottom:8px;">🔍 Found ' + found.length + ' matching file(s):</div>';
+  if (found.length === 0) {
+    html += '<div style="color:#888;">No matching files found in the target directories.</div>';
+  } else {
+    html += '<div style="background:#1e1e2e;color:#cdd6f4;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:300px;overflow-y:auto;">';
+    found.forEach(function(p) { html += p + '\n'; });
+    html += '</div>';
+  }
+  resultEl.innerHTML = html;
+}
+
+async function doBatchOverride() {
+  var src = document.getElementById('batchOverrideSrc').value.trim();
+  var dirs = getBatchTargetDirs();
+  var excludes = getBatchExcludeDirs();
+  if (!src) { showAlert('Please enter the source file path'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var resultEl = document.getElementById('batchOverrideResult');
+  resultEl.innerHTML = '<div style="color:#888;">Searching and overriding...</div>';
+
+  var res = await fetch('/files/batch-override', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({source: src, target_dirs: dirs, exclude_dirs: excludes})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  var replaced = data.replaced || [];
+  var errors = data.errors || [];
+  var html = '<div style="color:#27ae60;font-weight:600;margin-bottom:8px;">✅ Overridden ' + replaced.length + ' file(s):</div>';
+  if (replaced.length === 0 && errors.length === 0) {
+    html += '<div style="color:#888;">No matching files found in the target directories.</div>';
+  } else {
+    if (replaced.length > 0) {
+      html += '<div style="background:#1e1e2e;color:#a6e3a1;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:300px;overflow-y:auto;margin-bottom:8px;">';
+      replaced.forEach(function(p) { html += p + '\n'; });
+      html += '</div>';
+    }
+    if (errors.length > 0) {
+      html += '<div style="color:#e74c3c;font-weight:600;margin-bottom:4px;">❌ Failed (' + errors.length + '):</div>';
+      html += '<div style="background:#1e1e2e;color:#f38ba8;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:150px;overflow-y:auto;">';
+      errors.forEach(function(p) { html += p + '\n'; });
+      html += '</div>';
+    }
+  }
+  resultEl.innerHTML = html;
+}
+
+function getBatchTargetDirs() {
+  var inputs = document.querySelectorAll('#batchTargetDirs .batch-target-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+
+function getBatchExcludeDirs() {
+  var inputs = document.querySelectorAll('#batchExcludeDirs .batch-exclude-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+
+function addBatchTargetDir() {
+  var container = document.getElementById('batchTargetDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-target-dir" placeholder="e.g. E:/path/to/dir" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+
+function addBatchExcludeDir() {
+  var container = document.getElementById('batchExcludeDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-exclude-dir" placeholder="e.g. E:/path/to/exclude" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
 }
 
 init();
