@@ -1740,7 +1740,10 @@ def workers_health():
 @app.route("/sysinfo", methods=["GET"])
 def master_sysinfo():
     """Return master's local system info."""
-    import psutil
+    try:
+        import psutil
+    except ImportError:
+        return jsonify({"error": "psutil not installed"}), 500
     cpu_pct = psutil.cpu_percent(interval=0.5)
     mem = psutil.virtual_memory()
     return jsonify({

@@ -325,8 +325,13 @@
           </div>
           <button class="btn-success" style="flex:none;align-self:flex-end;height:34px;margin-bottom:8px;" onclick="pgAddWorker()">Add</button>
         </div>
-        <button class="btn-primary btn-sm" onclick="checkWorkersHealth()" style="margin-bottom:8px;">🔍 Check(batch)</button>
+        <div style="display:flex;gap:4px;margin-bottom:8px;">
+          <button class="btn-primary btn-sm" onclick="checkWorkersHealth()">🔍 Check(batch)</button>
+          <button class="btn-warning btn-sm" id="pgWmEditBtn" onclick="pgWmEditSelected()" disabled>✏ Edit</button>
+          <button class="btn-danger btn-sm" id="pgWmDeleteBtn" onclick="pgWmDeleteSelected()" disabled>🗑 Delete</button>
+        </div>
         <div id="pgWorkerList"></div>
+        <div id="pgWmNodeDetail" style="margin-top:12px;"></div>
       </div>
     </div><!-- end pageWorkers -->
 
@@ -2734,17 +2739,91 @@ function switchPage(page) {
 function pgRenderWorkers() {
   var el = document.getElementById('pgWorkerList');
   var html = '';
+  // Master node first
+  html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+  html += '<input type="radio" name="pgWmNodeRadio" class="pg-wm-node-radio" value="master" data-is-master="true">';
+  html += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#27ae60;"></span>';
+  html += '<span style="flex:1;">Master <span style="color:#999;font-size:11px;">(local)</span></span>';
+  html += '<span style="font-size:11px;color:#27ae60;font-weight:600;">online</span>';
+  html += '</label>';
+  // Worker nodes
   nodes.forEach(function(n) {
     if (n.addr === 'master') return;
-    var dotColor = workerHealthMap[n.addr] ? '#27ae60' : '#e74c3c';
-    html += '<div class="worker-item">';
-    html += '<span class="status-dot" style="background:' + dotColor + ';"></span>';
-    html += '<span>🖥 ' + n.addr + (n.alias ? ' [' + n.alias + ']' : '') + ' (vCPU: ' + n.vcpu + ')</span>';
-    html += '<button class="btn-danger btn-sm" onclick="pgDelWorker(\'' + n.addr + '\')">Delete</button>';
-    html += '<button class="btn-primary btn-sm" onclick="editWorker(\'' + n.addr + '\',' + n.vcpu + ',\'' + (n.alias || '') + '\')">Edit</button>';
-    html += '</div>';
+    var isHealthy = !!workerHealthMap[n.addr];
+    var dotColor = isHealthy ? '#27ae60' : '#e74c3c';
+    var statusText = isHealthy ? 'online' : 'offline';
+    var statusColor = isHealthy ? '#27ae60' : '#e74c3c';
+    var label = n.alias || n.addr;
+    html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+    html += '<input type="radio" name="pgWmNodeRadio" class="pg-wm-node-radio" value="' + n.addr + '" data-is-master="false" data-vcpu="' + n.vcpu + '" data-alias="' + (n.alias||'') + '">';
+    html += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>';
+    html += '<span style="flex:1;">' + label + ' <span style="color:#999;font-size:11px;">(' + n.addr + ', vCPU: ' + n.vcpu + ')</span></span>';
+    html += '<span style="font-size:11px;color:' + statusColor + ';font-weight:600;">' + statusText + '</span>';
+    html += '</label>';
   });
-  el.innerHTML = html || '<span style="font-size:13px;color:#999;">No Workers</span>';
+  el.innerHTML = html;
+  el.querySelectorAll('.pg-wm-node-radio').forEach(function(r) {
+    r.addEventListener('change', pgWmOnNodeSelect);
+  });
+}
+
+function pgWmOnNodeSelect() {
+  var selected = document.querySelector('.pg-wm-node-radio:checked');
+  var editBtn = document.getElementById('pgWmEditBtn');
+  var deleteBtn = document.getElementById('pgWmDeleteBtn');
+  var detailEl = document.getElementById('pgWmNodeDetail');
+
+  if (!selected) {
+    editBtn.disabled = true;
+    deleteBtn.disabled = true;
+    detailEl.innerHTML = '';
+    return;
+  }
+
+  var isMaster = selected.getAttribute('data-is-master') === 'true';
+  editBtn.disabled = isMaster;
+  deleteBtn.disabled = isMaster;
+
+  // Show node detail with tabs
+  var addr = selected.value;
+  var label = isMaster ? 'Master (local)' : (selected.getAttribute('data-alias') || addr);
+  var html = '<div style="border:1px solid #ddd;border-radius:8px;padding:16px;margin-top:8px;">';
+  html += '<div style="font-weight:600;font-size:14px;margin-bottom:12px;">' + label + (isMaster ? '' : ' (' + addr + ')') + '</div>';
+  html += '<div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid #eee;padding-bottom:8px;">';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;background:#4a90d9;color:#fff;" onclick="pgWmShowTab(\'' + addr + '\',\'monitor\')">monitor</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">Detailed information</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">Status and Alarms</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">Safety</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">networking</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">storage</span>';
+  html += '</div>';
+  html += '<div id="pgWmTabContent" style="min-height:120px;"><div style="color:#888;font-size:12px;">Loading...</div></div>';
+  html += '</div>';
+  detailEl.innerHTML = html;
+  pgWmShowTab(addr, 'monitor');
+}
+
+async function pgWmShowTab(addr, tab) {
+  var contentEl = document.getElementById('pgWmTabContent');
+  if (!contentEl) return;
+  if (tab === 'monitor') {
+    await wmLoadMonitor(addr, contentEl);
+  }
+}
+
+function pgWmEditSelected() {
+  var selected = document.querySelector('.pg-wm-node-radio:checked');
+  if (!selected || selected.getAttribute('data-is-master') === 'true') return;
+  var addr = selected.value;
+  var vcpu = parseInt(selected.getAttribute('data-vcpu')) || 1;
+  var alias = selected.getAttribute('data-alias') || '';
+  editWorker(addr, vcpu, alias);
+}
+
+function pgWmDeleteSelected() {
+  var selected = document.querySelector('.pg-wm-node-radio:checked');
+  if (!selected || selected.getAttribute('data-is-master') === 'true') return;
+  pgDelWorker(selected.value);
 }
 
 async function pgAddWorker() {
