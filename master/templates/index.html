@@ -168,7 +168,10 @@
   </div>
 
   <!-- Batch Start -->
-  <div class="card" id="sectionBatchStart">
+  <div class="card" id="sectionBatchStart" style="position:relative;">
+    <div id="batchLoadingMask" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.8);z-index:10;display:flex;align-items:center;justify-content:center;border-radius:8px;">
+      <div style="text-align:center;"><div style="display:inline-block;width:20px;height:20px;border:3px solid #ddd;border-top-color:#4a90d9;border-radius:50%;animation:spin 1s linear infinite;"></div><div style="font-size:12px;color:#888;margin-top:6px;">Loading node status...</div></div>
+    </div>
     <h2>📦 Batch Start</h2>
     <label>Type</label>
     <select id="batchSimType">
@@ -185,7 +188,6 @@
     <div id="batchNodeCheckboxes" style="margin-bottom:8px;"></div>
     <button class="btn-success" id="batchStartBtn" onclick="startBatch()">▶ Start (batch)</button>
     <button class="btn-danger" id="batchStopBtn" onclick="stopBatchSelected()" disabled>⏹ Stop (batch)</button>
-    <div id="batchStopButtons" style="margin-top:8px;"></div>
   </div>
 
   <!-- Single Start -->
@@ -208,13 +210,14 @@
         <input type="number" id="singleIntervalCount" value="100000" min="1">
       </div>
     </div>
-    <button class="btn-primary" id="masterStartBtn" onclick="startMaster()">Start Master</button>
-    <button class="btn-danger btn-sm" id="masterStopBtn" onclick="stopMaster()" disabled>⏹ Stop Master</button>
-    <div id="workerButtons" style="margin-top:8px;"></div>
+    <label>Select a node</label>
+    <div id="singleNodeRadios" style="margin-bottom:8px;"></div>
+    <button class="btn-primary" id="singleStartBtn" onclick="startSingleNode()" disabled>▶ Start</button>
+    <button class="btn-danger" id="singleStopBtn" onclick="stopSingleNode()" disabled>⏹ Stop</button>
   </div>
 
   <!-- Configuration -->
-  <div class="card" id="sectionConfig">
+  <div class="card hidden" id="sectionConfig">
     <h2>⚙️ Configuration</h2>
     <label>Poll Interval (seconds)</label>
     <div class="row">
@@ -254,12 +257,17 @@
       </div>
       <button class="btn-success" style="flex:none;align-self:flex-end;height:34px;margin-bottom:8px;" onclick="addWorker()">Add</button>
     </div>
-    <button class="btn-primary btn-sm" onclick="checkWorkersHealth()" style="margin-bottom:8px;">🔍 Check(batch)</button>
+    <div style="display:flex;gap:4px;margin-bottom:8px;">
+      <button class="btn-primary btn-sm" onclick="checkWorkersHealth()">🔍 Check(batch)</button>
+      <button class="btn-warning btn-sm" id="wmEditBtn" onclick="wmEditSelected()" disabled>✏ Edit</button>
+      <button class="btn-danger btn-sm" id="wmDeleteBtn" onclick="wmDeleteSelected()" disabled>🗑 Delete</button>
+    </div>
     <div id="workerList"></div>
+    <div id="wmNodeDetail" style="margin-top:12px;"></div>
   </div>
 
   <!-- Status & Results -->
-  <div class="card full-width" id="sectionStatus">
+  <div class="card" id="sectionStatus">
     <h2>📊 Status & Results</h2>
     <button class="btn-primary" onclick="getStatus()">Get Status</button>
     <button class="btn-warning btn-sm" onclick="toggleAutoRefresh()" id="autoRefreshBtn">Enable Auto Refresh</button>
@@ -998,7 +1006,45 @@ let runningNodes = {};  // {nodeAddr: true/false}
 
 function setNodeRunning(addr, running) {
   runningNodes[addr] = running;
-  updateButtonStates();
+  // Mark timestamp to prevent getStatus from overriding optimistic updates
+  if (running) {
+    if (!setNodeRunning._optimisticTimestamps) setNodeRunning._optimisticTimestamps = {};
+    setNodeRunning._optimisticTimestamps[addr] = Date.now();
+  }
+  // Update existing DOM elements in-place (don't re-render to preserve checkbox state)
+  // Update batch checkboxes
+  document.querySelectorAll('.batch-node-cb').forEach(function(cb) {
+    if (cb.value !== addr) return;
+    var row = cb.closest('label');
+    if (!row) return;
+    var isRunning = !!runningNodes[addr];
+    cb.setAttribute('data-status', isRunning ? 'running' : 'stopped');
+    var spans = row.querySelectorAll('span');
+    if (spans[0]) spans[0].style.background = isRunning ? '#27ae60' : '#e74c3c';
+    var lastSpan = spans[spans.length - 1];
+    if (lastSpan && lastSpan.style.fontWeight === '600') {
+      lastSpan.textContent = isRunning ? 'running' : 'stopped';
+      lastSpan.style.color = isRunning ? '#27ae60' : '#888';
+    }
+  });
+  // Update single radios
+  document.querySelectorAll('.single-node-radio').forEach(function(r) {
+    if (r.value !== addr) return;
+    var row = r.closest('label');
+    if (!row) return;
+    var isRunning = !!runningNodes[addr];
+    r.setAttribute('data-status', isRunning ? 'running' : 'stopped');
+    var spans = row.querySelectorAll('span');
+    if (spans[0]) spans[0].style.background = isRunning ? '#27ae60' : '#e74c3c';
+    var lastSpan = spans[spans.length - 1];
+    if (lastSpan && lastSpan.style.fontWeight === '600') {
+      lastSpan.textContent = isRunning ? 'running' : 'stopped';
+      lastSpan.style.color = isRunning ? '#27ae60' : '#888';
+    }
+  });
+  // Update button states AFTER DOM updates
+  updateBatchButtons();
+  updateSingleButtons();
   // Auto-enable status polling when any node starts running
   if (running && !autoRefreshTimer) {
     var interval = parseFloat(document.getElementById('pollInterval').value) || 2;
@@ -1011,34 +1057,132 @@ function setNodeRunning(addr, running) {
 }
 
 function updateButtonStates() {
-  // Batch start/stop: based on selected nodes' running state
+  updateBatchButtons();
+  updateSingleButtons();
+
+  // Update checkbox status indicators (batch)
+  document.querySelectorAll('.batch-node-cb').forEach(function(cb) {
+    var isRunning = !!runningNodes[cb.value];
+    cb.setAttribute('data-status', isRunning ? 'running' : 'stopped');
+    var row = cb.closest('label');
+    if (row) {
+      var dot = row.querySelector('span[style*="border-radius:50%"]');
+      var statusSpan = row.querySelector('span:last-child');
+      if (dot) dot.style.background = isRunning ? '#27ae60' : '#e74c3c';
+      if (statusSpan && statusSpan.style.fontSize === '11px') {
+        statusSpan.textContent = isRunning ? 'running' : 'stopped';
+        statusSpan.style.color = isRunning ? '#27ae60' : '#888';
+      }
+    }
+  });
+
+  // Update radio status indicators (single)
+  document.querySelectorAll('.single-node-radio').forEach(function(r) {
+    var isRunning = !!runningNodes[r.value];
+    r.setAttribute('data-status', isRunning ? 'running' : 'stopped');
+    var row = r.closest('label');
+    if (row) {
+      var dot = row.querySelector('span[style*="border-radius:50%"]');
+      var statusSpan = row.querySelector('span:last-child');
+      if (dot) dot.style.background = isRunning ? '#27ae60' : '#e74c3c';
+      if (statusSpan && statusSpan.style.fontSize === '11px') {
+        statusSpan.textContent = isRunning ? 'running' : 'stopped';
+        statusSpan.style.color = isRunning ? '#27ae60' : '#888';
+      }
+    }
+  });
+}
+
+function updateBatchButtons() {
   var batchStartBtn = document.getElementById('batchStartBtn');
   var batchStopBtn = document.getElementById('batchStopBtn');
-  if (batchStartBtn && batchStopBtn) {
-    var cbs = document.querySelectorAll('.batch-node-cb:checked');
-    var anySelectedRunning = false;
-    cbs.forEach(function(cb) {
-      if (runningNodes[cb.value]) anySelectedRunning = true;
-    });
-    batchStartBtn.disabled = anySelectedRunning;
-    batchStopBtn.disabled = !anySelectedRunning;
+  if (!batchStartBtn || !batchStopBtn) return;
+
+  var cbs = document.querySelectorAll('.batch-node-cb:checked');
+  if (cbs.length === 0) {
+    batchStartBtn.disabled = true;
+    batchStopBtn.disabled = true;
+    return;
   }
 
-  // Master start/stop
-  var masterStartBtn = document.getElementById('masterStartBtn');
-  var masterStopBtn = document.getElementById('masterStopBtn');
-  if (masterStartBtn) masterStartBtn.disabled = !!runningNodes['master'];
-  if (masterStopBtn) masterStopBtn.disabled = !runningNodes['master'];
-
-  // Worker start/stop buttons
-  nodes.forEach(function(n) {
-    if (n.addr === 'master') return;
-    var safeAddr = n.addr.replace(/[:.]/g, '_');
-    var startBtn = document.getElementById('workerStartBtn_' + safeAddr);
-    var stopBtn = document.getElementById('workerStopBtn_' + safeAddr);
-    if (startBtn) startBtn.disabled = !!runningNodes[n.addr];
-    if (stopBtn) stopBtn.disabled = !runningNodes[n.addr];
+  var hasRunning = false, hasStopped = false;
+  cbs.forEach(function(cb) {
+    if (runningNodes[cb.value]) hasRunning = true;
+    else hasStopped = true;
   });
+
+  // Mixed selection: both disabled
+  if (hasRunning && hasStopped) {
+    batchStartBtn.disabled = true;
+    batchStopBtn.disabled = true;
+  } else if (hasRunning) {
+    // All running: can stop, cannot start
+    batchStartBtn.disabled = true;
+    batchStopBtn.disabled = false;
+  } else {
+    // All stopped: can start, cannot stop
+    batchStartBtn.disabled = false;
+    batchStopBtn.disabled = true;
+  }
+}
+
+function updateSingleButtons() {
+  var startBtn = document.getElementById('singleStartBtn');
+  var stopBtn = document.getElementById('singleStopBtn');
+  if (!startBtn || !stopBtn) return;
+
+  var selected = document.querySelector('.single-node-radio:checked');
+  if (!selected) {
+    startBtn.disabled = true;
+    stopBtn.disabled = true;
+    return;
+  }
+
+  var isRunning = !!runningNodes[selected.value];
+  startBtn.disabled = isRunning;
+  stopBtn.disabled = !isRunning;
+}
+
+async function startSingleNode() {
+  var selected = document.querySelector('.single-node-radio:checked');
+  if (!selected) { showAlert('Please select a node'); return; }
+  var addr = selected.value;
+  var spins = parseInt(document.getElementById('singleSpins').value);
+  var gameName = document.getElementById('singleGameName').value;
+  var intervalCount = parseInt(document.getElementById('singleIntervalCount').value);
+  var simType = document.getElementById('singleSimType').value;
+
+  if (!gameName) { showAlert('Please select a game'); return; }
+
+  if (addr === 'master') {
+    log('▶ Starting Master with ' + spins + ' spins...');
+    var r = await api('/start-master', 'POST', {spins: spins, game_name: gameName, interval_count: intervalCount, sim_type: simType});
+    if (r.ok) { log('✅ Master started'); setNodeRunning('master', true); }
+    else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
+  } else {
+    log('▶ Starting Worker(' + addr + ') with ' + spins + ' spins...');
+    var r = await api('/start-worker', 'POST', {worker_addr: addr, spins: spins, game_name: gameName, interval_count: intervalCount, sim_type: simType});
+    if (r.ok) { log('✅ Worker started'); setNodeRunning(addr, true); }
+    else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
+  }
+}
+
+async function stopSingleNode() {
+  var selected = document.querySelector('.single-node-radio:checked');
+  if (!selected) { showAlert('Please select a node'); return; }
+  var addr = selected.value;
+
+  if (addr === 'master') {
+    log('⏹ Stopping Master...');
+    var r = await api('/stop-master', 'POST', {});
+    if (r.ok) { log('✅ Master stopped'); setNodeRunning('master', false); }
+    else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
+  } else {
+    log('⏹ Stopping Worker(' + addr + ')...');
+    var r = await api('/stop-worker', 'POST', {worker_addr: addr});
+    if (r.ok) { log('✅ Worker stopped'); setNodeRunning(addr, false); }
+    else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1170,6 +1314,16 @@ async function getStatus() {
     r.data.nodes.forEach(function(n) {
       var wasRunning = runningNodes[n.addr];
       var isRunning = (n.status === 'running');
+      // Don't override optimistic "running" state within 10 seconds of setting it
+      if (!isRunning && wasRunning && setNodeRunning._optimisticTimestamps && setNodeRunning._optimisticTimestamps[n.addr]) {
+        if (Date.now() - setNodeRunning._optimisticTimestamps[n.addr] < 10000) {
+          return; // Skip this node, keep optimistic state
+        }
+        delete setNodeRunning._optimisticTimestamps[n.addr];
+      }
+      if (isRunning && setNodeRunning._optimisticTimestamps && setNodeRunning._optimisticTimestamps[n.addr]) {
+        delete setNodeRunning._optimisticTimestamps[n.addr]; // Server confirmed, clear optimistic flag
+      }
       // Reset log offset when a node starts a new run
       if (isRunning && !wasRunning) {
         var logKey = n.addr === 'master' ? 'master' : n.addr;
@@ -1638,62 +1792,195 @@ async function doEditWorker(oldAddr, addr, vcpu, alias) {
   }
 }
 
+// Worker Management node selection handlers
+var _wmSysinfoTimer = null;
+var _wmSysinfoInterval = 5; // default 5s, overridden from config
+
+function wmOnNodeSelect() {
+  // Clear previous auto-refresh
+  if (_wmSysinfoTimer) { clearInterval(_wmSysinfoTimer); _wmSysinfoTimer = null; }
+
+  var selected = document.querySelector('.wm-node-radio:checked');
+  var editBtn = document.getElementById('wmEditBtn');
+  var deleteBtn = document.getElementById('wmDeleteBtn');
+  var detailEl = document.getElementById('wmNodeDetail');
+
+  if (!selected) {
+    editBtn.disabled = true;
+    deleteBtn.disabled = true;
+    detailEl.innerHTML = '';
+    return;
+  }
+
+  var isMaster = selected.getAttribute('data-is-master') === 'true';
+  editBtn.disabled = isMaster;
+  deleteBtn.disabled = isMaster;
+
+  // Show node detail with tabs
+  var addr = selected.value;
+  var label = isMaster ? 'Master (local)' : (selected.getAttribute('data-alias') || addr);
+  var html = '<div style="border:1px solid #ddd;border-radius:8px;padding:16px;margin-top:8px;">';
+  html += '<div style="font-weight:600;font-size:14px;margin-bottom:12px;">' + label + (isMaster ? '' : ' (' + addr + ')') + '</div>';
+  // Tabs
+  html += '<div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid #eee;padding-bottom:8px;">';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;background:#4a90d9;color:#fff;" onclick="wmShowTab(\'' + addr + '\',\'monitor\')">monitor</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">Detailed information</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">Status and Alarms</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">Safety</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">networking</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">storage</span>';
+  html += '</div>';
+  html += '<div id="wmTabContent" style="min-height:120px;"><div style="color:#888;font-size:12px;">Loading...</div></div>';
+  html += '</div>';
+  detailEl.innerHTML = html;
+
+  // Auto-load monitor
+  wmShowTab(addr, 'monitor');
+}
+
+async function wmShowTab(addr, tab) {
+  var contentEl = document.getElementById('wmTabContent');
+  if (!contentEl) return;
+
+  // Clear previous timer
+  if (_wmSysinfoTimer) { clearInterval(_wmSysinfoTimer); _wmSysinfoTimer = null; }
+
+  if (tab === 'monitor') {
+    await wmLoadMonitor(addr, contentEl);
+    // Start auto-refresh
+    _wmSysinfoTimer = setInterval(function() { wmLoadMonitor(addr, contentEl); }, _wmSysinfoInterval * 1000);
+  }
+}
+
+async function wmLoadMonitor(addr, contentEl) {
+  if (!contentEl) contentEl = document.getElementById('wmTabContent');
+  if (!contentEl) return;
+  try {
+    var r;
+    if (addr === 'master') {
+      r = await fetch('/sysinfo');
+    } else {
+      r = await fetch('/files/worker/sysinfo?addr=' + encodeURIComponent(addr));
+    }
+    var data = await r.json();
+    if (data.error) { contentEl.innerHTML = '<div style="color:#e74c3c;">' + data.error + '</div>'; return; }
+
+    var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
+    // CPU
+    html += '<div style="border:1px solid #eee;border-radius:6px;padding:12px;">';
+    html += '<div style="font-size:12px;font-weight:600;margin-bottom:8px;">CPU utilization (%)</div>';
+    html += '<div style="font-size:24px;font-weight:600;color:#4a90d9;">' + (data.cpu_percent || 0) + '%</div>';
+    html += '<div style="font-size:11px;color:#888;margin-top:4px;">Cores: ' + (data.cpu_count || '?') + '</div>';
+    html += '<div style="margin-top:8px;background:#eee;border-radius:4px;height:8px;overflow:hidden;"><div style="height:100%;background:#4a90d9;width:' + (data.cpu_percent || 0) + '%;border-radius:4px;"></div></div>';
+    html += '</div>';
+    // Memory
+    html += '<div style="border:1px solid #eee;border-radius:6px;padding:12px;">';
+    html += '<div style="font-size:12px;font-weight:600;margin-bottom:8px;">Memory usage</div>';
+    html += '<div style="font-size:24px;font-weight:600;color:#27ae60;">' + (data.mem_percent || 0) + '%</div>';
+    html += '<div style="font-size:11px;color:#888;margin-top:4px;">' + (data.mem_used_mb || 0) + ' MB / ' + (data.mem_total_mb || 0) + ' MB</div>';
+    html += '<div style="margin-top:8px;background:#eee;border-radius:4px;height:8px;overflow:hidden;"><div style="height:100%;background:#27ae60;width:' + (data.mem_percent || 0) + '%;border-radius:4px;"></div></div>';
+    html += '</div>';
+    html += '</div>';
+    html += '<div style="font-size:10px;color:#aaa;margin-top:8px;">Auto-refresh every ' + _wmSysinfoInterval + 's</div>';
+
+    contentEl.innerHTML = html;
+  } catch(e) {
+    contentEl.innerHTML = '<div style="color:#e74c3c;">Failed to load: ' + e.message + '</div>';
+  }
+}
+
+function wmEditSelected() {
+  var selected = document.querySelector('.wm-node-radio:checked');
+  if (!selected || selected.getAttribute('data-is-master') === 'true') return;
+  var addr = selected.value;
+  var vcpu = parseInt(selected.getAttribute('data-vcpu')) || 1;
+  var alias = selected.getAttribute('data-alias') || '';
+  editWorker(addr, vcpu, alias);
+}
+
+function wmDeleteSelected() {
+  var selected = document.querySelector('.wm-node-radio:checked');
+  if (!selected || selected.getAttribute('data-is-master') === 'true') return;
+  delWorker(selected.value);
+}
+
 function renderWorkers() {
-  // Worker list with delete buttons
+  // Worker list with radio selection (master first, then workers)
   const listEl = document.getElementById('workerList');
   let listHtml = '';
+  // Master node first
+  var masterHealthy = true; // master is always available
+  listHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+  listHtml += '<input type="radio" name="wmNodeRadio" class="wm-node-radio" value="master" data-is-master="true">';
+  listHtml += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#27ae60;"></span>';
+  listHtml += '<span style="flex:1;">Master <span style="color:#999;font-size:11px;">(local)</span></span>';
+  listHtml += '<span style="font-size:11px;color:#27ae60;font-weight:600;">online</span>';
+  listHtml += '</label>';
+  // Worker nodes
   nodes.forEach(function(n) {
     if (n.addr === 'master') return;
-    var dotColor = workerHealthMap[n.addr] ? '#27ae60' : '#e74c3c';
-    listHtml += '<div class="worker-item">';
-    listHtml += '<span class="status-dot" style="background:' + dotColor + ';"></span>';
-    listHtml += '<span>🖥 ' + n.addr + (n.alias ? ' [' + n.alias + ']' : '') + ' (vCPU: ' + n.vcpu + ')</span>';
-    listHtml += '<button class="btn-danger btn-sm" onclick="delWorker(\'' + n.addr + '\')">Delete</button>';
-    listHtml += '<button class="btn-primary btn-sm" onclick="editWorker(\'' + n.addr + '\',' + n.vcpu + ',\'' + (n.alias || '') + '\')">Edit</button>';
-    listHtml += '</div>';
+    var isHealthy = !!workerHealthMap[n.addr];
+    var dotColor = isHealthy ? '#27ae60' : '#e74c3c';
+    var statusText = isHealthy ? 'online' : 'offline';
+    var statusColor = isHealthy ? '#27ae60' : '#e74c3c';
+    var label = n.alias || n.addr;
+    listHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+    listHtml += '<input type="radio" name="wmNodeRadio" class="wm-node-radio" value="' + n.addr + '" data-is-master="false" data-vcpu="' + n.vcpu + '" data-alias="' + (n.alias||'') + '">';
+    listHtml += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>';
+    listHtml += '<span style="flex:1;">' + label + ' <span style="color:#999;font-size:11px;">(' + n.addr + ', vCPU: ' + n.vcpu + ')</span></span>';
+    listHtml += '<span style="font-size:11px;color:' + statusColor + ';font-weight:600;">' + statusText + '</span>';
+    listHtml += '</label>';
   });
-  listEl.innerHTML = listHtml || '<span style="font-size:13px;color:#999;">No Workers</span>';
+  listEl.innerHTML = listHtml;
+  listEl.querySelectorAll('.wm-node-radio').forEach(function(r) {
+    r.addEventListener('change', wmOnNodeSelect);
+  });
 
-  // Worker start + stop buttons (single start section)
-  const btnEl = document.getElementById('workerButtons');
-  let btnHtml = '';
+  // Single node radio buttons
+  const radioEl = document.getElementById('singleNodeRadios');
+  let radioHtml = '';
   nodes.forEach(function(n) {
-    if (n.addr === 'master') return;
-    var safeAddr = n.addr.replace(/[:.]/g, '_');
-    btnHtml += '<div style="margin-bottom:4px;">';
-    btnHtml += '<button class="btn-primary btn-sm" id="workerStartBtn_' + safeAddr + '" onclick="startWorker(\'' + n.addr + '\')">Start Worker(' + n.addr + ')</button> ';
-    btnHtml += '<button class="btn-danger btn-sm" id="workerStopBtn_' + safeAddr + '" onclick="stopWorker(\'' + n.addr + '\')" disabled>⏹ Stop</button>';
-    btnHtml += '</div>';
+    var label = n.addr === 'master' ? 'Master' : (n.alias || n.addr);
+    var addrDisplay = n.addr === 'master' ? 'local' : n.addr;
+    var isRunning = !!runningNodes[n.addr];
+    var statusText = isRunning ? 'running' : 'stopped';
+    var statusColor = isRunning ? '#27ae60' : '#888';
+    var dotColor = isRunning ? '#27ae60' : '#e74c3c';
+    radioHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+    radioHtml += '<input type="radio" name="singleNodeRadio" class="single-node-radio" value="' + n.addr + '" data-status="' + statusText + '">';
+    radioHtml += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>';
+    radioHtml += '<span style="flex:1;">' + label + ' <span style="color:#999;font-size:11px;">(' + addrDisplay + ')</span></span>';
+    radioHtml += '<span style="font-size:11px;color:' + statusColor + ';font-weight:600;">' + statusText + '</span>';
+    radioHtml += '</label>';
   });
-  btnEl.innerHTML = btnHtml || '<span style="font-size:13px;color:#999;">No Workers</span>';
-
-  // Batch stop buttons
-  const batchStopEl = document.getElementById('batchStopButtons');
-  let batchHtml = '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;">';
-  batchHtml += '<button class="btn-danger btn-sm" onclick="stopMaster()">⏹ Stop Master</button>';
-  nodes.forEach(function(n) {
-    if (n.addr === 'master') return;
-    var label = n.alias ? n.alias + ' (' + n.addr + ')' : n.addr;
-    batchHtml += '<button class="btn-danger btn-sm" onclick="stopWorker(\'' + n.addr + '\')">⏹ Stop ' + label + '</button>';
+  radioEl.innerHTML = radioHtml;
+  radioEl.querySelectorAll('.single-node-radio').forEach(function(r) {
+    r.addEventListener('change', updateSingleButtons);
   });
-  batchHtml += '</div>';
-  batchStopEl.innerHTML = batchHtml;
 
   // Batch node checkboxes
   const cbEl = document.getElementById('batchNodeCheckboxes');
   let cbHtml = '';
   nodes.forEach(function(n) {
-    var label = n.addr === 'master' ? 'Master' : 'Worker(' + n.addr + ')';
-    cbHtml += '<label style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:13px;cursor:pointer;">';
-    cbHtml += '<input type="checkbox" class="batch-node-cb" value="' + n.addr + '">';
-    cbHtml += label + '</label>';
+    var label = n.addr === 'master' ? 'Master' : (n.alias || n.addr);
+    var addrDisplay = n.addr === 'master' ? 'local' : n.addr;
+    var isRunning = !!runningNodes[n.addr];
+    var statusText = isRunning ? 'running' : 'stopped';
+    var statusColor = isRunning ? '#27ae60' : '#888';
+    var dotColor = isRunning ? '#27ae60' : '#e74c3c';
+    cbHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+    cbHtml += '<input type="checkbox" class="batch-node-cb" value="' + n.addr + '" data-status="' + statusText + '">';
+    cbHtml += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>';
+    cbHtml += '<span style="flex:1;">' + label + ' <span style="color:#999;font-size:11px;">(' + addrDisplay + ')</span></span>';
+    cbHtml += '<span style="font-size:11px;color:' + statusColor + ';font-weight:600;">' + statusText + '</span>';
+    cbHtml += '</label>';
   });
   cbEl.innerHTML = cbHtml;
   // Update button states when checkboxes change
   cbEl.querySelectorAll('.batch-node-cb').forEach(function(cb) {
-    cb.addEventListener('change', updateButtonStates);
+    cb.addEventListener('change', updateBatchButtons);
   });
-  updateButtonStates();
+  updateBatchButtons();
 
   // Refresh log tabs
   renderLogTabs();
@@ -3167,6 +3454,9 @@ async function init() {
     if (r.data.poll_interval) {
       document.getElementById('pollInterval').value = r.data.poll_interval;
     }
+    if (r.data.sysinfo_refresh_interval) {
+      _wmSysinfoInterval = r.data.sysinfo_refresh_interval;
+    }
   }
   if (!nodes.length) {
     nodes = [{ addr: 'master', vcpu: 1, percentage: 100 }];
@@ -3190,8 +3480,24 @@ async function init() {
   }
 
   log('✅ Page loaded, ' + nodes.length + ' nodes');
-  checkWorkersHealth();
+  await checkWorkersHealth();
   loadUserInfo();
+
+  // Fetch initial status to sync runningNodes
+  try {
+    var statusR = await api('/status', 'GET');
+    if (statusR.ok && statusR.data.nodes && statusR.data.nodes.length > 0) {
+      statusR.data.nodes.forEach(function(n) {
+        runningNodes[n.addr] = (n.status === 'running');
+      });
+    }
+  } catch(e) {}
+  // Final render with correct runningNodes
+  renderWorkers();
+  updateButtonStates();
+  // Remove batch loading mask
+  var batchMask = document.getElementById('batchLoadingMask');
+  if (batchMask) batchMask.style.display = 'none';
 }
 
 // ---------------------------------------------------------------------------

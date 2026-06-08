@@ -370,8 +370,11 @@ class SimulatorRunner:
                     self._completed_models.add(self._current_model)
                     self._models_completed = len(self._completed_models)
 
-            self._process.wait()
-            return_code = self._process.returncode
+            if self._process is not None:
+                self._process.wait()
+                return_code = self._process.returncode
+            else:
+                return_code = -1
 
             with self._lock:
                 # Don't overwrite if already stopped manually or already completed

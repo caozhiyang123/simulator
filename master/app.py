@@ -774,6 +774,7 @@ def get_nodes():
         "nodes": config.get_nodes(),
         "allocation_mode": config.get_allocation_mode(),
         "poll_interval": config.get_poll_interval(),
+        "sysinfo_refresh_interval": _raw_config.get("sysinfo_refresh_interval", 5),
     })
 
 
@@ -1749,6 +1750,29 @@ def master_sysinfo():
         "mem_used_mb": round(mem.used / 1024 / 1024),
         "mem_percent": mem.percent,
     })
+
+
+@app.route("/files/worker/sysinfo", methods=["GET"])
+def worker_sysinfo_proxy():
+    """Proxy sysinfo request to a worker."""
+    addr = request.args.get("addr", "")
+    if not addr:
+        return jsonify({"error": "addr is required"}), 400
+    try:
+        r = http_requests.get(f"http://{addr}/sysinfo", timeout=5)
+        if r.status_code == 200:
+            try:
+                return jsonify(r.json()), 200
+            except ValueError:
+                return jsonify({"error": f"Worker {addr} returned invalid response"}), 502
+        else:
+            return jsonify({"error": f"Worker {addr} returned status {r.status_code}"}), r.status_code
+    except http_requests.ConnectionError:
+        return jsonify({"error": f"Cannot connect to worker {addr}. Is it running?"}), 503
+    except http_requests.Timeout:
+        return jsonify({"error": f"Connection to {addr} timed out"}), 504
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/sysinfo/all", methods=["GET"])
