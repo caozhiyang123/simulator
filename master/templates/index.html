@@ -1019,12 +1019,15 @@ function setNodeRunning(addr, running) {
     if (!row) return;
     var isRunning = !!runningNodes[addr];
     cb.setAttribute('data-status', isRunning ? 'running' : 'stopped');
-    var spans = row.querySelectorAll('span');
-    if (spans[0]) spans[0].style.background = isRunning ? '#27ae60' : '#e74c3c';
-    var lastSpan = spans[spans.length - 1];
-    if (lastSpan && lastSpan.style.fontWeight === '600') {
-      lastSpan.textContent = isRunning ? 'running' : 'stopped';
-      lastSpan.style.color = isRunning ? '#27ae60' : '#888';
+    // Get direct children spans only
+    var children = row.children;
+    for (var i = 0; i < children.length; i++) {
+      var el = children[i];
+      if (el.tagName !== 'SPAN') continue;
+      // Dot span (has border-radius:50%)
+      if (el.style.borderRadius === '50%') { el.style.background = isRunning ? '#27ae60' : '#e74c3c'; }
+      // Status span (last span, has font-weight 600)
+      if (el.style.fontWeight === '600') { el.textContent = isRunning ? 'running' : 'stopped'; el.style.color = isRunning ? '#27ae60' : '#888'; }
     }
   });
   // Update single radios
@@ -1034,12 +1037,12 @@ function setNodeRunning(addr, running) {
     if (!row) return;
     var isRunning = !!runningNodes[addr];
     r.setAttribute('data-status', isRunning ? 'running' : 'stopped');
-    var spans = row.querySelectorAll('span');
-    if (spans[0]) spans[0].style.background = isRunning ? '#27ae60' : '#e74c3c';
-    var lastSpan = spans[spans.length - 1];
-    if (lastSpan && lastSpan.style.fontWeight === '600') {
-      lastSpan.textContent = isRunning ? 'running' : 'stopped';
-      lastSpan.style.color = isRunning ? '#27ae60' : '#888';
+    var children = row.children;
+    for (var i = 0; i < children.length; i++) {
+      var el = children[i];
+      if (el.tagName !== 'SPAN') continue;
+      if (el.style.borderRadius === '50%') { el.style.background = isRunning ? '#27ae60' : '#e74c3c'; }
+      if (el.style.fontWeight === '600') { el.textContent = isRunning ? 'running' : 'stopped'; el.style.color = isRunning ? '#27ae60' : '#888'; }
     }
   });
   // Update button states AFTER DOM updates
@@ -1066,12 +1069,12 @@ function updateButtonStates() {
     cb.setAttribute('data-status', isRunning ? 'running' : 'stopped');
     var row = cb.closest('label');
     if (row) {
-      var dot = row.querySelector('span[style*="border-radius:50%"]');
-      var statusSpan = row.querySelector('span:last-child');
-      if (dot) dot.style.background = isRunning ? '#27ae60' : '#e74c3c';
-      if (statusSpan && statusSpan.style.fontSize === '11px') {
-        statusSpan.textContent = isRunning ? 'running' : 'stopped';
-        statusSpan.style.color = isRunning ? '#27ae60' : '#888';
+      var children = row.children;
+      for (var i = 0; i < children.length; i++) {
+        var el = children[i];
+        if (el.tagName !== 'SPAN') continue;
+        if (el.style.borderRadius === '50%') el.style.background = isRunning ? '#27ae60' : '#e74c3c';
+        if (el.style.fontWeight === '600') { el.textContent = isRunning ? 'running' : 'stopped'; el.style.color = isRunning ? '#27ae60' : '#888'; }
       }
     }
   });
@@ -1082,12 +1085,12 @@ function updateButtonStates() {
     r.setAttribute('data-status', isRunning ? 'running' : 'stopped');
     var row = r.closest('label');
     if (row) {
-      var dot = row.querySelector('span[style*="border-radius:50%"]');
-      var statusSpan = row.querySelector('span:last-child');
-      if (dot) dot.style.background = isRunning ? '#27ae60' : '#e74c3c';
-      if (statusSpan && statusSpan.style.fontSize === '11px') {
-        statusSpan.textContent = isRunning ? 'running' : 'stopped';
-        statusSpan.style.color = isRunning ? '#27ae60' : '#888';
+      var children = row.children;
+      for (var i = 0; i < children.length; i++) {
+        var el = children[i];
+        if (el.tagName !== 'SPAN') continue;
+        if (el.style.borderRadius === '50%') el.style.background = isRunning ? '#27ae60' : '#e74c3c';
+        if (el.style.fontWeight === '600') { el.textContent = isRunning ? 'running' : 'stopped'; el.style.color = isRunning ? '#27ae60' : '#888'; }
       }
     }
   });
