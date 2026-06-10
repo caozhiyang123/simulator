@@ -42,6 +42,9 @@ class ClusterConfig:
         with open(config_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
+        # Preserve the full raw config to not lose unknown keys on save
+        self._raw_data = data
+
         master_cfg = data.get("master", {})
         self._master = {
             "vcpu": master_cfg.get("vcpu", 1),
@@ -67,8 +70,10 @@ class ClusterConfig:
         self._production_dir = data.get("production_dir", "")
 
     def _save(self):
-        """Persist current config back to config.json."""
-        data = {
+        """Persist current config back to config.json, preserving extra keys."""
+        # Start from raw data to preserve unknown keys (port, sysinfo_refresh_interval, etc.)
+        data = getattr(self, '_raw_data', {}).copy()
+        data.update({
             "master": self._master,
             "workers": self._workers,
             "poll_interval": self._poll_interval,
@@ -76,7 +81,7 @@ class ClusterConfig:
             "progress_save_dir": self._progress_save_dir,
             "simulator_dir": self._simulator_dir,
             "production_dir": self._production_dir,
-        }
+        })
         with open(self._config_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
