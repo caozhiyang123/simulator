@@ -1313,6 +1313,53 @@ def batch_override():
     return jsonify({"status": "ok", "replaced": replaced, "errors": errors, "count": len(replaced)})
 
 
+@app.route("/files/local/download", methods=["GET"])
+def local_download():
+    """Download a local file."""
+    from flask import send_file
+    file_path = request.args.get("path", "")
+    full_path = os.path.normpath(file_path)
+    if not os.path.isfile(full_path):
+        return jsonify({"error": "File not found"}), 404
+    return send_file(full_path, as_attachment=True)
+
+
+@app.route("/files/worker/download", methods=["GET"])
+def worker_download():
+    """Download a file from a remote worker (proxy)."""
+    addr = request.args.get("addr", "")
+    file_path = request.args.get("path", "")
+    if not addr or not file_path:
+        return jsonify({"error": "addr and path are required"}), 400
+    try:
+        # Try /files/download first (new endpoint)
+        r = http_requests.get(f"http://{addr}/files/download", params={"path": file_path}, timeout=30, stream=True)
+        if r.status_code == 200:
+            from flask import Response
+            filename = os.path.basename(file_path)
+            headers = {"Content-Disposition": f"attachment; filename={filename}"}
+            if r.headers.get("Content-Type"):
+                headers["Content-Type"] = r.headers["Content-Type"]
+            return Response(r.iter_content(chunk_size=8192), headers=headers)
+        # Fallback: use /files/read for text files (older workers)
+        r2 = http_requests.get(f"http://{addr}/files/read", params={"path": file_path}, timeout=30)
+        if r2.status_code == 200:
+            data = r2.json()
+            content = data.get("content", "")
+            from flask import Response
+            filename = os.path.basename(file_path)
+            return Response(
+                content.encode("utf-8"),
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}",
+                    "Content-Type": "application/octet-stream",
+                }
+            )
+        return jsonify({"error": f"Worker returned {r.status_code}"}), r.status_code
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/files/local/read", methods=["GET"])
 def local_read():
     """Read a local file content for preview or transfer.

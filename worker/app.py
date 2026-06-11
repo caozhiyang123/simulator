@@ -178,6 +178,20 @@ def upload_file():
     return jsonify({"status": "ok", "path": target_path.replace("\\", "/")})
 
 
+@app.route("/files/download", methods=["GET"])
+def download_file():
+    """Download a file from this worker.
+
+    Query param: ?path=absolute/path
+    """
+    from flask import send_file
+    file_path = request.args.get("path", "")
+    full = os.path.normpath(file_path)
+    if not os.path.isfile(full):
+        return jsonify({"error": "File not found"}), 404
+    return send_file(full, as_attachment=True)
+
+
 @app.route("/files/read", methods=["GET"])
 def read_file():
     """Read file content for preview.
