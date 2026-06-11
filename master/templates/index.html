@@ -1151,72 +1151,6 @@ function updateSingleButtons() {
   stopBtn.disabled = !isRunning;
 }
 
-// ---------------------------------------------------------------------------
-// CPU Health Monitor (unhealthy.png overlay)
-// ---------------------------------------------------------------------------
-var _cpuMonitorActive = false;
-var _cpuMonitorTimer = null;
-
-function activateCpuMonitor() {
-  _cpuMonitorActive = true;
-  if (!_cpuMonitorTimer) {
-    _cpuMonitorTimer = setInterval(cpuMonitorCheck, 5000);
-    cpuMonitorCheck();
-  }
-}
-
-function deactivateCpuMonitor() {
-  _cpuMonitorActive = false;
-  if (_cpuMonitorTimer) { clearInterval(_cpuMonitorTimer); _cpuMonitorTimer = null; }
-  hideUnhealthyOverlay();
-}
-
-async function cpuMonitorCheck() {
-  // Only check if there are running nodes
-  var runningAddrs = [];
-  for (var addr in runningNodes) { if (runningNodes[addr]) runningAddrs.push(addr); }
-  if (runningAddrs.length === 0) { deactivateCpuMonitor(); return; }
-
-  var totalCpu = 0, count = 0;
-  for (var i = 0; i < runningAddrs.length; i++) {
-    try {
-      var r;
-      if (runningAddrs[i] === 'master') r = await fetch('/sysinfo');
-      else r = await fetch('/files/worker/sysinfo?addr=' + encodeURIComponent(runningAddrs[i]));
-      var data = await r.json();
-      if (!data.error && data.cpu_percent !== undefined) { totalCpu += data.cpu_percent; count++; }
-    } catch(e) {}
-  }
-
-  if (count === 0) return;
-  var avgCpu = totalCpu / count;
-
-  if (avgCpu < 90) {
-    showUnhealthyOverlay(avgCpu);
-  } else {
-    hideUnhealthyOverlay();
-  }
-}
-
-function showUnhealthyOverlay(cpu) {
-  var overlay = document.getElementById('cpuUnhealthyOverlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'cpuUnhealthyOverlay';
-    overlay.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:900;pointer-events:none;text-align:center;';
-    overlay.innerHTML = '<img src="/static/warnning/unhealthy.png" style="max-width:300px;max-height:300px;opacity:0.85;"><div style="font-size:13px;color:#e74c3c;font-weight:600;margin-top:8px;background:rgba(255,255,255,0.9);padding:4px 12px;border-radius:4px;">CPU: <span id="cpuOverlayValue"></span>% (avg) - Low usage warning</div>';
-    document.body.appendChild(overlay);
-  }
-  overlay.style.display = '';
-  var valEl = document.getElementById('cpuOverlayValue');
-  if (valEl) valEl.textContent = cpu.toFixed(1);
-}
-
-function hideUnhealthyOverlay() {
-  var overlay = document.getElementById('cpuUnhealthyOverlay');
-  if (overlay) overlay.style.display = 'none';
-}
-
 async function startSingleNode() {
   var selected = document.querySelector('.single-node-radio:checked');
   if (!selected) { showAlert('Please select a node'); return; }
@@ -1231,12 +1165,12 @@ async function startSingleNode() {
   if (addr === 'master') {
     log('▶ Starting Master with ' + spins + ' spins...');
     var r = await api('/start-master', 'POST', {spins: spins, game_name: gameName, interval_count: intervalCount, sim_type: simType});
-    if (r.ok) { log('✅ Master started'); setNodeRunning('master', true); activateCpuMonitor(); }
+    if (r.ok) { log('✅ Master started'); setNodeRunning('master', true); }
     else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
   } else {
     log('▶ Starting Worker(' + addr + ') with ' + spins + ' spins...');
     var r = await api('/start-worker', 'POST', {worker_addr: addr, spins: spins, game_name: gameName, interval_count: intervalCount, sim_type: simType});
-    if (r.ok) { log('✅ Worker started'); setNodeRunning(addr, true); activateCpuMonitor(); }
+    if (r.ok) { log('✅ Worker started'); setNodeRunning(addr, true); }
     else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
   }
 }
@@ -1309,9 +1243,6 @@ async function startBatch() {
 
   // Immediately mark selected nodes as running (optimistic)
   selectedNodes.forEach(function(addr) { setNodeRunning(addr, true); });
-
-  // Activate CPU health monitor
-  activateCpuMonitor();
 
   log('🚀 Batch start: type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount + ', mode=' + mode + ', nodes=' + selectedNodes.join(','));
   const r = await api('/start', 'POST', { total_spins: spins, interval_count: intervalCount, mode, game_name: gameName, selected_nodes: selectedNodes, sim_type: simType });
@@ -3649,9 +3580,6 @@ async function init() {
   // Remove batch loading mask
   var batchMask = document.getElementById('batchLoadingMask');
   if (batchMask) batchMask.style.display = 'none';
-  // Activate CPU monitor if any node is running
-  var anyRunning = Object.values(runningNodes).some(function(v) { return v; });
-  if (anyRunning) activateCpuMonitor();
 }
 
 // ---------------------------------------------------------------------------
