@@ -172,6 +172,12 @@
     <div id="batchLoadingMask" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.8);z-index:10;display:flex;align-items:center;justify-content:center;border-radius:8px;">
       <div style="text-align:center;"><div style="display:inline-block;width:20px;height:20px;border:3px solid #ddd;border-top-color:#4a90d9;border-radius:50%;animation:spin 1s linear infinite;"></div><div style="font-size:12px;color:#888;margin-top:6px;">Loading node status...</div></div>
     </div>
+    <div id="batchCpuWarn" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(231,76,60,0.08);z-index:5;border-radius:8px;pointer-events:none;display:none;align-items:center;justify-content:center;">
+      <div style="text-align:center;">
+        <canvas id="batchCpuCanvas" width="120" height="120"></canvas>
+        <div id="batchCpuText" style="font-size:11px;color:#e74c3c;margin-top:4px;font-weight:600;"></div>
+      </div>
+    </div>
     <h2>📦 Batch Start</h2>
     <label>Type</label>
     <select id="batchSimType">
@@ -186,12 +192,20 @@
     <input type="number" id="batchIntervalCount" value="1000000" min="1">
     <label>Select nodes for batch execution</label>
     <div id="batchNodeCheckboxes" style="margin-bottom:8px;"></div>
-    <button class="btn-success" id="batchStartBtn" onclick="startBatch()">▶ Start (batch)</button>
-    <button class="btn-danger" id="batchStopBtn" onclick="stopBatchSelected()" disabled>⏹ Stop (batch)</button>
+    <div style="position:relative;z-index:6;">
+      <button class="btn-success" id="batchStartBtn" onclick="startBatch()">▶ Start (batch)</button>
+      <button class="btn-danger" id="batchStopBtn" onclick="stopBatchSelected()" disabled>⏹ Stop (batch)</button>
+    </div>
   </div>
 
   <!-- Single Start -->
-  <div class="card" id="sectionSingleStart">
+  <div class="card" id="sectionSingleStart" style="position:relative;">
+    <div id="singleCpuWarn" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(231,76,60,0.08);z-index:5;border-radius:8px;pointer-events:none;display:none;align-items:center;justify-content:center;">
+      <div style="text-align:center;">
+        <canvas id="singleCpuCanvas" width="120" height="120"></canvas>
+        <div id="singleCpuText" style="font-size:11px;color:#e74c3c;margin-top:4px;font-weight:600;"></div>
+      </div>
+    </div>
     <h2>🚀 Single Start</h2>
     <label>Type</label>
     <select id="singleSimType">
@@ -212,8 +226,10 @@
     </div>
     <label>Select a node</label>
     <div id="singleNodeRadios" style="margin-bottom:8px;"></div>
-    <button class="btn-primary" id="singleStartBtn" onclick="startSingleNode()" disabled>▶ Start</button>
-    <button class="btn-danger" id="singleStopBtn" onclick="stopSingleNode()" disabled>⏹ Stop</button>
+    <div style="position:relative;z-index:6;">
+      <button class="btn-primary" id="singleStartBtn" onclick="startSingleNode()" disabled>▶ Start</button>
+      <button class="btn-danger" id="singleStopBtn" onclick="stopSingleNode()" disabled>⏹ Stop</button>
+    </div>
   </div>
 
   <!-- Configuration -->
@@ -1151,6 +1167,114 @@ function updateSingleButtons() {
   stopBtn.disabled = !isRunning;
 }
 
+// ---------------------------------------------------------------------------
+// CPU Health Warning (ring overlay on batch/single modules)
+// ---------------------------------------------------------------------------
+var _cpuMonitorTimer = null;
+var _cpuMonitorActive = false;
+var _cpuHealthyThreshold = 90;
+
+function activateCpuMonitor() {
+  if (_cpuMonitorActive) return;
+  _cpuMonitorActive = true;
+  if (!_cpuMonitorTimer) {
+    _cpuMonitorTimer = setInterval(cpuMonitorCheck, 5000);
+    setTimeout(cpuMonitorCheck, 2000); // first check after 2s
+  }
+}
+
+function deactivateCpuMonitor() {
+  _cpuMonitorActive = false;
+  if (_cpuMonitorTimer) { clearInterval(_cpuMonitorTimer); _cpuMonitorTimer = null; }
+  hideCpuWarn('batchCpuWarn');
+  hideCpuWarn('singleCpuWarn');
+}
+
+async function cpuMonitorCheck() {
+  var runningAddrs = [];
+  for (var addr in runningNodes) { if (runningNodes[addr]) runningAddrs.push(addr); }
+  if (runningAddrs.length === 0) { deactivateCpuMonitor(); return; }
+
+  var totalCpu = 0, count = 0;
+  for (var i = 0; i < runningAddrs.length; i++) {
+    try {
+      var r;
+      if (runningAddrs[i] === 'master') r = await fetch('/sysinfo');
+      else r = await fetch('/files/worker/sysinfo?addr=' + encodeURIComponent(runningAddrs[i]));
+      var data = await r.json();
+      if (!data.error && data.cpu_percent !== undefined) { totalCpu += data.cpu_percent; count++; }
+    } catch(e) {}
+  }
+  if (count === 0) return;
+  var avgCpu = totalCpu / count;
+
+  if (avgCpu < _cpuHealthyThreshold) {
+    showCpuWarn('batchCpuWarn', 'batchCpuCanvas', 'batchCpuText', avgCpu, false);
+    showCpuWarn('singleCpuWarn', 'singleCpuCanvas', 'singleCpuText', avgCpu, false);
+  } else {
+    showCpuWarn('batchCpuWarn', 'batchCpuCanvas', 'batchCpuText', avgCpu, true);
+    showCpuWarn('singleCpuWarn', 'singleCpuCanvas', 'singleCpuText', avgCpu, true);
+  }
+}
+
+function showCpuWarn(warnId, canvasId, textId, cpu, healthy) {
+  var el = document.getElementById(warnId);
+  if (el) {
+    el.style.display = 'flex';
+    el.style.background = healthy ? 'rgba(39,174,96,0.08)' : 'rgba(231,76,60,0.08)';
+  }
+  drawCpuRing(canvasId, cpu, healthy);
+  var textEl = document.getElementById(textId);
+  if (textEl) {
+    textEl.style.color = healthy ? '#27ae60' : '#e74c3c';
+    textEl.textContent = healthy ? ('CPU avg: ' + cpu.toFixed(1) + '% ✓ Healthy') : ('CPU avg: ' + cpu.toFixed(1) + '% (< ' + _cpuHealthyThreshold + '%)');
+  }
+}
+
+function hideCpuWarn(warnId) {
+  var el = document.getElementById(warnId);
+  if (el) el.style.display = 'none';
+}
+
+function drawCpuRing(canvasId, cpu, healthy) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var w = canvas.width, h = canvas.height;
+  var cx = w / 2, cy = h / 2;
+  var outerR = 50, innerR = 32;
+  var color = healthy ? [39,174,96] : [231,76,60];
+
+  ctx.clearRect(0, 0, w, h);
+
+  var angle = (cpu / 100) * 2 * Math.PI - Math.PI / 2;
+  // Background ring (gray)
+  ctx.beginPath();
+  ctx.arc(cx, cy, (outerR + innerR) / 2, 0, 2 * Math.PI);
+  ctx.lineWidth = outerR - innerR;
+  ctx.strokeStyle = 'rgba(200,200,200,0.3)';
+  ctx.stroke();
+
+  // Colored ring with gradient
+  var gradient = ctx.createRadialGradient(cx, cy, innerR, cx, cy, outerR);
+  gradient.addColorStop(0, 'rgba(' + color.join(',') + ',0.9)');
+  gradient.addColorStop(1, 'rgba(' + color.join(',') + ',0.2)');
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, (outerR + innerR) / 2, -Math.PI / 2, angle);
+  ctx.lineWidth = outerR - innerR;
+  ctx.strokeStyle = gradient;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Center text
+  ctx.fillStyle = healthy ? '#27ae60' : '#e74c3c';
+  ctx.font = 'bold 18px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(cpu.toFixed(0) + '%', cx, cy);
+}
+
 async function startSingleNode() {
   var selected = document.querySelector('.single-node-radio:checked');
   if (!selected) { showAlert('Please select a node'); return; }
@@ -1165,12 +1289,12 @@ async function startSingleNode() {
   if (addr === 'master') {
     log('▶ Starting Master with ' + spins + ' spins...');
     var r = await api('/start-master', 'POST', {spins: spins, game_name: gameName, interval_count: intervalCount, sim_type: simType});
-    if (r.ok) { log('✅ Master started'); setNodeRunning('master', true); }
+    if (r.ok) { log('✅ Master started'); setNodeRunning('master', true); activateCpuMonitor(); }
     else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
   } else {
     log('▶ Starting Worker(' + addr + ') with ' + spins + ' spins...');
     var r = await api('/start-worker', 'POST', {worker_addr: addr, spins: spins, game_name: gameName, interval_count: intervalCount, sim_type: simType});
-    if (r.ok) { log('✅ Worker started'); setNodeRunning(addr, true); }
+    if (r.ok) { log('✅ Worker started'); setNodeRunning(addr, true); activateCpuMonitor(); }
     else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
   }
 }
@@ -1243,6 +1367,7 @@ async function startBatch() {
 
   // Immediately mark selected nodes as running (optimistic)
   selectedNodes.forEach(function(addr) { setNodeRunning(addr, true); });
+  activateCpuMonitor();
 
   log('🚀 Batch start: type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount + ', mode=' + mode + ', nodes=' + selectedNodes.join(','));
   const r = await api('/start', 'POST', { total_spins: spins, interval_count: intervalCount, mode, game_name: gameName, selected_nodes: selectedNodes, sim_type: simType });
@@ -3539,6 +3664,9 @@ async function init() {
     if (r.data.sysinfo_refresh_interval) {
       _wmSysinfoInterval = r.data.sysinfo_refresh_interval;
     }
+    if (r.data.cpu_healthy_threshold) {
+      _cpuHealthyThreshold = r.data.cpu_healthy_threshold;
+    }
   }
   if (!nodes.length) {
     nodes = [{ addr: 'master', vcpu: 1, percentage: 100 }];
@@ -3580,6 +3708,9 @@ async function init() {
   // Remove batch loading mask
   var batchMask = document.getElementById('batchLoadingMask');
   if (batchMask) batchMask.style.display = 'none';
+  // Activate CPU monitor if nodes already running
+  var anyRunning = Object.values(runningNodes).some(function(v) { return v; });
+  if (anyRunning) activateCpuMonitor();
 }
 
 // ---------------------------------------------------------------------------

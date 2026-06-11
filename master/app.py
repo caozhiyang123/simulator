@@ -775,6 +775,7 @@ def get_nodes():
         "allocation_mode": config.get_allocation_mode(),
         "poll_interval": config.get_poll_interval(),
         "sysinfo_refresh_interval": _raw_config.get("sysinfo_refresh_interval", 5),
+        "cpu_healthy_threshold": _raw_config.get("cpu_healthy_threshold", 90),
     })
 
 

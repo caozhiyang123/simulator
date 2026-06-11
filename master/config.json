@@ -1,6 +1,7 @@
 {
   "port": 5555,
   "sysinfo_refresh_interval": 5,
+  "cpu_healthy_threshold": 90,
   "master": {
     "vcpu": 8,
     "percentage": 100
