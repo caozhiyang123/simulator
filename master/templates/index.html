@@ -113,6 +113,11 @@
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('compare');hidePluginMenu()">🔍 Compare</div>
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('formatjson');hidePluginMenu()">📋 Format JSON</div>
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('batchoverride');hidePluginMenu()">📦 Batch Override File</div>
+        <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('formattime');hidePluginMenu()">🕐 Format Time</div>
+        <div style="padding:4px 12px;font-size:11px;color:#888;border-top:1px solid #444;margin-top:2px;padding-top:6px;">🎰 Bingo</div>
+        <div style="padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('cardgen');hidePluginMenu()">🃏 Card Generation</div>
+        <div style="padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('patterncomb');hidePluginMenu()">🧩 Pattern Combination</div>
+        <div style="padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('patterncalc');hidePluginMenu()">🎯 Pattern Calculation</div>
       </div>
     </div>
     <button class="sidebar-btn" onclick="switchPage('cicd')" id="navCicd">🚀<span>CICD</span></button>
@@ -536,6 +541,72 @@
         <div id="batchOverrideResult" style="margin-top:16px;font-size:12px;"></div>
       </div>
     </div><!-- end pageBatchoverride -->
+
+    <!-- FORMAT TIME PAGE -->
+    <div class="page-panel" id="pageFormattime">
+      <div class="card full-width">
+        <h2>🕐 Format Time</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:12px;">Convert between timestamp (milliseconds) and UTC date string.</p>
+        <div style="background:#f8f9fa;border:1px solid #eee;border-radius:6px;padding:12px;margin-bottom:16px;font-size:12px;font-family:monospace;">
+          <div style="margin-bottom:4px;"><strong>Examples:</strong></div>
+          <div style="color:#4a90d9;">Input: <span style="color:#333;">1781245424181</span> → Output: <span style="color:#27ae60;">2026-06-12 06:23:44.181000 UTC</span></div>
+          <div style="color:#4a90d9;">Input: <span style="color:#333;">2026-06-12 06:23:44.181000 UTC</span> → Output: <span style="color:#27ae60;">1781245424181</span></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px;">
+          <div style="flex:1;">
+            <label>Input (timestamp in ms OR date string)</label>
+            <input type="text" id="formatTimeInput" placeholder="e.g. 1781245424181 or 2026-06-12 06:23:44.181000 UTC" style="margin-bottom:0;">
+          </div>
+          <button class="btn-primary" onclick="doFormatTime()" style="height:34px;">Format</button>
+        </div>
+        <div id="formatTimeResult" style="font-size:14px;"></div>
+      </div>
+    </div><!-- end pageFormattime -->
+
+    <!-- BINGO CARD GENERATION PAGE -->
+    <div class="page-panel" id="pageCardgen">
+      <div class="card full-width">
+        <h2>🎰 Bingo Card Generation</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:12px;">Generate bingo card sets based on card specifications.</p>
+        <div style="max-width:400px;">
+          <label style="font-size:12px;">Width</label>
+          <input type="number" id="cgWidth" value="5" min="1">
+          <label style="font-size:12px;">Height</label>
+          <input type="number" id="cgHeight" value="3" min="1">
+          <label style="font-size:12px;">Numbers per card</label>
+          <input type="number" id="cgNumPerCard" value="15" min="1">
+          <label style="font-size:12px;">Max cards (per set)</label>
+          <input type="number" id="cgMaxCards" value="4" min="1">
+          <label style="font-size:12px;">Card size (sets to generate)</label>
+          <input type="number" id="cgCardSize" value="100" min="1">
+          <label style="font-size:12px;">Min card number</label>
+          <input type="number" id="cgMinNum" value="1" min="0">
+          <label style="font-size:12px;">Max card number</label>
+          <input type="number" id="cgMaxNum" value="90" min="1">
+        </div>
+        <div style="margin-top:12px;">
+          <label style="font-size:12px;">Equal positions (JSON array of arrays, leave empty if not needed)</label>
+          <textarea id="cgEqualPos" rows="4" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-family:monospace;font-size:11px;" placeholder="e.g. [[20,30,65],[33,48,67],...]"></textarea>
+        </div>
+        <div style="margin-top:4px;margin-bottom:12px;font-size:11px;color:#888;">
+          <strong>Note:</strong> If total positions (numPerCard × maxCards) ≤ available numbers (max - min + 1), equal_position is not needed. Otherwise provide equal_position groups.
+        </div>
+        <button class="btn-primary" onclick="doGenerateCards()">🎰 Generate</button>
+        <div id="cgResult" style="margin-top:16px;"></div>
+      </div>
+    </div><!-- end pageCardgen -->
+
+    <!-- PATTERN COMBINATION PAGE -->
+    <div class="page-panel" id="pagePatterncomb">
+      <div class="card full-width">
+        <h2>🧩 Pattern Combination</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:12px;">Generate all valid pattern override combinations from a payable list. Input payable JSON array and get the combinations output.</p>
+        <label style="font-size:12px;">Payable List (JSON array)</label>
+        <textarea id="pcPayableInput" rows="12" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-family:monospace;font-size:11px;margin-bottom:12px;" placeholder='[{"id":1,"name":"bingo","alias":"P00","format":"111111111111111","value":1500,"r":0,"weight":0.0,"is_eb":true,"type":1},...]'></textarea>
+        <button class="btn-primary" onclick="doPatternCombination()">🧩 Generate Combinations</button>
+        <div id="pcResult" style="margin-top:16px;"></div>
+      </div>
+    </div><!-- end pagePatterncomb -->
 
     <!-- CICD PAGE -->
     <div class="page-panel" id="pageCicd">
@@ -3854,6 +3925,271 @@ function formatJsonPrettify() {
 function clearFormatJson() {
   document.getElementById('formatJsonArea').value = '';
   document.getElementById('formatJsonError').style.display = 'none';
+}
+
+// ---------------------------------------------------------------------------
+// Format Time
+// ---------------------------------------------------------------------------
+function doFormatTime() {
+  var input = document.getElementById('formatTimeInput').value.trim();
+  var resultEl = document.getElementById('formatTimeResult');
+  if (!input) { resultEl.innerHTML = '<span style="color:#888;">Please enter a value</span>'; return; }
+
+  // Check if input is a number (timestamp in ms)
+  if (/^\d+$/.test(input)) {
+    var ts = parseInt(input);
+    var date = new Date(ts);
+    if (isNaN(date.getTime())) { resultEl.innerHTML = '<span style="color:#e74c3c;">Invalid timestamp</span>'; return; }
+    var y = date.getUTCFullYear();
+    var m = String(date.getUTCMonth() + 1).padStart(2, '0');
+    var d = String(date.getUTCDate()).padStart(2, '0');
+    var hh = String(date.getUTCHours()).padStart(2, '0');
+    var mm = String(date.getUTCMinutes()).padStart(2, '0');
+    var ss = String(date.getUTCSeconds()).padStart(2, '0');
+    var ms = String(date.getUTCMilliseconds()).padStart(3, '0');
+    var formatted = y + '-' + m + '-' + d + ' ' + hh + ':' + mm + ':' + ss + '.' + ms + '000 UTC';
+    resultEl.innerHTML = '<div style="background:#1e1e2e;padding:12px 44px 12px 12px;border-radius:6px;font-family:monospace;font-size:14px;position:relative;"><span id="formatTimeValue" style="color:#a6e3a1;">' + formatted + '</span><span id="formatTimeCopyBtn" onclick="copyFormatTimeResult()" title="Copy" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:background 0.2s;" onmouseover="this.style.background=\'rgba(255,255,255,0.1)\'" onmouseout="this.style.background=\'transparent\'"><svg id="formatTimeCopyIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><svg id="formatTimeCheckIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><polyline points="20 6 9 17 4 12"></polyline></svg></span></div>';
+  } else {
+    // Try to parse as date string
+    var cleaned = input.replace(' UTC', 'Z').replace(' ', 'T');
+    // Handle microseconds (remove extra precision beyond ms)
+    var dotMatch = cleaned.match(/\.(\d+)/);
+    if (dotMatch && dotMatch[1].length > 3) {
+      cleaned = cleaned.replace('.' + dotMatch[1], '.' + dotMatch[1].substring(0, 3));
+    }
+    var date = new Date(cleaned);
+    if (isNaN(date.getTime())) {
+      // Try direct parsing with manual split
+      var parts = input.replace(' UTC', '').split(/[- :.]/);
+      if (parts.length >= 6) {
+        var ms2 = parts[6] ? parseInt(parts[6].substring(0, 3)) : 0;
+        date = new Date(Date.UTC(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]), ms2));
+      }
+    }
+    if (isNaN(date.getTime())) { resultEl.innerHTML = '<span style="color:#e74c3c;">Invalid date format. Expected: YYYY-MM-DD HH:MM:SS.ffffff UTC</span>'; return; }
+    var timestamp = date.getTime();
+    resultEl.innerHTML = '<div style="background:#1e1e2e;padding:12px 44px 12px 12px;border-radius:6px;font-family:monospace;font-size:14px;position:relative;"><span id="formatTimeValue" style="color:#a6e3a1;">' + timestamp + '</span><span id="formatTimeCopyBtn" onclick="copyFormatTimeResult()" title="Copy" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:background 0.2s;" onmouseover="this.style.background=\'rgba(255,255,255,0.1)\'" onmouseout="this.style.background=\'transparent\'"><svg id="formatTimeCopyIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><svg id="formatTimeCheckIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><polyline points="20 6 9 17 4 12"></polyline></svg></span></div>';
+  }
+}
+
+function copyFormatTimeResult() {
+  var text = document.getElementById('formatTimeValue').textContent;
+  if (!text) return;
+  var copyIcon = document.getElementById('formatTimeCopyIcon');
+  var checkIcon = document.getElementById('formatTimeCheckIcon');
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch(e) {}
+  document.body.removeChild(ta);
+  copyIcon.style.display = 'none';
+  checkIcon.style.display = '';
+  setTimeout(function() { copyIcon.style.display = ''; checkIcon.style.display = 'none'; }, 2000);
+}
+
+// ---------------------------------------------------------------------------
+// Bingo Card Generation
+// ---------------------------------------------------------------------------
+async function doGenerateCards() {
+  var width = parseInt(document.getElementById('cgWidth').value);
+  var height = parseInt(document.getElementById('cgHeight').value);
+  var numPerCard = parseInt(document.getElementById('cgNumPerCard').value);
+  var maxCards = parseInt(document.getElementById('cgMaxCards').value);
+  var cardSize = parseInt(document.getElementById('cgCardSize').value);
+  var minNum = parseInt(document.getElementById('cgMinNum').value);
+  var maxNum = parseInt(document.getElementById('cgMaxNum').value);
+
+  // Client-side validation
+  if (!width || width < 1) { showAlert('Width must be a positive integer'); return; }
+  if (!height || height < 1) { showAlert('Height must be a positive integer'); return; }
+  if (!numPerCard || numPerCard < 1) { showAlert('Numbers per card must be a positive integer'); return; }
+  if (!maxCards || maxCards < 1) { showAlert('Max cards must be a positive integer'); return; }
+  if (!cardSize || cardSize < 1 || cardSize > 10000) { showAlert('Card size must be between 1 and 10000'); return; }
+  if (isNaN(minNum) || minNum < 0) { showAlert('Min card number must be 0 or greater'); return; }
+  if (!maxNum || maxNum < 1) { showAlert('Max card number must be a positive integer'); return; }
+  if (minNum >= maxNum) { showAlert('Min card number must be less than max card number'); return; }
+  if (numPerCard !== width * height) { showAlert('Numbers per card (' + numPerCard + ') must equal width × height (' + width + '×' + height + '=' + (width*height) + ')'); return; }
+
+  var equalPosStr = document.getElementById('cgEqualPos').value.trim();
+  var equalPosition = [];
+  if (equalPosStr) {
+    try { equalPosition = JSON.parse(equalPosStr); }
+    catch(e) { showAlert('Invalid equal_position JSON: ' + e.message); return; }
+    if (!Array.isArray(equalPosition)) { showAlert('equal_position must be an array of arrays'); return; }
+    // Validate each group is an array of non-negative integers
+    var totalPos = numPerCard * maxCards;
+    for (var g = 0; g < equalPosition.length; g++) {
+      if (!Array.isArray(equalPosition[g])) { showAlert('equal_position[' + g + '] must be an array'); return; }
+      for (var p = 0; p < equalPosition[g].length; p++) {
+        var val = equalPosition[g][p];
+        if (!Number.isInteger(val) || val < 0 || val >= totalPos) {
+          showAlert('equal_position[' + g + '][' + p + '] = ' + val + ' is out of range [0, ' + (totalPos-1) + ']');
+          return;
+        }
+      }
+    }
+  }
+
+  var resultEl = document.getElementById('cgResult');
+  resultEl.innerHTML = '<div style="color:#888;">Generating ' + cardSize + ' card sets...</div>';
+
+  var res = await fetch('/bingo/generate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      num_per_card: numPerCard,
+      max_cards: maxCards,
+      card_size: cardSize,
+      min_card_number: minNum,
+      max_card_number: maxNum,
+      equal_position: equalPosition
+    })
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+
+  var cards = data.cards || [];
+  var totalPos = data.positions_per_set || 0;
+
+  // Preview: show first set as card grid
+  var html = '<div style="color:#27ae60;font-weight:600;margin-bottom:8px;">✅ Generated ' + cards.length + ' sets (' + totalPos + ' positions per set)</div>';
+
+  // Preview first set as visual cards
+  if (cards.length > 0) {
+    var width = parseInt(document.getElementById('cgWidth').value) || 5;
+    var height = parseInt(document.getElementById('cgHeight').value) || 3;
+    html += '<div style="margin-bottom:12px;font-size:12px;color:#666;">Preview: Set #1 <span style="color:#aaa;">(click a cell to highlight same numbers)</span></div>';
+    html += '<div id="cgPreviewCards" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px;">';
+    for (var c = 0; c < maxCards && c * numPerCard < cards[0].length; c++) {
+      html += '<div style="border:1px solid #ddd;border-radius:4px;padding:4px;">';
+      html += '<div style="font-size:10px;color:#888;text-align:center;margin-bottom:4px;">Card ' + (c+1) + '</div>';
+      html += '<table style="border-collapse:collapse;">';
+      for (var row = 0; row < height; row++) {
+        html += '<tr>';
+        for (var col = 0; col < width; col++) {
+          var idx = c * numPerCard + row * width + col;
+          var val = idx < cards[0].length ? cards[0][idx] : '-';
+          html += '<td class="cg-cell" data-val="' + val + '" onclick="cgHighlightNumber(' + val + ')" style="border:1px solid #ccc;width:36px;height:36px;text-align:center;font-size:11px;font-weight:600;cursor:pointer;position:relative;vertical-align:middle;">' + val + '<span style="position:absolute;bottom:1px;right:2px;font-size:7px;color:#bbb;font-weight:normal;">' + idx + '</span></td>';
+        }
+        html += '</tr>';
+      }
+      html += '</table></div>';
+    }
+    html += '</div>';
+  }
+
+  // Full data output with copy - format as one array per line
+  var fullData = '[' + cards.map(function(c) { return JSON.stringify(c); }).join(',\n') + ']';
+  html += '<div style="position:relative;">';
+  html += '<div style="font-size:12px;color:#666;margin-bottom:4px;">Full data (' + fullData.length + ' chars):</div>';
+  html += '<div style="background:#1e1e2e;padding:12px 44px 12px 12px;border-radius:6px;font-family:monospace;font-size:11px;max-height:200px;overflow:auto;position:relative;">';
+  html += '<span id="cgOutputValue" style="color:#a6e3a1;word-break:break-all;">' + fullData.substring(0, 5000) + (fullData.length > 5000 ? '...' : '') + '</span>';
+  html += '<span onclick="copyCgResult()" title="Copy" style="position:absolute;right:12px;top:12px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;" onmouseover="this.style.background=\'rgba(255,255,255,0.1)\'" onmouseout="this.style.background=\'transparent\'">';
+  html += '<svg id="cgCopyIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+  html += '<svg id="cgCheckIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+  html += '</span></div></div>';
+
+  resultEl.innerHTML = html;
+  // Store full data for copy
+  resultEl._fullData = fullData;
+}
+
+function copyCgResult() {
+  var resultEl = document.getElementById('cgResult');
+  var text = resultEl._fullData || '';
+  if (!text) return;
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch(e) {}
+  document.body.removeChild(ta);
+  var copyIcon = document.getElementById('cgCopyIcon');
+  var checkIcon = document.getElementById('cgCheckIcon');
+  if (copyIcon) copyIcon.style.display = 'none';
+  if (checkIcon) checkIcon.style.display = '';
+  setTimeout(function() { if (copyIcon) copyIcon.style.display = ''; if (checkIcon) checkIcon.style.display = 'none'; }, 2000);
+}
+
+function cgHighlightNumber(num) {
+  var cells = document.querySelectorAll('.cg-cell');
+  cells.forEach(function(cell) {
+    if (parseInt(cell.getAttribute('data-val')) === num) {
+      cell.style.background = '#ffeaa7';
+      cell.style.color = '#d63031';
+    } else {
+      cell.style.background = '';
+      cell.style.color = '';
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Pattern Combination
+// ---------------------------------------------------------------------------
+async function doPatternCombination() {
+  var inputStr = document.getElementById('pcPayableInput').value.trim();
+  var resultEl = document.getElementById('pcResult');
+  if (!inputStr) { showAlert('Please enter a payable list'); return; }
+
+  var payables;
+  try { payables = JSON.parse(inputStr); }
+  catch(e) { showAlert('Invalid JSON: ' + e.message); return; }
+  if (!Array.isArray(payables) || !payables.length) { showAlert('Payable must be a non-empty array'); return; }
+
+  resultEl.innerHTML = '<div style="color:#888;">Generating combinations... This may take a moment.</div>';
+
+  var res = await fetch('/bingo/pattern-combination', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({payables: payables})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+
+  var combos = data.combinations && data.combinations['default'] ? data.combinations['default'] : [];
+  var html = '<div style="color:#27ae60;font-weight:600;margin-bottom:8px;">✅ Generated ' + combos.length + ' combinations</div>';
+
+  // Output as JSON with copy button - custom key order
+  var outputLines = combos.map(function(c) {
+    return '{"id":' + c.id + ',"name":"' + c.name + '", "alias":"' + c.alias + '", "format":"' + c.format + '", "required":"' + c.required + '", "value":' + c.value + ', "weight":' + (c.weight || 0).toFixed(2) + '}';
+  });
+  var outputJson = '{"default":[\n' + outputLines.join(',\n') + '\n]}';
+  html += '<div style="position:relative;">';
+  html += '<div style="font-size:12px;color:#666;margin-bottom:4px;">Output (' + combos.length + ' combinations):</div>';
+  html += '<div style="background:#1e1e2e;padding:12px 44px 12px 12px;border-radius:6px;font-family:monospace;font-size:11px;max-height:400px;overflow:auto;position:relative;">';
+  html += '<pre id="pcOutputValue" style="color:#a6e3a1;margin:0;white-space:pre-wrap;word-break:break-all;">' + outputJson.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>';
+  html += '<span onclick="copyPcResult()" title="Copy" style="position:absolute;right:12px;top:12px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;" onmouseover="this.style.background=\'rgba(255,255,255,0.1)\'" onmouseout="this.style.background=\'transparent\'">';
+  html += '<svg id="pcCopyIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+  html += '<svg id="pcCheckIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+  html += '</span></div></div>';
+
+  resultEl.innerHTML = html;
+  resultEl._fullData = outputJson;
+}
+
+function copyPcResult() {
+  var resultEl = document.getElementById('pcResult');
+  var text = resultEl._fullData || '';
+  if (!text) return;
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch(e) {}
+  document.body.removeChild(ta);
+  var copyIcon = document.getElementById('pcCopyIcon');
+  var checkIcon = document.getElementById('pcCheckIcon');
+  if (copyIcon) copyIcon.style.display = 'none';
+  if (checkIcon) checkIcon.style.display = '';
+  setTimeout(function() { if (copyIcon) copyIcon.style.display = ''; if (checkIcon) checkIcon.style.display = 'none'; }, 2000);
 }
 
 // ---------------------------------------------------------------------------

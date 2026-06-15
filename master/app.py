@@ -1207,6 +1207,225 @@ def worker_create_file():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/bingo/pattern-combination", methods=["POST"])
+def bingo_pattern_combination():
+    """Generate all valid pattern override combinations from payable list."""
+    data = request.get_json(force=True)
+    payables = data.get("payables", [])
+
+    if not payables or not isinstance(payables, list):
+        return jsonify({"error": "payables must be a non-empty array"}), 400
+
+    # Sort payables by value descending
+    payables_sorted = sorted(payables, key=lambda p: p.get("value", 0), reverse=True)
+
+    # Parse formats into integer bitmasks for fast OR/subset operations
+    fmt_len = len(payables_sorted[0].get("format", ""))
+    for p in payables_sorted:
+        fmt = p.get("format", "")
+        if len(fmt) != fmt_len:
+            return jsonify({"error": f"All formats must have same length. Expected {fmt_len}, got {len(fmt)} for {p.get('alias')}"}), 400
+        p["_mask"] = int(fmt, 2)
+        p["_required"] = fmt.count("1")
+
+    # Find the bingo pattern (all 1s, type=1)
+    bingo_mask = (1 << fmt_len) - 1
+
+    # Generate combinations using iterative approach
+    # A valid combination: OR of multiple patterns where the combined format
+    # does NOT equal or contain any single pattern with higher value than the combination sum
+    results = []
+
+    # First, add each single pattern as a valid combination
+    for p in payables_sorted:
+        results.append({
+            "id": -1,
+            "name": p["name"],
+            "alias": p["alias"] + ",",
+            "format": p["format"],
+            "required": str(p["_required"]),
+            "value": p["value"],
+            "weight": 0.00
+        })
+
+    # Now find multi-pattern combinations
+    # We need to find sets of patterns where:
+    # 1. Their OR doesn't fully contain a higher-value single pattern that isn't part of the set
+    # 2. No pattern in the set is a subset of another in the set
+    # 3. The combined format is not equal to any single pattern's format
+    from itertools import combinations as iter_combinations
+
+    # Build list of non-bingo patterns for combination
+    non_bingo = [p for p in payables_sorted if p["_mask"] != bingo_mask]
+
+    # Limit to reasonable depth (2-5 patterns per combo)
+    max_depth = min(6, len(non_bingo))
+
+    for size in range(2, max_depth + 1):
+        for combo in iter_combinations(range(len(non_bingo)), size):
+            patterns = [non_bingo[i] for i in combo]
+
+            # Check no pattern is subset of another in this combo
+            masks = [p["_mask"] for p in patterns]
+            skip = False
+            for i in range(len(masks)):
+                for j in range(len(masks)):
+                    if i != j and (masks[i] & masks[j]) == masks[i]:
+                        skip = True
+                        break
+                if skip:
+                    break
+            if skip:
+                continue
+
+            # Compute OR of all formats
+            combined_mask = 0
+            for m in masks:
+                combined_mask |= m
+            combined_required = bin(combined_mask).count("1")
+
+            # Check if combined equals bingo
+            if combined_mask == bingo_mask:
+                continue
+
+            # Check: combined format must not fully contain any single pattern
+            # with higher value than the sum of this combo
+            combo_value = sum(p["value"] for p in patterns)
+            is_valid = True
+            for p in payables_sorted:
+                if p["_mask"] == bingo_mask:
+                    continue
+                # Skip patterns that are part of this combo
+                if p in patterns:
+                    continue
+                # If combined fully contains this pattern AND this pattern's value >= combo_value
+                if (combined_mask & p["_mask"]) == p["_mask"] and p["value"] >= combo_value:
+                    is_valid = False
+                    break
+            if not is_valid:
+                continue
+
+            # Check: combined format must not equal any single pattern's format
+            is_duplicate = False
+            for p in payables_sorted:
+                if p["_mask"] == combined_mask:
+                    is_duplicate = True
+                    break
+            if is_duplicate:
+                continue
+
+            # Format the combined mask back to string
+            combined_fmt = bin(combined_mask)[2:].zfill(fmt_len)
+
+            # Build name and alias
+            names = ",".join(p["name"] for p in patterns) + ","
+            aliases = ",".join(p["alias"] for p in patterns) + ","
+
+            results.append({
+                "id": -1,
+                "name": names,
+                "alias": aliases,
+                "format": combined_fmt,
+                "required": str(combined_required),
+                "value": combo_value,
+                "weight": 0.00
+            })
+
+    # Sort by value descending, then by required descending
+    results.sort(key=lambda r: (-r["value"], -int(r["required"])))
+
+    # Remove duplicates (same format)
+    seen_formats = set()
+    unique_results = []
+    for r in results:
+        if r["format"] not in seen_formats:
+            seen_formats.add(r["format"])
+            unique_results.append(r)
+
+    return jsonify({"status": "ok", "combinations": {"default": unique_results}, "count": len(unique_results)})
+
+
+@app.route("/bingo/generate", methods=["POST"])
+def bingo_generate():
+    """Generate bingo card sets."""
+    import random
+    data = request.get_json(force=True)
+    num_per_card = int(data.get("num_per_card", 0))
+    max_cards = int(data.get("max_cards", 0))
+    card_size = int(data.get("card_size", 0))
+    min_num = int(data.get("min_card_number", 0))
+    max_num = int(data.get("max_card_number", 0))
+    equal_position = data.get("equal_position", [])
+
+    # Server-side validation
+    if num_per_card < 1:
+        return jsonify({"error": "num_per_card must be a positive integer"}), 400
+    if max_cards < 1:
+        return jsonify({"error": "max_cards must be a positive integer"}), 400
+    if card_size < 1 or card_size > 10000:
+        return jsonify({"error": "card_size must be between 1 and 10000"}), 400
+    if min_num < 0:
+        return jsonify({"error": "min_card_number must be 0 or greater"}), 400
+    if max_num < 1:
+        return jsonify({"error": "max_card_number must be a positive integer"}), 400
+    if min_num >= max_num:
+        return jsonify({"error": "min_card_number must be less than max_card_number"}), 400
+
+    total_pos = num_per_card * max_cards
+    numbers = list(range(min_num, max_num + 1))
+
+    # Validate equal_position if provided
+    if equal_position:
+        if not isinstance(equal_position, list):
+            return jsonify({"error": "equal_position must be an array of arrays"}), 400
+        for idx, group in enumerate(equal_position):
+            if not isinstance(group, list):
+                return jsonify({"error": f"equal_position[{idx}] must be an array"}), 400
+            for val in group:
+                if not isinstance(val, int) or val < 0 or val >= total_pos:
+                    return jsonify({"error": f"equal_position[{idx}] contains invalid value {val}, must be in [0, {total_pos - 1}]"}), 400
+
+    total_pos = num_per_card * max_cards
+    numbers = list(range(min_num, max_num + 1))
+
+    if not equal_position:
+        # Case 1: No equal positions, numbers >= total_pos
+        if len(numbers) < total_pos:
+            return jsonify({"error": f"Not enough numbers ({len(numbers)}) for {total_pos} positions. Provide equal_position."}), 400
+        cards = []
+        for i in range(card_size):
+            random.shuffle(numbers)
+            cards.append(numbers[:total_pos][:])
+        return jsonify({"status": "ok", "cards": cards, "card_size": card_size, "positions_per_set": total_pos})
+    else:
+        # Case 2/3: With equal positions
+        # Build position-to-group mapping
+        pos_to_group = {}
+        for group in equal_position:
+            for pos in group:
+                pos_to_group[pos] = group
+
+        cards = []
+        for i in range(card_size):
+            card = [0] * total_pos
+            random.shuffle(numbers)
+            number_idx = 0
+            for j in range(total_pos):
+                if card[j] > 0:
+                    continue  # Already filled by equal position
+                if number_idx >= len(numbers):
+                    break
+                card[j] = numbers[number_idx]
+                # Fill equal positions with same number
+                if j in pos_to_group:
+                    for eq_pos in pos_to_group[j]:
+                        if eq_pos < total_pos and eq_pos != j:
+                            card[eq_pos] = numbers[number_idx]
+                number_idx += 1
+            cards.append(card)
+        return jsonify({"status": "ok", "cards": cards, "card_size": card_size, "positions_per_set": total_pos})
+
+
 @app.route("/files/batch-check", methods=["POST"])
 def batch_check():
     """Recursively find all files matching the source filename.
