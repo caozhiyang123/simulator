@@ -608,6 +608,56 @@
       </div>
     </div><!-- end pagePatterncomb -->
 
+    <!-- PATTERN CALCULATION PAGE -->
+    <div class="page-panel" id="pagePatterncalc">
+      <div class="card full-width">
+        <h2>🎯 Pattern Calculation</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:12px;">Visualize pattern matches on a bingo card given a ball draw sequence.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div>
+            <label style="font-size:12px;">Card Width</label>
+            <input type="number" id="pcalcWidth" value="5" min="1" oninput="pcalcUpdateNumPerCard()">
+          </div>
+          <div>
+            <label style="font-size:12px;">Card Height</label>
+            <input type="number" id="pcalcHeight" value="5" min="1" oninput="pcalcUpdateNumPerCard()">
+          </div>
+          <div>
+            <label style="font-size:12px;">Number per card</label>
+            <input type="number" id="pcalcNumPerCard" value="25" disabled style="background:#f0f0f0;">
+          </div>
+        </div>
+        <label style="font-size:12px;">Pattern (Paytable) List</label>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <select id="pcalcMachineSelect" onchange="pcalcLoadMachinePattern()" style="flex:1;">
+            <option value="">-- Select Machine --</option>
+          </select>
+          <button class="btn-primary btn-sm" onclick="pcalcShowAddMachine()">+ Add Machine</button>
+        </div>
+        <div id="pcalcAddMachinePanel" style="display:none;border:1px solid #ddd;border-radius:4px;padding:12px;margin-bottom:8px;background:#f8f9fa;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+            <div><label style="font-size:11px;">Machine ID</label><input type="number" id="pcalcNewMachineId" placeholder="e.g. 41"></div>
+            <div><label style="font-size:11px;">Machine Name</label><input type="text" id="pcalcNewMachineName" placeholder="e.g. pachinko3"></div>
+          </div>
+          <label style="font-size:11px;">Pattern List (JSON array)</label>
+          <textarea id="pcalcNewMachinePatterns" rows="4" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;font-family:monospace;font-size:10px;margin-bottom:8px;" placeholder='[{"name":"bingo","alias":"P00","format":"111...","value":1500},...]'></textarea>
+          <div style="display:flex;gap:4px;">
+            <button class="btn-success btn-sm" onclick="pcalcSaveMachine()">Save</button>
+            <button class="btn-warning btn-sm" onclick="document.getElementById('pcalcAddMachinePanel').style.display='none'">Cancel</button>
+          </div>
+        </div>
+        <textarea id="pcalcPatterns" rows="4" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-family:monospace;font-size:11px;margin-bottom:8px;" placeholder="Pattern list will be loaded from selected machine, or paste manually"></textarea>
+        <label style="font-size:12px;">Card Numbers — JSON array (flat, e.g. [3,28,33,51,70,8,27,32,49,65,...])</label>
+        <textarea id="pcalcCard" rows="2" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-family:monospace;font-size:11px;margin-bottom:8px;" placeholder="[3,28,33,51,70,8,27,32,49,65,14,22,0,57,63,15,18,45,53,69,1,24,36,52,68]"></textarea>
+        <label style="font-size:12px;">Ball List — JSON array (draw order, e.g. [70,17,60,33,...])</label>
+        <textarea id="pcalcBalls" rows="2" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-family:monospace;font-size:11px;margin-bottom:8px;" placeholder="[70,17,60,33,35,52,44,51,73,7,39,68,...]"></textarea>
+        <div style="font-size:11px;color:#888;margin-bottom:8px;">Use 0 in card for free/wildcard positions (always counted as hit).</div>
+        <button class="btn-primary" onclick="doPatternCalcPreview()" style="margin-right:8px;">👁 Preview</button>
+        <button class="btn-primary" onclick="doPatternCalc()">🎯 Calculate</button>
+        <div id="pcalcResult" style="margin-top:16px;"></div>
+      </div>
+    </div><!-- end pagePatterncalc -->
+
     <!-- CICD PAGE -->
     <div class="page-panel" id="pageCicd">
       <div id="cicdApp">
@@ -2926,6 +2976,8 @@ document.addEventListener('click', function(e) {
 });
 
 function switchPage(page) {
+  // Hide plugin submenu
+  hidePluginMenu();
   // Check if user is editing in CICD
   if (typeof _cicdIsEditing !== 'undefined' && _cicdIsEditing) {
     if (!confirm('You have unsaved changes. Are you sure you want to leave this page?')) return;
@@ -2939,7 +2991,7 @@ function switchPage(page) {
   var navId = 'nav' + page.charAt(0).toUpperCase() + page.slice(1);
   var navEl = document.getElementById(navId);
   if (navEl) { navEl.classList.add('active'); }
-  else if (page === 'compare' || page === 'formatjson') {
+  else if (page === 'compare' || page === 'formatjson' || page === 'batchoverride' || page === 'formattime' || page === 'cardgen' || page === 'patterncomb' || page === 'patterncalc') {
     document.getElementById('navPlugin').classList.add('active');
   }
   if (page === 'history') histLoadAll();
@@ -2949,6 +3001,7 @@ function switchPage(page) {
   if (page === 'family') loadFamilyGallery();
   if (page === 'cicd') cicdInit();
   if (page === 'cicdsettings') cicdLoadSettingsPage();
+  if (page === 'patterncalc') pcalcLoadMachines();
 }
 
 // ---------------------------------------------------------------------------
@@ -4190,6 +4243,369 @@ function copyPcResult() {
   if (copyIcon) copyIcon.style.display = 'none';
   if (checkIcon) checkIcon.style.display = '';
   setTimeout(function() { if (copyIcon) copyIcon.style.display = ''; if (checkIcon) checkIcon.style.display = 'none'; }, 2000);
+}
+
+// ---------------------------------------------------------------------------
+// Pattern Calculation
+// ---------------------------------------------------------------------------
+function pcalcUpdateNumPerCard() {
+  var w = parseInt(document.getElementById('pcalcWidth').value) || 0;
+  var h = parseInt(document.getElementById('pcalcHeight').value) || 0;
+  document.getElementById('pcalcNumPerCard').value = w * h;
+}
+
+function pcalcShowAddMachine() {
+  document.getElementById('pcalcAddMachinePanel').style.display = '';
+}
+
+async function pcalcLoadMachines() {
+  var res = await fetch('/bingo/machines');
+  var data = await res.json();
+  var sel = document.getElementById('pcalcMachineSelect');
+  var html = '<option value="">-- Select Machine --</option>';
+  (data.machines || []).forEach(function(m) {
+    html += '<option value="' + m.machine_id + '">' + m.machine_id + ' - ' + m.name + '</option>';
+  });
+  sel.innerHTML = html;
+  sel._machines = data.machines || [];
+}
+
+function pcalcLoadMachinePattern() {
+  var sel = document.getElementById('pcalcMachineSelect');
+  var machineId = parseInt(sel.value);
+  if (!machineId) { document.getElementById('pcalcPatterns').value = ''; return; }
+  var machines = sel._machines || [];
+  var machine = machines.find(function(m) { return m.machine_id === machineId; });
+  if (machine && machine.pattern) {
+    document.getElementById('pcalcPatterns').value = JSON.stringify(machine.pattern);
+  }
+}
+
+async function pcalcSaveMachine() {
+  var id = parseInt(document.getElementById('pcalcNewMachineId').value);
+  var name = document.getElementById('pcalcNewMachineName').value.trim();
+  var patternsStr = document.getElementById('pcalcNewMachinePatterns').value.trim();
+  if (!id || !name) { showAlert('Machine ID and Name are required'); return; }
+  var pattern = [];
+  if (patternsStr) {
+    try { pattern = JSON.parse(patternsStr); } catch(e) { showAlert('Invalid pattern JSON: ' + e.message); return; }
+  }
+  var res = await fetch('/bingo/machines', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({machine_id:id,name:name,pattern:pattern}) });
+  var data = await res.json();
+  if (data.error) { showAlert(data.error); return; }
+  showAlert('Machine saved!');
+  document.getElementById('pcalcAddMachinePanel').style.display = 'none';
+  pcalcLoadMachines();
+}
+
+function pcalcCyclePattern(groupIdx) {
+  if (!window._pcalcPatternGroups || !_pcalcPatternGroups[groupIdx]) return;
+  var group = _pcalcPatternGroups[groupIdx];
+  if (group.length <= 1) return;
+  var gridEl = document.querySelector('.pcalc-pat-grid[data-group="' + groupIdx + '"]');
+  if (!gridEl) return;
+  var currentIdx = parseInt(gridEl.getAttribute('data-idx')) || 0;
+  var nextIdx = (currentIdx + 1) % group.length;
+  gridEl.setAttribute('data-idx', nextIdx);
+  var fmt = group[nextIdx].format || '';
+  var cells = gridEl.querySelectorAll('div');
+  var width = _pcalcWidth || 5;
+  var totalPos = _pcalcTotalPos || 25;
+  for (var i = 0; i < cells.length && i < totalPos; i++) {
+    var isReq = i < fmt.length && fmt[i] === '1';
+    cells[i].style.background = isReq ? '#e6e600' : '#fff';
+  }
+  var aliasEl = document.getElementById('pcalcPatAlias' + groupIdx);
+  if (aliasEl) aliasEl.textContent = group[nextIdx].alias;
+}
+
+// Auto-cycle patterns with same id
+var _pcalcAutoCycleTimer = null;
+function pcalcStartAutoCycle() {
+  if (_pcalcAutoCycleTimer) return;
+  _pcalcAutoCycleTimer = setInterval(function() {
+    if (!window._pcalcPatternGroups) return;
+    _pcalcPatternGroups.forEach(function(group, idx) {
+      if (group.length > 1) pcalcCyclePattern(idx);
+    });
+  }, 1500);
+}
+function pcalcStopAutoCycle() {
+  if (_pcalcAutoCycleTimer) { clearInterval(_pcalcAutoCycleTimer); _pcalcAutoCycleTimer = null; }
+}
+
+function pcalcRenderPatternGrid(patterns, width, totalPos, matchedPatterns) {
+  // Group patterns by id
+  var patternGroups = [];
+  var seenIds = {};
+  patterns.forEach(function(p) {
+    var pid = String(p.id !== undefined ? p.id : p.alias);
+    if (!seenIds[pid]) { seenIds[pid] = []; patternGroups.push({id: pid, patterns: seenIds[pid]}); }
+    seenIds[pid].push(p);
+  });
+
+  var html = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">';
+  var groupsData = [];
+  patternGroups.forEach(function(group, gIdx) {
+    var first = group.patterns[0];
+    var isMatched = matchedPatterns.some(function(m) { return group.patterns.some(function(gp){return gp.alias===m.alias;}); });
+    var hasMultiple = group.patterns.length > 1;
+    html += '<div style="text-align:center;">';
+    html += '<div class="pcalc-pat-grid" data-group="' + gIdx + '" data-idx="0" style="display:grid;grid-template-columns:repeat(' + width + ',18px);gap:1px;border:2px solid ' + (isMatched ? '#27ae60' : '#333') + ';border-radius:3px;padding:2px;background:#333;cursor:' + (hasMultiple?'pointer':'default') + ';" ' + (hasMultiple ? 'onclick="pcalcCyclePattern(' + gIdx + ')"' : '') + '>';
+    var fmt = first.format || '';
+    for (var i = 0; i < totalPos; i++) {
+      var isRequired = i < fmt.length && fmt[i] === '1';
+      var bgColor = isRequired ? (isMatched ? '#27ae60' : '#e6e600') : '#fff';
+      html += '<div style="width:18px;height:18px;background:' + bgColor + ';border-radius:2px;"></div>';
+    }
+    html += '</div>';
+    html += '<div style="font-size:10px;color:#666;margin-top:2px;">x' + (first.value||0) + (hasMultiple ? ' <span style="color:#4a90d9;">(' + group.patterns.length + ')</span>' : '') + '</div>';
+    html += '<div style="font-size:9px;color:#999;" id="pcalcPatAlias' + gIdx + '">' + first.alias + '</div>';
+    html += '</div>';
+    groupsData.push(group.patterns.map(function(p){return {format:p.format,alias:p.alias};}));
+  });
+  html += '</div>';
+  // Store data globally (not via script tag since innerHTML won't execute scripts)
+  window._pcalcPatternGroups = groupsData;
+  window._pcalcWidth = width;
+  window._pcalcTotalPos = totalPos;
+  return html;
+}
+
+function doPatternCalcPreview() {
+  var width = parseInt(document.getElementById('pcalcWidth').value);
+  var height = parseInt(document.getElementById('pcalcHeight').value);
+  if (!width || width < 1 || !height || height < 1) { showAlert('Card Width and Height must be positive integers'); return; }
+  var totalPos = width * height;
+  var resultEl = document.getElementById('pcalcResult');
+  var html = '';
+  var hasContent = false;
+
+  // Preview patterns if available
+  var patternsStr = document.getElementById('pcalcPatterns').value.trim();
+  if (patternsStr) {
+    var patterns;
+    try { patterns = JSON.parse(patternsStr); } catch(e) { showAlert('Invalid patterns JSON'); return; }
+    html += '<h3 style="margin:16px 0 8px;">Patterns Preview</h3>';
+    html += pcalcRenderPatternGrid(patterns, width, totalPos, []);
+    hasContent = true;
+  }
+
+  // Preview card if available
+  var cardStr = document.getElementById('pcalcCard').value.trim();
+  if (cardStr) {
+    var card;
+    try { card = JSON.parse(cardStr); } catch(e) { showAlert('Invalid card JSON'); return; }
+    var numCards = Math.floor(card.length / totalPos);
+    html += '<h3 style="margin:16px 0 8px;">Cards Preview (' + numCards + ')</h3>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px;">';
+    for (var c = 0; c < numCards; c++) {
+      html += '<div><div style="font-size:11px;color:#666;margin-bottom:4px;text-align:center;">Card ' + (c+1) + '</div>';
+      html += '<table style="border-collapse:collapse;">';
+      for (var row = 0; row < height; row++) {
+        html += '<tr>';
+        for (var col = 0; col < width; col++) {
+          var idx = c * totalPos + row * width + col;
+          var num = idx < card.length ? card[idx] : '-';
+          var isFree = num === 0;
+          html += '<td style="width:40px;height:40px;border:1px solid #999;text-align:center;font-size:14px;font-weight:700;background:' + (isFree ? '#333' : '#f0f0f0') + ';color:' + (isFree ? '#fff' : '#333') + ';">' + (isFree ? '\u2605' : num) + '</td>';
+        }
+        html += '</tr>';
+      }
+      html += '</table></div>';
+    }
+    html += '</div>';
+    hasContent = true;
+  }
+
+  // Preview balls if available
+  var ballsStr = document.getElementById('pcalcBalls').value.trim();
+  if (ballsStr) {
+    var balls;
+    try { balls = JSON.parse(ballsStr); } catch(e) { showAlert('Invalid balls JSON'); return; }
+    var ballColors = ['#e74c3c','#3498db','#27ae60','#f39c12','#9b59b6','#1abc9c','#e91e63','#ff9800','#607d8b','#795548'];
+    html += '<h3 style="margin:16px 0 8px;">Ball List Preview (' + balls.length + ')</h3>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:4px;max-width:600px;">';
+    balls.forEach(function(b, idx) {
+      html += '<div style="width:32px;height:32px;border-radius:50%;background:' + ballColors[idx%ballColors.length] + ';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;border:2px solid rgba(0,0,0,0.2);">' + b + '</div>';
+    });
+    html += '</div>';
+    hasContent = true;
+  }
+
+  if (!hasContent) { showAlert('Please fill in at least one field to preview'); return; }
+  resultEl.innerHTML = html;
+  pcalcStopAutoCycle();
+  pcalcStartAutoCycle();
+}
+
+function doPatternCalc() {
+  var width = parseInt(document.getElementById('pcalcWidth').value);
+  var height = parseInt(document.getElementById('pcalcHeight').value);
+  var numPerCard = parseInt(document.getElementById('pcalcNumPerCard').value);
+  var patternsStr = document.getElementById('pcalcPatterns').value.trim();
+  var cardStr = document.getElementById('pcalcCard').value.trim();
+  var ballsStr = document.getElementById('pcalcBalls').value.trim();
+  var resultEl = document.getElementById('pcalcResult');
+
+  // Validation
+  if (!width || width < 1) { showAlert('Card Width must be a positive integer'); return; }
+  if (!height || height < 1) { showAlert('Card Height must be a positive integer'); return; }
+  if (!numPerCard || numPerCard < 1) { showAlert('Number per card must be a positive integer'); return; }
+  if (numPerCard > width * height) { showAlert('Number per card cannot exceed width × height (' + (width*height) + ')'); return; }
+  if (!patternsStr || !cardStr || !ballsStr) { showAlert('Please fill in all fields'); return; }
+
+  var patterns, card, balls;
+  try { patterns = JSON.parse(patternsStr); } catch(e) { showAlert('Invalid patterns JSON: ' + e.message); return; }
+  try { card = JSON.parse(cardStr); } catch(e) { showAlert('Invalid card JSON: ' + e.message); return; }
+  try { balls = JSON.parse(ballsStr); } catch(e) { showAlert('Invalid balls JSON: ' + e.message); return; }
+
+  var totalPos = numPerCard;
+  if (card.length < totalPos) { showAlert('Card has fewer numbers (' + card.length + ') than number_per_card (' + totalPos + ')'); return; }
+
+  // Determine which card positions are hit by the ball list
+  var ballSet = new Set(balls);
+  var hitPositions = [];
+  for (var i = 0; i < totalPos; i++) {
+    hitPositions.push(card[i] === 0 || ballSet.has(card[i]));
+  }
+
+  // Check each pattern for full match
+  var matchedPatterns = [];
+  patterns.forEach(function(p) {
+    var fmt = p.format || '';
+    if (fmt.length !== totalPos) return;
+    var fullMatch = true;
+    for (var i = 0; i < totalPos; i++) {
+      if (fmt[i] === '1' && !hitPositions[i]) { fullMatch = false; break; }
+    }
+    if (fullMatch) matchedPatterns.push(p);
+  });
+
+  var html = '';
+
+  // 1. Render Patterns grid (group by id, auto-cycle same id)
+  html += '<h3 style="margin:16px 0 8px;">Patterns</h3>';
+  html += pcalcRenderPatternGrid(patterns, width, totalPos, matchedPatterns);
+
+  // 2. Render all Cards with hit markers
+  var numCards = Math.floor(card.length / totalPos);
+  html += '<h3 style="margin:16px 0 8px;">Cards (' + numCards + ')</h3>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:16px;">';
+  for (var c = 0; c < numCards; c++) {
+    var cardOffset = c * totalPos;
+    // Determine hits for this card
+    var cardHits = [];
+    for (var i = 0; i < totalPos; i++) { cardHits.push(card[cardOffset + i] === 0 || ballSet.has(card[cardOffset + i])); }
+    // Check patterns for this card
+    var cardMatchedPatterns = [];
+    var almostPatterns = []; // patterns missing exactly 1 position
+    patterns.forEach(function(p) {
+      var fmt = p.format || '';
+      if (fmt.length !== totalPos) return;
+      var missCount = 0, missIdx = -1;
+      for (var i = 0; i < totalPos; i++) {
+        if (fmt[i] === '1' && !cardHits[i]) { missCount++; missIdx = i; if (missCount > 1) break; }
+      }
+      if (missCount === 0) cardMatchedPatterns.push(p);
+      else if (missCount === 1) almostPatterns.push({pattern: p, missIdx: missIdx});
+    });
+
+    // Build per-position "almost" info: which positions are 1 away from which patterns
+    var posAlmost = {}; // {idx: [{value, alias},...]}
+    almostPatterns.forEach(function(ap) {
+      var idx = ap.missIdx;
+      if (!posAlmost[idx]) posAlmost[idx] = [];
+      posAlmost[idx].push({value: ap.pattern.value, alias: ap.pattern.alias});
+    });
+
+    html += '<div>';
+    html += '<div style="font-size:11px;color:#666;margin-bottom:4px;text-align:center;">Card ' + (c+1) + '</div>';
+    html += '<div style="display:inline-block;border:2px solid #666;border-radius:4px;overflow:hidden;">';
+    html += '<table style="border-collapse:collapse;">';
+    for (var row = 0; row < height; row++) {
+      html += '<tr>';
+      for (var col = 0; col < width; col++) {
+        var idx = row * width + col;
+        if (idx >= totalPos) break;
+        var num = card[cardOffset + idx];
+        var isHit = cardHits[idx];
+        var isFree = (num === 0);
+        var inMatchedPattern = false;
+        cardMatchedPatterns.forEach(function(p) { if (p.format && p.format[idx] === '1') inMatchedPattern = true; });
+        var almostInfo = posAlmost[idx];
+
+        var bgColor, textColor, textDecor = '', cellContent = '';
+        if (isFree) { bgColor = '#333'; textColor = '#fff'; cellContent = '\u2605'; }
+        else if (almostInfo && almostInfo.length > 0 && !isHit) {
+          // Almost matched: yellow bg, show original number small on top, x{value} larger below
+          bgColor = '#ffe600';
+          textColor = '#333';
+          var bestAlmost = almostInfo.sort(function(a,b){return b.value - a.value;})[0];
+          cellContent = '<span style="font-size:9px;color:#666;display:block;line-height:1;">' + (num < 10 ? '0'+num : num) + '</span><span style="font-size:13px;font-weight:700;color:#333;display:block;line-height:1.2;">x' + bestAlmost.value + '</span>';
+        } else if (isHit) {
+          bgColor = '#222'; textColor = '#fff';
+          if (inMatchedPattern && !isFree) { textDecor = 'text-decoration:line-through;text-decoration-color:#e74c3c;text-decoration-thickness:2px;'; }
+          cellContent = (num < 10 ? '0' + num : num);
+        } else {
+          bgColor = '#f0f0f0'; textColor = '#333';
+          cellContent = (num < 10 ? '0' + num : num);
+        }
+        html += '<td style="width:40px;height:40px;border:1px solid #999;text-align:center;font-size:14px;font-weight:700;background:' + bgColor + ';color:' + textColor + ';vertical-align:middle;' + textDecor + '">';
+        html += cellContent;
+        html += '</td>';
+      }
+      html += '</tr>';
+    }
+    html += '</table></div>';
+    if (cardMatchedPatterns.length > 0) {
+      html += '<div style="font-size:10px;color:#27ae60;margin-top:4px;max-width:' + (width*42) + 'px;">\u2705 ' + cardMatchedPatterns.map(function(p){return p.alias;}).join(',') + '</div>';
+    }
+    if (almostPatterns.length > 0) {
+      html += '<div style="font-size:10px;color:#b8860b;margin-top:2px;max-width:' + (width*42) + 'px;">\u26A0 Almost: ' + almostPatterns.map(function(ap){return ap.pattern.alias+'(x'+ap.pattern.value+')';}).join(',') + '</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // Show overall matched patterns info
+  // Collect all matched across all cards
+  var allMatched = [];
+  for (var c = 0; c < numCards; c++) {
+    var cardOffset = c * totalPos;
+    var cardHits = [];
+    for (var i = 0; i < totalPos; i++) { cardHits.push(card[cardOffset + i] === 0 || ballSet.has(card[cardOffset + i])); }
+    patterns.forEach(function(p) {
+      var fmt = p.format || '';
+      if (fmt.length !== totalPos) return;
+      var fullMatch = true;
+      for (var i = 0; i < totalPos; i++) { if (fmt[i] === '1' && !cardHits[i]) { fullMatch = false; break; } }
+      if (fullMatch) allMatched.push({card: c+1, pattern: p});
+    });
+  }
+  if (allMatched.length > 0) {
+    html += '<div style="margin-top:8px;font-size:12px;color:#27ae60;font-weight:600;">\u2705 Matched: ';
+    html += allMatched.map(function(m) { return 'Card' + m.card + ':' + m.pattern.name + '(' + m.pattern.alias + ') x' + m.pattern.value; }).join(', ');
+    html += '</div>';
+  } else {
+    html += '<div style="margin-top:8px;font-size:12px;color:#888;">No pattern fully matched on any card.</div>';
+  }
+
+  // 3. Render Ball List
+  html += '<h3 style="margin:16px 0 8px;">Ball List (' + balls.length + ' balls)</h3>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:4px;max-width:600px;">';
+  var ballColors = ['#e74c3c','#3498db','#27ae60','#f39c12','#9b59b6','#1abc9c','#e91e63','#ff9800','#607d8b','#795548'];
+  balls.forEach(function(b, idx) {
+    var color = ballColors[idx % ballColors.length];
+    var isOnCard = card.indexOf(b) >= 0;
+    html += '<div style="width:32px;height:32px;border-radius:50%;background:' + (isOnCard ? color : '#ccc') + ';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;border:2px solid rgba(0,0,0,0.2);">' + b + '</div>';
+  });
+  html += '</div>';
+
+  resultEl.innerHTML = html;
+  // Start auto-cycling patterns with same id
+  pcalcStopAutoCycle();
+  pcalcStartAutoCycle();
 }
 
 // ---------------------------------------------------------------------------

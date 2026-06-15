@@ -1207,6 +1207,47 @@ def worker_create_file():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/bingo/machines", methods=["GET"])
+def bingo_machines():
+    """List all saved machine pattern lists."""
+    path = os.path.join(_base_dir, "data", "machine", "machine_pattern_list.json")
+    if not os.path.isfile(path):
+        return jsonify({"machines": []})
+    with open(path, "r", encoding="utf-8") as f:
+        return jsonify({"machines": json_module.load(f)})
+
+
+@app.route("/bingo/machines", methods=["POST"])
+def bingo_machines_save():
+    """Save a new machine pattern list."""
+    data = request.get_json(force=True)
+    machine_id = data.get("machine_id")
+    name = data.get("name", "")
+    pattern = data.get("pattern", [])
+    if not machine_id or not name:
+        return jsonify({"error": "machine_id and name are required"}), 400
+
+    path = os.path.join(_base_dir, "data", "machine", "machine_pattern_list.json")
+    machines = []
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as f:
+            machines = json_module.load(f)
+
+    # Check duplicate
+    for m in machines:
+        if m["machine_id"] == machine_id:
+            m["name"] = name
+            m["pattern"] = pattern
+            break
+    else:
+        machines.append({"machine_id": machine_id, "name": name, "pattern": pattern})
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json_module.dump(machines, f, ensure_ascii=False, indent=2)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/bingo/pattern-combination", methods=["POST"])
 def bingo_pattern_combination():
     """Generate all valid pattern override combinations from payable list."""
