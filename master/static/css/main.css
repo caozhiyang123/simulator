@@ -1,0 +1,66 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #f5f7fa url('/static/background_1.PNG') no-repeat center center fixed; background-size: cover; color: #333; padding: 20px; position: relative; }
+#bgMask { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.85); z-index: 0; pointer-events: none; }
+body > *:not(#bgMask) { position: relative; z-index: 1; }
+h1 { text-align: center; margin-bottom: 0; color: #1a1a2e; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 1200px; margin: 0 auto; }
+.card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+.card h2 { font-size: 15px; color: #555; margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+.full-width { grid-column: 1 / -1; }
+label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
+input[type="number"], input[type="text"], select {
+  width: 100%; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; margin-bottom: 8px;
+}
+input[type="number"]:focus, input[type="text"]:focus, select:focus { outline: none; border-color: #4a90d9; }
+button {
+  padding: 7px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; color: #fff; margin: 2px;
+}
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary { background: #4a90d9; }
+.btn-primary:hover { background: #357abd; }
+.btn-success { background: #27ae60; }
+.btn-success:hover { background: #1e8449; }
+.btn-danger { background: #e74c3c; }
+.btn-danger:hover { background: #c0392b; }
+.btn-warning { background: #f39c12; }
+.btn-warning:hover { background: #d68910; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.row { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 8px; }
+.row > * { flex: 1; }
+.row > button { flex: none; }
+#log { background: #1e1e2e; color: #a6e3a1; padding: 12px; border-radius: 6px; font-family: "Cascadia Code", monospace; font-size: 12px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+.node-card { border: 1px solid #e0e0e0; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
+.node-card .name { font-weight: 600; font-size: 14px; }
+.node-card .status { font-size: 12px; padding: 2px 8px; border-radius: 10px; display: inline-block; margin-left: 6px; }
+.status-idle { background: #eee; color: #888; }
+.status-running { background: #d4edda; color: #155724; }
+.status-completed { background: #cce5ff; color: #004085; }
+.status-error { background: #f8d7da; color: #721c24; }
+.pct-inputs { margin-top: 8px; }
+.pct-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 13px; }
+.pct-row input { width: 80px; margin-bottom: 0; }
+.pct-row span { min-width: 140px; }
+.worker-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.worker-item span { font-size: 13px; }
+.status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
+.result-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+.result-table th, .result-table td { border: 1px solid #ddd; padding: 5px 8px; text-align: left; }
+.result-table th { background: #f0f0f0; }
+.hidden { display: none; }
+.file-item { padding: 3px 6px; cursor: pointer; border-radius: 3px; display: flex; align-items: center; gap: 4px; }
+.file-item:hover { background: #f0f0f0; }
+.file-item.selected { background: #d4edda; }
+.file-item[draggable="true"] { cursor: grab; }
+.file-item .icon { width: 16px; text-align: center; }
+/* Sidebar navigation */
+.app-layout { display: flex; gap: 12px; max-width: 1260px; margin: 0 auto; align-items: flex-start; }
+.sidebar { width: 60px; background: #1a1a2e; border-radius: 8px; padding: 6px 0; display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; }
+.sidebar-btn { width: 48px; height: 48px; border: none; border-radius: 8px; background: transparent; color: #888; cursor: pointer; font-size: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; transition: all 0.2s; }
+.sidebar-btn span { font-size: 9px; }
+.sidebar-btn:hover { background: #2a2a4e; color: #ccc; }
+.sidebar-btn.active { background: #4a90d9; color: #fff; }
+.main-content { flex: 1; }
+.page-panel { display: none; }
+.page-panel.active { display: block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }

@@ -5,6 +5,7 @@
 		}
 	],
 	"settings": {
-		"html.autoClosingTags": false
+		"html.autoClosingTags": false,
+		"python.defaultInterpreterPath": "d:\\\\tools2\\\\python\\\\python.exe"
 	}
 }

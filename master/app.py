@@ -1248,6 +1248,82 @@ def bingo_machines_save():
     return jsonify({"status": "ok"})
 
 
+@app.route("/bingo/machines/special", methods=["POST"])
+def bingo_machines_special_save():
+    """Save a special pattern list to an existing machine."""
+    data = request.get_json(force=True)
+    machine_id = data.get("machine_id")
+    special_name = data.get("special_name", "")
+    special_pattern = data.get("special_pattern", [])
+    if not machine_id or not special_name:
+        return jsonify({"error": "machine_id and special_name are required"}), 400
+
+    path = os.path.join(_base_dir, "data", "machine", "machine_pattern_list.json")
+    machines = []
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as f:
+            machines = json_module.load(f)
+
+    found = False
+    for m in machines:
+        if m["machine_id"] == machine_id:
+            m[special_name] = special_pattern
+            found = True
+            break
+    if not found:
+        return jsonify({"error": f"Machine {machine_id} not found"}), 404
+
+    with open(path, "w", encoding="utf-8") as f:
+        json_module.dump(machines, f, ensure_ascii=False, indent=2)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/bingo/machines/delete", methods=["POST"])
+def bingo_machines_delete():
+    """Delete a machine from the list."""
+    data = request.get_json(force=True)
+    machine_id = data.get("machine_id")
+    if not machine_id:
+        return jsonify({"error": "machine_id is required"}), 400
+
+    path = os.path.join(_base_dir, "data", "machine", "machine_pattern_list.json")
+    machines = []
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as f:
+            machines = json_module.load(f)
+
+    machines = [m for m in machines if m.get("machine_id") != machine_id]
+    with open(path, "w", encoding="utf-8") as f:
+        json_module.dump(machines, f, ensure_ascii=False, indent=2)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/bingo/machines/special/delete", methods=["POST"])
+def bingo_machines_special_delete():
+    """Delete a special pattern from a machine."""
+    data = request.get_json(force=True)
+    machine_id = data.get("machine_id")
+    special_name = data.get("special_name", "")
+    if not machine_id or not special_name:
+        return jsonify({"error": "machine_id and special_name are required"}), 400
+
+    path = os.path.join(_base_dir, "data", "machine", "machine_pattern_list.json")
+    machines = []
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as f:
+            machines = json_module.load(f)
+
+    for m in machines:
+        if m.get("machine_id") == machine_id:
+            if special_name in m:
+                del m[special_name]
+            break
+
+    with open(path, "w", encoding="utf-8") as f:
+        json_module.dump(machines, f, ensure_ascii=False, indent=2)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/bingo/pattern-combination", methods=["POST"])
 def bingo_pattern_combination():
     """Generate all valid pattern override combinations from payable list."""
@@ -2822,6 +2898,277 @@ def cicd_test_ssh():
         return jsonify({"message": f"Successfully connected to {hostname}:{port}"})
     except Exception as exc:
         return jsonify({"error": f"Connection failed: {str(exc)}"}), 400
+
+
+# ---------------------------------------------------------------------------
+# Play Module (Game Lobby + WebSocket Proxy to Java Server)
+# ---------------------------------------------------------------------------
+PLAY_MAIN_PATH = os.path.join(_base_dir, "data", "machine", "main.json")
+_ws_connections = {}  # {session_token: websocket_connection}
+
+
+def _load_play_config():
+    if not os.path.isfile(PLAY_MAIN_PATH):
+        return {"machine_settings": {"authorization": "", "machines": []}}
+    with open(PLAY_MAIN_PATH, "r", encoding="utf-8") as f:
+        return json_module.load(f)
+
+
+@app.route("/play/machines", methods=["GET"])
+def play_machines():
+    """Get list of machines for the game lobby."""
+    config_data = _load_play_config()
+    machines = config_data.get("machine_settings", {}).get("machines", [])
+    return jsonify({"machines": machines})
+
+
+@app.route("/play/machine-config", methods=["GET"])
+def play_machine_config():
+    """Get machine config (patterns, card info) from config_file."""
+    machine_id = request.args.get("machine_id", 0, type=int)
+    config_data = _load_play_config()
+    machines = config_data.get("machine_settings", {}).get("machines", [])
+    machine = None
+    for m in machines:
+        if m.get("machine_id") == machine_id:
+            machine = m
+            break
+    if not machine:
+        return jsonify({"error": "Machine not found"}), 404
+
+    config_file = machine.get("config_file", "")
+    if not config_file:
+        return jsonify({"error": "No config_file specified"}), 400
+
+    config_path = os.path.join(_base_dir, "data", "machine", config_file)
+    if not os.path.isfile(config_path):
+        return jsonify({"error": f"Config file not found: {config_file}"}), 404
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        machine_config = json_module.load(f)
+    return jsonify({"config": machine_config})
+
+
+@app.route("/play/login", methods=["POST"])
+def play_login():
+    """Return machine config for client-side WebSocket connection.
+
+    Browser connects directly to Java server via WebSocket.
+    This endpoint only returns connection_url, auth, machine config.
+    """
+    data = request.get_json(force=True)
+    machine_id = data.get("machine_id")
+
+    config_data = _load_play_config()
+    settings = config_data.get("machine_settings", {})
+    auth_token = settings.get("authorization", "")
+    currency = settings.get("currency", "coins")
+    machines = settings.get("machines", [])
+
+    machine = None
+    for m in machines:
+        if m.get("machine_id") == machine_id:
+            machine = m
+            break
+    if not machine:
+        return jsonify({"error": f"Machine {machine_id} not found"}), 404
+    if not machine.get("enabled"):
+        return jsonify({"error": "Machine is not enabled"}), 403
+
+    # Build connection URL with auth token override
+    conn_url = machine.get("connection_url", "")
+    if auth_token and "authorization=" in conn_url:
+        import re
+        conn_url = re.sub(r'authorization=[^&]*', f'authorization={auth_token}', conn_url)
+
+    # Load machine config file
+    machine_config = {}
+    config_file = machine.get("config_file", "")
+    if config_file:
+        config_path = os.path.join(_base_dir, "data", "machine", config_file)
+        if os.path.isfile(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                machine_config = json_module.load(f)
+
+    return jsonify({
+        "status": "ok",
+        "connection_url": conn_url,
+        "authorization": auth_token,
+        "currency": currency,
+        "machine_id": machine_id,
+        "machine_type": machine.get("type", "bingo"),
+        "machine_name": machine.get("name", ""),
+        "config": machine_config
+    })
+
+
+@app.route("/play/send", methods=["POST"])
+def play_send():
+    """Send a generic command to an active WebSocket connection (slot games)."""
+    data = request.get_json(force=True)
+    session_token = data.get("session_token", "")
+    cmd = data.get("cmd", {})
+
+    if not session_token or session_token not in _ws_connections:
+        return jsonify({"error": "No active session. Please login first."}), 400
+
+    ws = _ws_connections[session_token]
+    try:
+        ws.send(json_module.dumps(cmd))
+        response = ws.recv()
+        return jsonify({"status": "ok", "response": json_module.loads(response)})
+    except Exception as exc:
+        try:
+            ws.close()
+        except Exception:
+            pass
+        del _ws_connections[session_token]
+        return jsonify({"error": f"Send failed: {str(exc)}"}), 500
+
+
+@app.route("/play/bingo/spin", methods=["POST"])
+def play_bingo_spin():
+    """Send bingo spin (solicitajogada) command."""
+    data = request.get_json(force=True)
+    session_token = data.get("session_token", "")
+    if not session_token or session_token not in _ws_connections:
+        return jsonify({"error": "No active session."}), 400
+
+    play_cfg = _load_play_config()
+    currency = play_cfg.get("machine_settings", {}).get("currency", "coins")
+
+    cmd = {
+        "cmd": "solicitajogada",
+        "session_token": session_token,
+        "game_id": data.get("game_id"),
+        "currency": currency,
+        "opt_id": data.get("opt_id", ""),
+        "username": data.get("username", ""),
+        "aposta": data.get("aposta", 0.01),
+        "card_idx": data.get("card_idx", [1, 2, 3, 4]),
+        "bonus_unique_id": "",
+        "is_bonus": False,
+        "target_pattern_ids": [],
+        "target_feature_ids": [],
+        "payload_data": "[{'key':'value'}]"
+    }
+
+    ws = _ws_connections[session_token]
+    try:
+        ws.send(json_module.dumps(cmd))
+        # Read responses, skip async messages (Jackpot_update etc.) until we get the spin result
+        for _ in range(10):
+            response = ws.recv()
+            resp_data = json_module.loads(response)
+            if resp_data.get("cmd") == "solicitajogada" or "balls" in resp_data or "finalizou" in resp_data:
+                return jsonify({"status": "ok", "response": resp_data})
+            # Skip async messages like Jackpot_update
+        return jsonify({"status": "ok", "response": resp_data})
+    except Exception as exc:
+        try:
+            ws.close()
+        except Exception:
+            pass
+        del _ws_connections[session_token]
+        return jsonify({"error": f"Spin failed: {str(exc)}"}), 500
+
+
+@app.route("/play/bingo/roundover", methods=["POST"])
+def play_bingo_roundover():
+    """Send bingo round over (finalizajogada) command."""
+    data = request.get_json(force=True)
+    session_token = data.get("session_token", "")
+    if not session_token or session_token not in _ws_connections:
+        return jsonify({"error": "No active session."}), 400
+
+    play_cfg = _load_play_config()
+    currency = play_cfg.get("machine_settings", {}).get("currency", "coins")
+
+    cmd = {
+        "cmd": "finalizajogada",
+        "session_token": session_token,
+        "game_id": data.get("game_id"),
+        "currency": currency,
+        "opt_id": data.get("opt_id", ""),
+        "username": data.get("username", ""),
+        "bonus_unique_id": "",
+        "is_bonus": False,
+        "finalizar": True,
+        "payload_data": "[{'key':'value'}]"
+    }
+
+    ws = _ws_connections[session_token]
+    try:
+        ws.send(json_module.dumps(cmd))
+        for _ in range(10):
+            response = ws.recv()
+            resp_data = json_module.loads(response)
+            if resp_data.get("cmd") == "finalizajogada" or "letra" in resp_data:
+                return jsonify({"status": "ok", "response": resp_data})
+        return jsonify({"status": "ok", "response": resp_data})
+    except Exception as exc:
+        try:
+            ws.close()
+        except Exception:
+            pass
+        del _ws_connections[session_token]
+        return jsonify({"error": f"Round over failed: {str(exc)}"}), 500
+
+
+@app.route("/play/bingo/buyeb", methods=["POST"])
+def play_bingo_buyeb():
+    """Send bingo buy extra ball command."""
+    data = request.get_json(force=True)
+    session_token = data.get("session_token", "")
+    if not session_token or session_token not in _ws_connections:
+        return jsonify({"error": "No active session."}), 400
+
+    play_cfg = _load_play_config()
+    currency = play_cfg.get("machine_settings", {}).get("currency", "coins")
+
+    cmd = {
+        "cmd": "solicitajogada",
+        "session_token": session_token,
+        "game_id": data.get("game_id"),
+        "currency": currency,
+        "opt_id": data.get("opt_id", ""),
+        "username": data.get("username", ""),
+        "bonus_unique_id": "",
+        "is_bonus": False,
+        "payload_data": "[{'key':'value'}]"
+    }
+
+    ws = _ws_connections[session_token]
+    try:
+        ws.send(json_module.dumps(cmd))
+        for _ in range(10):
+            response = ws.recv()
+            resp_data = json_module.loads(response)
+            if resp_data.get("cmd") == "solicitajogada" or "extra" in resp_data or "has_extra_ball" in resp_data:
+                return jsonify({"status": "ok", "response": resp_data})
+        return jsonify({"status": "ok", "response": resp_data})
+    except Exception as exc:
+        try:
+            ws.close()
+        except Exception:
+            pass
+        del _ws_connections[session_token]
+        return jsonify({"error": f"Buy EB failed: {str(exc)}"}), 500
+
+
+@app.route("/play/disconnect", methods=["POST"])
+def play_disconnect():
+    """Close an active WebSocket connection."""
+    data = request.get_json(force=True)
+    session_token = data.get("session_token", "")
+
+    if session_token in _ws_connections:
+        try:
+            _ws_connections[session_token].close()
+        except Exception:
+            pass
+        del _ws_connections[session_token]
+    return jsonify({"status": "ok"})
 
 
 # ---------------------------------------------------------------------------
