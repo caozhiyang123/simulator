@@ -42,6 +42,27 @@ function playStartResize(e) {
   document.addEventListener('mouseup', onUp);
 }
 
+function playShowLoading(msg) {
+  // Create loading overlay on the play page area
+  var existing = document.getElementById('playLoadingOverlay');
+  if (existing) existing.remove();
+  var overlay = document.createElement('div');
+  overlay.id = 'playLoadingOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;';
+  overlay.innerHTML = '<div style="text-align:center;">' +
+    '<div style="width:48px;height:48px;border:4px solid #333;border-top-color:#4a90d9;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px;"></div>' +
+    '<div style="color:#fff;font-size:14px;font-weight:500;">' + (msg || 'Loading...') + '</div>' +
+    '<div style="margin-top:12px;width:200px;height:4px;background:#333;border-radius:2px;overflow:hidden;">' +
+    '<div style="width:30%;height:100%;background:linear-gradient(90deg,#4a90d9,#27ae60);border-radius:2px;animation:playLoadingBar 1.5s ease-in-out infinite;"></div>' +
+    '</div></div>';
+  document.body.appendChild(overlay);
+}
+
+function playHideLoading() {
+  var overlay = document.getElementById('playLoadingOverlay');
+  if (overlay) overlay.remove();
+}
+
 async function playLoadMachines() {
   var res = await fetch('/play/machines');
   var data = await res.json();
@@ -75,8 +96,9 @@ var _playAuthToken = '';
 
 async function playSelectMachine(machineId, enabled, machineType) {
   if (!enabled) { showAlert('Coming soon'); return; }
+  // Show loading overlay to prevent double-click
+  playShowLoading('Connecting to machine #' + machineId + '...');
 
-  document.getElementById('playBottomText').textContent = 'Connecting to server...';
   document.getElementById('playLogPanel').textContent = '';
   playLog('>>> [INIT] Loading machine config: machine_id=' + machineId);
 
@@ -87,7 +109,7 @@ async function playSelectMachine(machineId, enabled, machineType) {
     body: JSON.stringify({machine_id: machineId})
   });
   var data = await res.json();
-  if (data.error) { playLog('<<< [INIT] error: ' + data.error); showAlert(data.error); document.getElementById('playBottomText').textContent = 'Failed'; return; }
+  if (data.error) { playLog('<<< [INIT] error: ' + data.error); playHideLoading(); showAlert(data.error); document.getElementById('playBottomText').textContent = 'Failed'; return; }
 
   var connUrl = data.connection_url;
   _playAuthToken = data.authorization || '';
@@ -101,7 +123,7 @@ async function playSelectMachine(machineId, enabled, machineType) {
   playLog('>>> [WS CONNECT] ' + connUrl);
   try {
     _playWs = new WebSocket(connUrl);
-  } catch(e) { playLog('<<< [WS CONNECT] error: ' + e.message); showAlert('WebSocket connection failed: ' + e.message); return; }
+  } catch(e) { playLog('<<< [WS CONNECT] error: ' + e.message); playHideLoading(); showAlert('WebSocket connection failed: ' + e.message); return; }
 
   _playWs.onopen = function() {
     playLog('<<< [WS CONNECT] connected');
@@ -125,6 +147,9 @@ async function playSelectMachine(machineId, enabled, machineType) {
       playLog('<<< [LOGIN] response: ' + JSON.stringify(resp));
       _playSessionToken = resp.session_token || '';
       _playCurrentMachine = {machine_id: machineId, response: resp, config: machineConfig, type: machineType || 'bingo'};
+
+      // Hide loading overlay
+      playHideLoading();
 
       // Switch to game view
       document.getElementById('playMachineList').style.display = 'none';
@@ -153,8 +178,8 @@ async function playSelectMachine(machineId, enabled, machineType) {
     }
   };
 
-  _playWs.onerror = function(e) { playLog('<<< [WS ERROR] ' + (e.message || 'connection error')); };
-  _playWs.onclose = function(e) { playLog('<<< [WS CLOSE] code=' + e.code + ', reason=' + e.reason); _playWs = null; };
+  _playWs.onerror = function(e) { playLog('<<< [WS ERROR] ' + (e.message || 'connection error')); playHideLoading(); };
+  _playWs.onclose = function(e) { playLog('<<< [WS CLOSE] code=' + e.code + ', reason=' + e.reason); _playWs = null; playHideLoading(); };
 }
 
 function playRenderGame(resp, machineConfig) {
@@ -261,39 +286,142 @@ function playRenderGame(resp, machineConfig) {
   var qtd = resp.qtd || 4;
   html += '<div id="playCardsArea" style="background:#222;border-radius:8px;padding:12px;margin-bottom:12px;overflow-x:auto;">';
   if (numeros.length > 0) {
-    var gridCols = qtd <= 2 ? qtd : 2;
-    html += '<div style="display:grid;grid-template-columns:repeat(' + gridCols + ',auto);gap:12px;justify-content:center;">';
-    for (var c = 0; c < qtd; c++) {
-      html += '<div style="text-align:center;">';
-      html += '<div style="font-size:10px;color:#888;margin-bottom:4px;">Card ' + (c+1) + '</div>';
-      html += '<table style="border-collapse:collapse;">';
-      for (var row = 0; row < cardHeight; row++) {
-        html += '<tr>';
-        for (var col = 0; col < cardWidth; col++) {
-          var idx = c * numPerCard + row * cardWidth + col;
-          var num = idx < numeros.length ? numeros[idx] : '-';
-          var isFree = (num === 0);
-          html += '<td class="play-card-cell" data-card="' + c + '" data-idx="' + (row*cardWidth+col) + '" data-num="' + num + '" style="width:36px;height:36px;border:1px solid #444;text-align:center;font-size:13px;font-weight:700;background:' + (isFree ? '#333' : '#f0f0f0') + ';color:' + (isFree ? '#fff' : '#333') + ';">';
-          html += isFree ? '\u2605' : (num < 10 ? '0' + num : num);
-          html += '</td>';
+    if (qtd > 8) {
+      // Perimeter layout: arrange cards around a rectangle border
+      // Calculate grid: perimeter = 2*(cols + rows) - 4 corners overlap
+      // For 20 cards: top=8, right side=2, bottom=8, left side=2 => 8+2+8+2=20
+      var perimCols = Math.ceil(qtd / 4) + 1; // e.g. 20 -> 6, but we want wider
+      var perimRows = 4;
+      // Better: top row = ceil(qtd * 2 / 5), but let's use a clean formula
+      // top + bottom = roughly 2/3 of cards, sides = 1/3
+      var topCount = Math.ceil(qtd / 3);
+      var bottomCount = topCount;
+      var sideCount = Math.ceil((qtd - topCount - bottomCount) / 2);
+      // Adjust to fit exactly qtd
+      while (topCount + bottomCount + sideCount * 2 > qtd) { if (sideCount > 0) sideCount--; else bottomCount--; }
+      while (topCount + bottomCount + sideCount * 2 < qtd) topCount++;
+      var cellSize = 20; // smaller cells for many cards
+      var fontSize = 9;
+      var cardGap = 4;
+
+      // Build card positions: top (left to right), right (top to bottom), bottom (right to left), left (bottom to top)
+      var cardOrder = [];
+      var topStart = 0;
+      for (var i = 0; i < topCount; i++) cardOrder.push(i);
+      var rightStart = topCount;
+      for (var i = 0; i < sideCount; i++) cardOrder.push(rightStart + i);
+      var bottomStart = topCount + sideCount;
+      for (var i = 0; i < bottomCount; i++) cardOrder.push(bottomStart + i);
+      var leftStart = topCount + sideCount + bottomCount;
+      for (var i = 0; i < sideCount; i++) cardOrder.push(leftStart + i);
+
+      // Render using CSS grid perimeter approach
+      var totalCols = topCount;
+      var totalRows = sideCount + 2; // top row + side rows + bottom row
+      html += '<div style="position:relative;display:grid;grid-template-columns:repeat(' + totalCols + ',1fr);grid-template-rows:repeat(' + totalRows + ',auto);gap:' + cardGap + 'px;">';
+
+      // Helper to render a mini card
+      function renderMiniCard(c, cw, ch, npc, nums, cs, fs) {
+        var s = '<div style="text-align:center;cursor:pointer;" onclick="playShowCardPreview(' + c + ')">';
+        s += '<div style="font-size:8px;color:#888;margin-bottom:1px;" id="playCardLabel' + c + '">C' + (c+1) + '</div>';
+        s += '<table style="border-collapse:collapse;margin:0 auto;">';
+        for (var r = 0; r < ch; r++) {
+          s += '<tr>';
+          for (var col = 0; col < cw; col++) {
+            var idx = c * npc + r * cw + col;
+            var num = idx < nums.length ? nums[idx] : '-';
+            var isFree = (num === 0);
+            s += '<td class="play-card-cell" data-card="' + c + '" data-idx="' + (r*cw+col) + '" data-num="' + num + '" style="width:' + cs + 'px;height:' + cs + 'px;border:1px solid #444;text-align:center;font-size:' + fs + 'px;font-weight:700;background:' + (isFree ? '#333' : '#f0f0f0') + ';color:' + (isFree ? '#fff' : '#333') + ';">';
+            s += isFree ? '\u2605' : (num < 10 ? '0' + num : num);
+            s += '</td>';
+          }
+          s += '</tr>';
         }
-        html += '</tr>';
+        s += '</table></div>';
+        return s;
       }
-      html += '</table></div>';
+
+      // Top row
+      var cardIdx = 0;
+      for (var i = 0; i < topCount; i++) {
+        html += '<div style="grid-column:' + (i+1) + ';grid-row:1;">';
+        html += renderMiniCard(cardIdx, cardWidth, cardHeight, numPerCard, numeros, cellSize, fontSize);
+        html += '</div>';
+        cardIdx++;
+      }
+      // Right side
+      for (var i = 0; i < sideCount; i++) {
+        html += '<div style="grid-column:' + totalCols + ';grid-row:' + (i+2) + ';">';
+        html += renderMiniCard(cardIdx, cardWidth, cardHeight, numPerCard, numeros, cellSize, fontSize);
+        html += '</div>';
+        cardIdx++;
+      }
+      // Bottom row (right to left order visually, but we render left to right)
+      for (var i = bottomCount - 1; i >= 0; i--) {
+        html += '<div style="grid-column:' + (i+1) + ';grid-row:' + totalRows + ';">';
+        html += renderMiniCard(cardIdx, cardWidth, cardHeight, numPerCard, numeros, cellSize, fontSize);
+        html += '</div>';
+        cardIdx++;
+      }
+      // Left side (bottom to top order)
+      for (var i = sideCount - 1; i >= 0; i--) {
+        html += '<div style="grid-column:1;grid-row:' + (i+2) + ';">';
+        html += renderMiniCard(cardIdx, cardWidth, cardHeight, numPerCard, numeros, cellSize, fontSize);
+        html += '</div>';
+        cardIdx++;
+      }
+
+      // Center preview area
+      var centerColStart = 2;
+      var centerColEnd = totalCols;
+      var centerRowStart = 2;
+      var centerRowEnd = totalRows;
+      html += '<div id="playCardPreview" style="grid-column:' + centerColStart + '/' + centerColEnd + ';grid-row:' + centerRowStart + '/' + centerRowEnd + ';display:flex;align-items:center;justify-content:center;background:#1a1a2e;border-radius:8px;padding:8px;min-height:120px;">';
+      // Default: show first card enlarged
+      html += playRenderPreviewCard(0, cardWidth, cardHeight, numPerCard, numeros);
+      html += '</div>';
+
+      html += '</div>';
+    } else {
+      // Standard grid layout for <= 8 cards
+      var gridCols = qtd <= 2 ? qtd : 2;
+      html += '<div style="display:grid;grid-template-columns:repeat(' + gridCols + ',auto);gap:12px;justify-content:center;">';
+      for (var c = 0; c < qtd; c++) {
+        html += '<div style="text-align:center;">';
+        html += '<div style="font-size:10px;color:#888;margin-bottom:4px;" id="playCardLabel' + c + '">Card ' + (c+1) + '</div>';
+        html += '<table style="border-collapse:collapse;">';
+        for (var row = 0; row < cardHeight; row++) {
+          html += '<tr>';
+          for (var col = 0; col < cardWidth; col++) {
+            var idx = c * numPerCard + row * cardWidth + col;
+            var num = idx < numeros.length ? numeros[idx] : '-';
+            var isFree = (num === 0);
+            html += '<td class="play-card-cell" data-card="' + c + '" data-idx="' + (row*cardWidth+col) + '" data-num="' + num + '" style="width:36px;height:36px;border:1px solid #444;text-align:center;font-size:13px;font-weight:700;background:' + (isFree ? '#333' : '#f0f0f0') + ';color:' + (isFree ? '#fff' : '#333') + ';">';
+            html += isFree ? '\u2605' : (num < 10 ? '0' + num : num);
+            html += '</td>';
+          }
+          html += '</tr>';
+        }
+        html += '</table></div>';
+      }
+      html += '</div>';
     }
-    html += '</div>';
   } else {
     html += '<div style="color:#666;text-align:center;">No cards received</div>';
   }
   html += '</div>';
+
+  // Ball area - fixed height for 4 rows of balls (prevents bottom controls from jumping)
+  html += '<div id="playBallArea" style="min-height:136px;padding:8px;display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start;background:#1a1a2e;border-radius:6px;margin-bottom:12px;"></div>';
 
   // Bottom controls: Bet left, WIN centered, Spin right
   html += '<div style="display:flex;align-items:center;padding:12px;background:#333;border-radius:6px;">';
   // Bet selector (left)
   html += '<div style="flex:1;display:flex;align-items:center;gap:8px;">';
   html += '<span style="color:#aaa;font-size:12px;">Bet:</span>';
-  html += '<select id="playBetSelect" onchange="playUpdateJackpot()" style="padding:4px 8px;border-radius:4px;border:1px solid #555;background:#222;color:#fff;font-size:13px;">';
-  betList.forEach(function(b) { html += '<option value="' + b + '">' + b + '</option>'; });
+  var activeCards = qtd || 4;
+  html += '<select id="playBetSelect" onchange="playUpdateJackpot()" style="width:80px;padding:6px 8px;border-radius:8px;border:1px solid #555;background:#222;color:#fff;font-size:12px;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url(\'data:image/svg+xml;utf8,<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; width=&quot;10&quot; height=&quot;6&quot;><polyline points=&quot;0,0 5,6 10,0&quot; fill=&quot;%23888&quot;/></svg>\');background-repeat:no-repeat;background-position:right 8px center;">';
+  betList.forEach(function(b) { html += '<option value="' + b + '">' + (b * activeCards).toFixed(2) + '</option>'; });
   html += '</select>';
   html += '</div>';
   // Win display (center)
@@ -328,6 +456,58 @@ function playUpdateJackpot() {
       jpEl.innerHTML = '\uD83C\uDFC6 JP: ' + jp.toFixed(precision);
       jpEl.style.color = '#f39c12';
     }
+  }
+}
+
+function playRenderPreviewCard(cardIdx, cw, ch, npc, numeros) {
+  var s = '<div style="text-align:center;">';
+  s += '<div style="font-size:11px;color:#aaa;margin-bottom:4px;">Card ' + (cardIdx+1) + '</div>';
+  s += '<table style="border-collapse:collapse;margin:0 auto;">';
+  for (var r = 0; r < ch; r++) {
+    s += '<tr>';
+    for (var col = 0; col < cw; col++) {
+      var idx = cardIdx * npc + r * cw + col;
+      var num = idx < numeros.length ? numeros[idx] : '-';
+      var isFree = (num === 0);
+      s += '<td class="play-preview-cell" data-card="' + cardIdx + '" data-idx="' + (r*cw+col) + '" data-num="' + num + '" style="width:32px;height:32px;border:1px solid #555;text-align:center;font-size:12px;font-weight:700;background:' + (isFree ? '#333' : '#e8e8e8') + ';color:' + (isFree ? '#fff' : '#333') + ';">';
+      s += isFree ? '\u2605' : (num < 10 ? '0' + num : num);
+      s += '</td>';
+    }
+    s += '</tr>';
+  }
+  s += '</table></div>';
+  return s;
+}
+
+function playShowCardPreview(cardIdx) {
+  var preview = document.getElementById('playCardPreview');
+  if (!preview || !_playCurrentMachine) return;
+  var resp = _playCurrentMachine.response;
+  var config = _playCurrentMachine.config;
+  var mathModel = (config.math_model && config.math_model[0]) || {};
+  var cw = mathModel.card_width || 5;
+  var ch = mathModel.card_height || 5;
+  var npc = mathModel.numPerCard || (cw * ch);
+  var numeros = resp.numeros || [];
+  preview.innerHTML = playRenderPreviewCard(cardIdx, cw, ch, npc, numeros);
+
+  // Re-apply ball markings on the preview card
+  var ballArea = document.getElementById('playBallArea');
+  if (ballArea) {
+    var ballDivs = ballArea.querySelectorAll('div');
+    var hitBalls = new Set();
+    ballDivs.forEach(function(d) { var n = parseInt(d.textContent); if (!isNaN(n)) hitBalls.add(n); });
+    // Also add from last spin
+    if (_playSpinResponse && _playSpinResponse.balls) {
+      _playSpinResponse.balls.forEach(function(b) { hitBalls.add(b); });
+    }
+    var previewCells = preview.querySelectorAll('.play-preview-cell[data-card="' + cardIdx + '"]');
+    previewCells.forEach(function(cell) {
+      var num = parseInt(cell.getAttribute('data-num'));
+      if (num === 0 || hitBalls.has(num)) {
+        if (num !== 0) { cell.style.background = '#222'; cell.style.color = '#fff'; }
+      }
+    });
   }
 }
 
@@ -470,10 +650,20 @@ function playHandleSpinResponse(spinResp) {
   playUpdateBalance(spinResp.balance);
   playUpdateJackpotFromFeatures(spinResp.features);
 
+  // Reset cards before showing new balls
+  playResetCards();
+
+  // Clear ball area (already exists in DOM with fixed height)
+  var ballArea = document.getElementById('playBallArea');
+  if (ballArea) ballArea.innerHTML = '';
+
   // Start ball animation
   _playBallsQueue = (spinResp.balls || []).slice();
   playAnimateBalls(function() {
     document.getElementById('playWinDisplay').textContent = 'WIN: ' + (spinResp.total_won || 0).toFixed(2);
+
+    // Check pattern matches and "miss one" after all balls displayed
+    playCheckPatterns(spinResp.balls || []);
 
     if (spinResp.finalizou === true) {
       _playSpinState = 'waiting_roundover';
@@ -486,6 +676,102 @@ function playHandleSpinResponse(spinResp) {
       playShowEbButtons(spinResp.eb_price || 0);
     }
   });
+}
+
+function playResetCards() {
+  // Reset all card cells to original state
+  var cells = document.querySelectorAll('.play-card-cell');
+  cells.forEach(function(cell) {
+    var num = parseInt(cell.getAttribute('data-num'));
+    var isFree = (num === 0);
+    cell.style.background = isFree ? '#333' : '#f0f0f0';
+    cell.style.color = isFree ? '#fff' : '#333';
+    cell.style.textDecoration = '';
+    cell.innerHTML = isFree ? '\u2605' : (num < 10 ? '0' + num : num);
+  });
+  // Reset card labels
+  var qtd = (_playCurrentMachine && _playCurrentMachine.response) ? (_playCurrentMachine.response.qtd || 4) : 4;
+  var isPerimeter = qtd > 8;
+  for (var c = 0; c < qtd; c++) {
+    var label = document.getElementById('playCardLabel' + c);
+    if (label) label.innerHTML = isPerimeter ? ('C' + (c+1)) : ('Card ' + (c+1));
+  }
+}
+
+function playCheckPatterns(ballList) {
+  if (!_playCurrentMachine || !_playCurrentMachine.config) return;
+  var mathModel = (_playCurrentMachine.config.math_model && _playCurrentMachine.config.math_model[0]) || {};
+  var patterns = mathModel.pattern || [];
+  var numPerCard = mathModel.numPerCard || 25;
+  var qtd = (_playCurrentMachine.response && _playCurrentMachine.response.qtd) || 4;
+  var numeros = (_playCurrentMachine.response && _playCurrentMachine.response.numeros) || [];
+  var ballSet = new Set(ballList);
+  var bet = parseFloat((document.getElementById('playBetSelect') || {}).value) || 0.01;
+
+  // Track hits per card for label display and preview priority
+  var cardHitsInfo = {}; // cardIdx -> [{alias, value}]
+  var firstWinCard = -1;
+
+  for (var c = 0; c < qtd; c++) {
+    var cardOffset = c * numPerCard;
+    // Determine hits for this card
+    var cardHits = [];
+    for (var i = 0; i < numPerCard; i++) {
+      var num = numeros[cardOffset + i];
+      cardHits.push(num === 0 || ballSet.has(num));
+    }
+
+    // Check each pattern
+    patterns.forEach(function(p) {
+      var fmt = p.format || '';
+      if (fmt.length !== numPerCard) return;
+      var missCount = 0, missIdx = -1;
+      for (var i = 0; i < numPerCard; i++) {
+        if (fmt[i] === '1' && !cardHits[i]) { missCount++; missIdx = i; if (missCount > 1) break; }
+      }
+
+      if (missCount === 0) {
+        // Full match - red line through matched cells
+        for (var i = 0; i < numPerCard; i++) {
+          if (fmt[i] === '1') {
+            var cell = document.querySelector('.play-card-cell[data-card="' + c + '"][data-idx="' + i + '"]');
+            if (cell) {
+              cell.style.textDecoration = 'line-through';
+              cell.style.textDecorationColor = '#e74c3c';
+              cell.style.textDecorationThickness = '2px';
+            }
+          }
+        }
+        // Record hit info
+        if (!cardHitsInfo[c]) cardHitsInfo[c] = [];
+        cardHitsInfo[c].push({alias: p.alias || p.name, value: (bet * (p.value || 0)).toFixed(2)});
+        if (firstWinCard < 0) firstWinCard = c;
+      } else if (missCount === 1) {
+        // Miss one - show expected win on the missing cell
+        var cell = document.querySelector('.play-card-cell[data-card="' + c + '"][data-idx="' + missIdx + '"]');
+        if (cell) {
+          var origNum = numeros[cardOffset + missIdx];
+          cell.style.background = '#ffe600';
+          cell.style.color = '#333';
+          cell.innerHTML = '<span style="font-size:8px;color:#666;display:block;line-height:1;">' + (origNum < 10 ? '0'+origNum : origNum) + '</span><span style="font-size:12px;font-weight:700;color:#333;display:block;line-height:1.1;">x' + p.value + '</span>';
+        }
+      }
+    });
+  }
+
+  // Update card labels with hit pattern info
+  for (var c in cardHitsInfo) {
+    var label = document.getElementById('playCardLabel' + c);
+    if (label) {
+      var infoStr = cardHitsInfo[c].map(function(h) { return h.alias + ':' + h.value; }).join(' ');
+      label.innerHTML = '<span style="color:#e74c3c;font-weight:600;">\u2605 ' + infoStr + '</span>';
+    }
+  }
+
+  // If perimeter layout, show first winning card in center preview
+  if (firstWinCard >= 0 && document.getElementById('playCardPreview')) {
+    playShowCardPreview(firstWinCard);
+  }
 }
 
 function playHandleRoundOverResponse(roResp) {
@@ -510,6 +796,9 @@ function playHandleBuyEbResponse(ebResp) {
     playMarkBallOnCards(ebResp.extra);
   }
 
+  // Re-check patterns with updated ball list (original balls + all EBs so far)
+  playRecheckPatternsAfterEb();
+
   // Check if more EBs available
   if (ebResp.has_extra_ball === true && ebResp.eb_price !== undefined) {
     // Update EB price button
@@ -530,12 +819,12 @@ function playHandleBuyEbResponse(ebResp) {
 function playAnimateBalls(onComplete) {
   var ballArea = document.getElementById('playBallArea');
   if (!ballArea) {
-    // Create ball display area
+    // Fallback: create ball display area if not found
     var cardsArea = document.getElementById('playCardsArea');
     if (cardsArea) {
       ballArea = document.createElement('div');
       ballArea.id = 'playBallArea';
-      ballArea.style.cssText = 'padding:8px;display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;';
+      ballArea.style.cssText = 'min-height:136px;padding:8px;display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start;background:#1a1a2e;border-radius:6px;margin-bottom:12px;';
       cardsArea.parentElement.insertBefore(ballArea, cardsArea.nextSibling);
     }
   }
@@ -564,6 +853,35 @@ function playAnimateBalls(onComplete) {
     _playBallTimer = setTimeout(showNext, 200);
   }
   showNext();
+}
+
+function playRecheckPatternsAfterEb() {
+  // Collect all displayed balls from ball area
+  var ballArea = document.getElementById('playBallArea');
+  if (!ballArea) return;
+  var ballDivs = ballArea.querySelectorAll('div');
+  var allBalls = [];
+  ballDivs.forEach(function(d) { var n = parseInt(d.textContent); if (!isNaN(n)) allBalls.push(n); });
+  // Also add original spin balls
+  if (_playSpinResponse && _playSpinResponse.balls) {
+    _playSpinResponse.balls.forEach(function(b) { if (allBalls.indexOf(b) < 0) allBalls.push(b); });
+  }
+  // Reset pattern decorations (keep hit markings) then re-check
+  var cells = document.querySelectorAll('.play-card-cell');
+  cells.forEach(function(cell) {
+    var num = parseInt(cell.getAttribute('data-num'));
+    var isFree = (num === 0);
+    var ballSet = new Set(allBalls);
+    var isHit = isFree || ballSet.has(num);
+    // Reset decoration but keep hit state
+    cell.style.textDecoration = '';
+    if (isHit && !isFree) {
+      cell.style.background = '#222';
+      cell.style.color = '#fff';
+      cell.innerHTML = num < 10 ? '0' + num : '' + num;
+    }
+  });
+  playCheckPatterns(allBalls);
 }
 
 function playMarkBallOnCards(ballNum) {

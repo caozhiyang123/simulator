@@ -64,3 +64,10 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .page-panel.active { display: block; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* Play module loading bar animation */
+@keyframes playLoadingBar {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(200%); }
+  100% { transform: translateX(-100%); }
+}

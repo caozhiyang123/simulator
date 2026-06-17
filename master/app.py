@@ -55,8 +55,8 @@ app = Flask(__name__,
             static_folder=os.path.join(_bundle_dir, 'static'))
 app.secret_key = os.environ.get("SECRET_KEY", "simulator-cluster-secret-2026")
 
-# Static files cache: 7 days (images, JS, CSS won't re-download on every visit)
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 604800
+# Static files cache: 10 seconds (short cache for development, bump version param on script tags for immediate updates)
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 10
 
 config = ClusterConfig(CONFIG_PATH)
 splitter = TaskSplitter()
