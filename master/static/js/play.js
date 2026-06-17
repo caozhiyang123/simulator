@@ -902,11 +902,11 @@ function playShowEbButtons(ebPrice) {
   // Find the bottom controls div
   var controlsDiv = document.querySelector('#playGameArea > div:last-child');
   if (!controlsDiv) return;
-  // Replace the spin button with EB buttons (collect + eb price), keep win centered
+  // Replace the spin button wrapper with EB buttons (collect + eb price), keep right-aligned
   var spinBtn = document.querySelector('#playGameArea button[onclick="playSpin()"]');
   var ebDiv = document.createElement('div');
   ebDiv.id = 'playEbBtns';
-  ebDiv.style.cssText = 'display:flex;gap:8px;align-items:center;';
+  ebDiv.style.cssText = 'flex:1;display:flex;gap:8px;align-items:center;justify-content:flex-end;';
   ebDiv.innerHTML = '<button onclick="playCollect()" style="padding:10px 16px;background:#f39c12;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">COLLECT</button>' +
     '<button id="playEbPriceBtn" onclick="playBuyEb()" style="padding:10px 16px;background:#e74c3c;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">EB ' + (ebPrice > 0 ? ebPrice.toFixed(2) : 'FREE') + '</button>';
   if (spinBtn) {
@@ -976,10 +976,11 @@ function playResetSpinBtn() {
 function playRemoveEbButtons() {
   var ebDiv = document.getElementById('playEbBtns');
   if (ebDiv) {
-    // Replace with spin button
-    var newDiv = document.createElement('div');
-    newDiv.innerHTML = '<button onclick="playSpin()" style="padding:10px 24px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;">SPIN</button>';
-    ebDiv.replaceWith(newDiv.firstChild);
+    // Replace with spin button wrapped in right-aligned container
+    var wrapper = document.createElement('div');
+    wrapper.style.cssText = 'flex:1;display:flex;justify-content:flex-end;';
+    wrapper.innerHTML = '<button onclick="playSpin()" style="padding:10px 24px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;">SPIN</button>';
+    ebDiv.replaceWith(wrapper);
   }
 }
 
@@ -1040,5 +1041,6 @@ function playBackToLobby() {
   _playSessionToken = '';
   _playCurrentMachine = null;
   _playSpinState = 'idle';
+  _playCardIdx = [];
   playLoadMachines();
 }
