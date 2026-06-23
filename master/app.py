@@ -2914,6 +2914,53 @@ def _load_play_config():
         return json_module.load(f)
 
 
+@app.route("/play/auth", methods=["GET"])
+def play_auth_get():
+    """Get current authorization token and currency from main.json."""
+    config_data = _load_play_config()
+    settings = config_data.get("machine_settings", {})
+    return jsonify({
+        "authorization": settings.get("authorization", ""),
+        "currency": settings.get("currency", ""),
+    })
+
+
+@app.route("/play/auth", methods=["POST"])
+def play_auth_update():
+    """Update authorization token and/or currency in main.json."""
+    data = request.get_json(force=True)
+    token = data.get("authorization", "").strip()
+    currency = data.get("currency", "").strip()
+
+    if not token and not currency:
+        return jsonify({"error": "authorization or currency is required"}), 400
+
+    config_data = _load_play_config()
+    if "machine_settings" not in config_data:
+        config_data["machine_settings"] = {}
+
+    if token:
+        config_data["machine_settings"]["authorization"] = token
+        # Also update connection_url for each machine that uses authorization param
+        machines = config_data["machine_settings"].get("machines", [])
+        for m in machines:
+            conn_url = m.get("connection_url", "")
+            if "authorization=" in conn_url:
+                import re as _re
+                m["connection_url"] = _re.sub(
+                    r'authorization=[^&]*',
+                    'authorization=' + token,
+                    conn_url
+                )
+
+    if currency:
+        config_data["machine_settings"]["currency"] = currency
+
+    with open(PLAY_MAIN_PATH, "w", encoding="utf-8") as f:
+        json_module.dump(config_data, f, ensure_ascii=False, indent=2)
+    return jsonify({"success": True})
+
+
 @app.route("/play/machines", methods=["GET"])
 def play_machines():
     """Get list of machines for the game lobby."""

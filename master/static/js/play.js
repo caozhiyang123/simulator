@@ -64,6 +64,18 @@ function playHideLoading() {
 }
 
 async function playLoadMachines() {
+  // Load current authorization token and currency
+  try {
+    var authRes = await fetch('/play/auth');
+    var authData = await authRes.json();
+    if (authData.authorization) {
+      document.getElementById('playAuthInput').value = authData.authorization;
+    }
+    if (authData.currency) {
+      document.getElementById('playCurrencyInput').value = authData.currency;
+    }
+  } catch(e) {}
+
   var res = await fetch('/play/machines');
   var data = await res.json();
   var machines = data.machines || [];
@@ -88,6 +100,20 @@ async function playLoadMachines() {
   document.getElementById('playGameArea').style.display = 'none';
   document.getElementById('playBackBtn').style.display = 'none';
   document.getElementById('playBottomText').textContent = 'Select a machine to play';
+}
+
+async function playUpdateSettings() {
+  var token = document.getElementById('playAuthInput').value.trim();
+  var currency = document.getElementById('playCurrencyInput').value.trim();
+  if (!token && !currency) { showAlert('Please enter authorization or currency'); return; }
+  var res = await fetch('/play/auth', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({authorization: token, currency: currency})
+  });
+  var data = await res.json();
+  if (data.error) { showAlert('Error: ' + data.error); return; }
+  showAlert('✅ Settings updated');
 }
 
 var _playWs = null; // Browser WebSocket connection to Java server
