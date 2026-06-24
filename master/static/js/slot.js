@@ -96,8 +96,8 @@ function slotRenderUI() {
   var cylinderFaces = 10; // number of faces on the cylinder (more = smoother)
   var faceAngle = 360 / cylinderFaces; // degrees per face
   // Radius calculation: r = cellHeight / (2 * tan(PI/N))
-  var cellHeight = 80; // visual height of each icon face
-  var radius = Math.round(cellHeight / (2 * Math.tan(Math.PI / cylinderFaces)));
+  var cellHeight = 60; // visual height of each icon face
+  var radius = Math.round(cellHeight / (2 * Math.tan(Math.PI / cylinderFaces))) + 40;
 
   html += '<div id="slotReelsContainer" style="position:absolute;top:26%;left:17%;width:66%;height:48%;overflow:hidden;display:flex;gap:0;align-items:center;">';
   for (var col = 0; col < st.colCount; col++) {
@@ -107,7 +107,7 @@ function slotRenderUI() {
     if (col === st.colCount - 2) marginR = 2;
 
     // Build cylinder faces: use random icons for non-visible, real icons for visible (faces 0,1,2)
-    html += '<div class="slot-reel-wrapper" data-col="' + col + '" style="flex:1;height:' + (cellHeight*3) + 'px;perspective:300px;margin-left:' + marginL + '%;margin-right:' + marginR + '%;overflow:hidden;">';
+    html += '<div class="slot-reel-wrapper" data-col="' + col + '" style="flex:1;height:' + (cellHeight*3 + 100) + 'px;perspective:400px;margin-left:' + marginL + '%;margin-right:' + marginR + '%;overflow:hidden;">';
     html += '<div class="slot-reel-cylinder" data-col="' + col + '" style="width:100%;height:100%;position:relative;transform-style:preserve-3d;transform:rotateX(0deg);transition:transform 0.3s ease-out;">';
 
     var icons = st.icons.length ? st.icons : [1,2,3,4,5,6,7,8,9,10];
