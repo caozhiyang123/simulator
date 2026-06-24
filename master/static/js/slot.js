@@ -85,18 +85,23 @@ function slotRenderUI() {
   // Pattern area (top) - clickable
   html += '<div onclick="slotShowPattern()" style="position:absolute;top:0;left:0;width:100%;height:9%;cursor:pointer;" title="View patterns"></div>';
 
-  // Balance (inside left dark box ~9.5% from top)
-  html += '<div id="slotBalance" style="position:absolute;top:9.8%;left:5%;width:38%;height:3.5%;display:flex;align-items:center;padding-left:8px;font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px #000;">\uD83D\uDCB0 ' + balance.toLocaleString() + ' ' + st.displaySymbol + '</div>';
+  // Balance (inside left dark box - lower position)
+  html += '<div id="slotBalance" style="position:absolute;top:18.2%;left:8%;width:38%;height:3.5%;display:flex;align-items:center;padding-left:8px;font-size:15px;font-weight:700;color:#fff;text-shadow:0 1px 2px #000;">\uD83D\uDCB0 ' + balance.toLocaleString() + ' ' + st.displaySymbol + '</div>';
 
-  // Jackpot (inside right dark box ~9.5% from top)
-  html += '<div id="slotJackpotDisplay" style="position:absolute;top:9.8%;right:5%;width:38%;height:3.5%;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:11px;font-weight:700;color:#f5d742;text-shadow:0 1px 2px #000;">\uD83C\uDFC6 ' + slotCalcJackpot().toFixed(st.displayPrecision) + '</div>';
+  // Jackpot (inside right dark box - lower position)
+  html += '<div id="slotJackpotDisplay" style="position:absolute;top:18.2%;right:15%;width:38%;height:3.5%;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:15px;font-weight:700;color:#f5d742;text-shadow:0 1px 2px #000;">\uD83C\uDFC6 ' + slotCalcJackpot().toFixed(st.displayPrecision) + '</div>';
 
   // Reels area (positioned to align with the background reel window)
   html += '<div id="slotReelsContainer" style="position:absolute;top:26%;left:17%;width:66%;height:48%;overflow:hidden;display:flex;gap:0;perspective:600px;">';
   for (var col = 0; col < st.colCount; col++) {
     // Each reel has slight perspective transform for curved effect
     var rotY = (col - 2) * 3; // -6, -3, 0, 3, 6 degrees
-    html += '<div class="slot-reel" data-col="' + col + '" style="flex:1;display:flex;flex-direction:column;justify-content:space-around;align-items:center;height:100%;transform:rotateY(' + rotY + 'deg);transform-style:preserve-3d;">';
+    // Shift outer reels inward: col0 right, col4 left
+    var marginL = 0, marginR = 0;
+    if (col === 0) marginL = 4;
+    if (col === st.colCount - 1) marginR = 4;
+    if (col === st.colCount - 2) marginR = 2;
+    html += '<div class="slot-reel" data-col="' + col + '" style="flex:1;display:flex;flex-direction:column;justify-content:space-around;align-items:center;height:100%;transform:rotateY(' + rotY + 'deg);transform-style:preserve-3d;margin-left:' + marginL + '%;margin-right:' + marginR + '%;">';
     for (var row = 0; row < st.rowCount; row++) {
       var idx = row * st.colCount + col;
       var iconId = st.reelIcons[idx] || 1;
@@ -131,8 +136,8 @@ function slotRenderUI() {
   }
   html += '</div>';
 
-  // SPIN button (large circle, aligned with background circle ~76% top, right ~6%)
-  html += '<div id="slotSpinBtn" class="slot-spin-3d" onclick="slotSpin()" style="position:absolute;top:77%;right:6%;width:86px;height:86px;">';
+  // SPIN button (large circle, shifted left-up to align with background)
+  html += '<div id="slotSpinBtn" class="slot-spin-3d" onclick="slotSpin()" style="position:absolute;top:74%;right:10%;width:86px;height:86px;">';
   html += '<span style="font-size:15px;font-weight:800;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,0.6);z-index:1;">SPIN</span>';
   html += '<span style="font-size:7px;color:#ffd;z-index:1;white-space:nowrap;">HOLD AUTO</span>';
   html += '</div>';
