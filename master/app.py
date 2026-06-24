@@ -3045,6 +3045,7 @@ def play_login():
         "machine_id": machine_id,
         "machine_type": machine.get("type", "bingo"),
         "machine_name": machine.get("name", ""),
+        "machine_entry": machine,
         "config": machine_config
     })
 

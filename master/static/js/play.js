@@ -141,6 +141,8 @@ async function playSelectMachine(machineId, enabled, machineType) {
   _playAuthToken = data.authorization || '';
   _playCurrency = data.currency || 'coins';
   var machineConfig = data.config || {};
+  var machineName = data.machine_name || '';
+  var machineEntry = data.machine_entry || {choose_quantity: false};
 
   playLog('<<< [INIT] connection_url: ' + connUrl);
   playLog('<<< [INIT] machine_type: ' + data.machine_type + ', currency: ' + _playCurrency);
@@ -172,7 +174,7 @@ async function playSelectMachine(machineId, enabled, machineType) {
       // Login response
       playLog('<<< [LOGIN] response: ' + JSON.stringify(resp));
       _playSessionToken = resp.session_token || '';
-      _playCurrentMachine = {machine_id: machineId, response: resp, config: machineConfig, type: machineType || 'bingo'};
+      _playCurrentMachine = {machine_id: machineId, response: resp, config: machineConfig, type: machineType || 'bingo', machineEntry: machineEntry};
 
       // Hide loading overlay
       playHideLoading();
@@ -181,24 +183,38 @@ async function playSelectMachine(machineId, enabled, machineType) {
       document.getElementById('playMachineList').style.display = 'none';
       document.getElementById('playGameArea').style.display = '';
       document.getElementById('playBackBtn').style.display = '';
+      document.getElementById('playAuthBar').style.display = 'none';
 
       if (machineType === 'slot') {
-        playRenderSlotGame(resp, machineConfig);
+        _slotState.machineId = machineId;
+        slotRenderGame(resp, machineConfig, machineName);
       } else {
         playRenderGame(resp, machineConfig);
       }
     } else if (resp.cmd === 'solicitajogada') {
       // Spin or Buy EB response
       playLog('<<< [SPIN/EB] response: ' + JSON.stringify(resp));
-      playHandleSpinResponse(resp);
+      if (machineType === 'slot') {
+        slotHandleSpinResponse(resp);
+      } else {
+        playHandleSpinResponse(resp);
+      }
     } else if (resp.cmd === 'finalizajogada') {
       // Round over response
       playLog('<<< [ROUND OVER] response: ' + JSON.stringify(resp));
-      playHandleRoundOverResponse(resp);
+      if (machineType === 'slot') {
+        slotHandleRoundOverResponse(resp);
+      } else {
+        playHandleRoundOverResponse(resp);
+      }
     } else if (resp.cmd === 'Jackpot_update') {
       // Async jackpot update
       playLog('<<< [JACKPOT UPDATE] ' + JSON.stringify(resp));
-      playUpdateJackpotFromFeatures(resp.features);
+      if (machineType === 'slot') {
+        slotUpdateJackpotFromFeatures(resp.features);
+      } else {
+        playUpdateJackpotFromFeatures(resp.features);
+      }
     } else {
       playLog('<<< [WS] unknown cmd: ' + JSON.stringify(resp));
     }
@@ -621,8 +637,8 @@ async function playSpin() {
   var machineType = _playCurrentMachine.type || 'bingo';
 
   if (machineType === 'slot') {
-    // Slot: use generic send
-    await playSlotSpin();
+    // Slot uses its own slotSpin() from slot.js
+    slotSpin();
     return;
   }
 
@@ -1068,5 +1084,8 @@ function playBackToLobby() {
   _playCurrentMachine = null;
   _playSpinState = 'idle';
   _playCardIdx = [];
+  // Show auth bar again
+  var authBar = document.getElementById('playAuthBar');
+  if (authBar) authBar.style.display = '';
   playLoadMachines();
 }
