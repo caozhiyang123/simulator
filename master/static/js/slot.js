@@ -119,14 +119,16 @@ function slotRenderUI() {
       }
     }
 
-    html += '<div class="slot-reel-wrapper" data-col="' + col + '" style="flex:1;height:' + containerH + 'px;overflow:hidden;margin-left:' + marginL + '%;margin-right:' + marginR + '%;position:relative;">';
-    html += '<div class="slot-reel-strip" data-col="' + col + '" style="display:flex;flex-direction:column;position:absolute;top:0;left:0;width:100%;will-change:transform;">';
+    html += '<div class="slot-reel-wrapper" data-col="' + col + '" style="flex:1;height:' + containerH + 'px;overflow:hidden;margin-left:' + marginL + '%;margin-right:' + marginR + '%;position:relative;perspective:800px;">';
+    html += '<div class="slot-reel-strip" data-col="' + col + '" style="display:flex;flex-direction:column;position:absolute;top:0;left:0;width:100%;will-change:transform;transform-style:preserve-3d;">';
     for (var s = 0; s < stripLength; s++) {
       html += '<div style="width:100%;height:' + cellHeight + 'px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">';
       html += '<img src="/static/machine/' + st.machineName + '/icon/i' + stripIcons[s] + '.png" style="width:100%;height:100%;object-fit:fill;" onerror="this.outerHTML=\'<span style=color:#fff;font-size:14px>i' + stripIcons[s] + '</span>\'">';
       html += '</div>';
     }
     html += '</div>'; // end strip
+    // Curved shading overlay: darkens top/bottom edges to simulate cylinder curvature
+    html += '<div style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,0.45) 0%,rgba(0,0,0,0.1) 20%,transparent 35%,transparent 65%,rgba(0,0,0,0.1) 80%,rgba(0,0,0,0.45) 100%);z-index:2;"></div>';
     html += '</div>'; // end wrapper
   }
   html += '<svg id="slotLineSvg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></svg>';
