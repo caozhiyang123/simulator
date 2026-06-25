@@ -91,42 +91,42 @@ function slotRenderUI() {
   // Jackpot (inside right dark box - lower position)
   html += '<div id="slotJackpotDisplay" style="position:absolute;top:18.2%;right:15%;width:38%;height:3.5%;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:15px;font-weight:700;color:#f5d742;text-shadow:0 1px 2px #000;">\uD83C\uDFC6 ' + slotCalcJackpot().toFixed(st.displayPrecision) + '</div>';
 
-  // Reels area - 3D cylinder approach
-  // Each reel is a cylinder with icons on its faces
-  var cylinderFaces = 10; // number of faces on the cylinder (more = smoother)
-  var faceAngle = 360 / cylinderFaces; // degrees per face
-  // Radius calculation: r = cellHeight / (2 * tan(PI/N))
-  var cellHeight = 60; // visual height of each icon face
-  var radius = Math.round(cellHeight / (2 * Math.tan(Math.PI / cylinderFaces))) + 40;
+  // Reels area - vertical strip approach (icons packed with 0 gap)
+  var cellHeight = 80; // height per icon
+  var visibleRows = st.rowCount; // 3 rows visible
+  var stripLength = 20; // total icons per reel strip
+  var resultPosition = 14; // where final 3 icons sit in the strip (index 14,15,16)
 
   html += '<div id="slotReelsContainer" style="position:absolute;top:26%;left:17%;width:66%;height:48%;overflow:hidden;display:flex;gap:0;align-items:center;">';
+  var containerH = cellHeight * visibleRows; // visible window height
+
   for (var col = 0; col < st.colCount; col++) {
     var marginL = 0, marginR = 0;
     if (col === 0) marginL = 4;
     if (col === st.colCount - 1) marginR = 4;
     if (col === st.colCount - 2) marginR = 2;
 
-    // Build cylinder faces: use random icons for non-visible, real icons for visible (faces 0,1,2)
-    html += '<div class="slot-reel-wrapper" data-col="' + col + '" style="flex:1;height:' + (cellHeight*3 + 100) + 'px;perspective:400px;margin-left:' + marginL + '%;margin-right:' + marginR + '%;overflow:hidden;">';
-    html += '<div class="slot-reel-cylinder" data-col="' + col + '" style="width:100%;height:100%;position:relative;transform-style:preserve-3d;transform:rotateX(0deg);transition:transform 0.3s ease-out;">';
-
+    // Build strip: random icons filling, with result icons at position resultPosition
     var icons = st.icons.length ? st.icons : [1,2,3,4,5,6,7,8,9,10];
-    for (var face = 0; face < cylinderFaces; face++) {
-      var iconId;
-      if (face < st.rowCount) {
-        // Visible faces: use actual reel icons
-        var idx = face * st.colCount + col;
-        iconId = st.reelIcons[idx] || 1;
+    var stripIcons = [];
+    for (var s = 0; s < stripLength; s++) {
+      if (s >= resultPosition && s < resultPosition + visibleRows) {
+        // Final result icons
+        var idx = (s - resultPosition) * st.colCount + col;
+        stripIcons.push(st.reelIcons[idx] || 1);
       } else {
-        // Hidden faces: random
-        iconId = icons[Math.floor(Math.random() * icons.length)];
+        stripIcons.push(icons[Math.floor(Math.random() * icons.length)]);
       }
-      var angleX = face * faceAngle;
-      html += '<div class="slot-cyl-face" data-face="' + face + '" style="position:absolute;width:100%;height:' + cellHeight + 'px;top:50%;left:0;margin-top:-' + (cellHeight/2) + 'px;display:flex;align-items:center;justify-content:center;backface-visibility:hidden;transform:rotateX(' + (-angleX) + 'deg) translateZ(' + radius + 'px);">';
-      html += '<img src="/static/machine/' + st.machineName + '/icon/i' + iconId + '.png" style="width:85%;height:85%;object-fit:contain;border-radius:6px;" onerror="this.outerHTML=\'<span style=color:#fff;font-size:14px>i' + iconId + '</span>\'">';
+    }
+
+    html += '<div class="slot-reel-wrapper" data-col="' + col + '" style="flex:1;height:' + containerH + 'px;overflow:hidden;margin-left:' + marginL + '%;margin-right:' + marginR + '%;position:relative;">';
+    html += '<div class="slot-reel-strip" data-col="' + col + '" style="display:flex;flex-direction:column;position:absolute;top:0;left:0;width:100%;will-change:transform;">';
+    for (var s = 0; s < stripLength; s++) {
+      html += '<div style="width:100%;height:' + cellHeight + 'px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">';
+      html += '<img src="/static/machine/' + st.machineName + '/icon/i' + stripIcons[s] + '.png" style="width:100%;height:100%;object-fit:fill;" onerror="this.outerHTML=\'<span style=color:#fff;font-size:14px>i' + stripIcons[s] + '</span>\'">';
       html += '</div>';
     }
-    html += '</div>'; // end cylinder
+    html += '</div>'; // end strip
     html += '</div>'; // end wrapper
   }
   html += '<svg id="slotLineSvg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></svg>';
@@ -310,41 +310,40 @@ function slotSpin() {
 
 var _slotReelTimers = [];
 var _slotReelStopping = false;
-var _slotCylinderAngles = []; // current rotation angle per reel
 
 function slotStartReelAnimation() {
   var st = _slotState;
   _slotReelStopping = false;
-  _slotCylinderAngles = [];
-
-  var cylinderFaces = 10;
-  var faceAngle = 360 / cylinderFaces;
+  _slotReelTimers = [];
+  var cellHeight = 80;
   var icons = st.icons.length ? st.icons : [1,2,3,4,5,6,7,8,9,10];
 
   for (var col = 0; col < st.colCount; col++) {
-    _slotCylinderAngles.push(0);
     (function(c) {
-      var cylinder = document.querySelector('.slot-reel-cylinder[data-col="' + c + '"]');
-      if (!cylinder) return;
-      cylinder.style.transition = 'none';
-
-      // Randomize all faces for spinning variety
-      var faces = cylinder.querySelectorAll('.slot-cyl-face img');
-      faces.forEach(function(img) {
-        var ri = icons[Math.floor(Math.random() * icons.length)];
-        img.src = '/static/machine/' + st.machineName + '/icon/i' + ri + '.png';
-      });
-
-      var speed = 8 + c * 2; // degrees per frame, stagger
-      var angle = 0;
+      var strip = document.querySelector('.slot-reel-strip[data-col="' + c + '"]');
+      if (!strip) return;
+      strip.style.transition = 'none';
+      // Start scrolling from top
+      var offset = 0;
+      var speed = 15 + c * 4; // px per frame, stagger per reel
+      var totalH = strip.children.length * cellHeight;
+      var loopPoint = totalH - cellHeight * st.rowCount;
 
       var timer = setInterval(function() {
-        angle += speed;
-        _slotCylinderAngles[c] = angle;
-        cylinder.style.transform = 'rotateX(' + angle + 'deg)';
-      }, 16); // 60fps
+        offset += speed;
+        if (offset >= loopPoint) {
+          offset = 0;
+          // Re-randomize the non-result icons while scrolling
+          var imgs = strip.querySelectorAll('img');
+          for (var i = 0; i < imgs.length - st.rowCount; i++) {
+            var ri = icons[Math.floor(Math.random() * icons.length)];
+            imgs[i].src = '/static/machine/' + st.machineName + '/icon/i' + ri + '.png';
+          }
+        }
+        strip.style.transform = 'translateY(-' + offset + 'px)';
+      }, 16);
 
-      _slotReelTimers.push({col: c, timer: timer, cylinder: cylinder});
+      _slotReelTimers.push({col: c, timer: timer, strip: strip});
     })(col);
   }
 }
@@ -356,41 +355,31 @@ function slotStopReelAnimation(onComplete) {
   var totalReels = _slotReelTimers.length;
   if (totalReels === 0) { if (onComplete) onComplete(); return; }
 
-  var cylinderFaces = 10;
-  var faceAngle = 360 / cylinderFaces;
+  var cellHeight = 80;
+  var resultPosition = 14; // must match the value in slotRenderUI
   var icons = st.icons.length ? st.icons : [1,2,3,4,5,6,7,8,9,10];
+  var targetOffset = resultPosition * cellHeight; // scroll to show result icons
 
   _slotReelTimers.forEach(function(rt, idx) {
     setTimeout(function() {
       clearInterval(rt.timer);
-      var cylinder = rt.cylinder;
+      var strip = rt.strip;
 
-      // Set final icons on faces 0,1,2 (visible positions)
-      var faces = cylinder.querySelectorAll('.slot-cyl-face');
-      for (var face = 0; face < faces.length; face++) {
-        var img = faces[face].querySelector('img');
-        if (!img) continue;
-        if (face < st.rowCount) {
-          var iconIdx = face * st.colCount + rt.col;
+      // Update the result icons in the strip (positions resultPosition, +1, +2)
+      var allCells = strip.children;
+      for (var row = 0; row < st.rowCount; row++) {
+        var cellIdx = resultPosition + row;
+        if (cellIdx < allCells.length) {
+          var iconIdx = row * st.colCount + rt.col;
           var iconId = st.reelIcons[iconIdx] || 1;
-          img.src = '/static/machine/' + st.machineName + '/icon/i' + iconId + '.png';
-        } else {
-          var ri = icons[Math.floor(Math.random() * icons.length)];
-          img.src = '/static/machine/' + st.machineName + '/icon/i' + ri + '.png';
+          var img = allCells[cellIdx].querySelector('img');
+          if (img) img.src = '/static/machine/' + st.machineName + '/icon/i' + iconId + '.png';
         }
       }
 
-      // Calculate target angle: face 0 at front means angle is multiple of 360
-      // We want face 1 (middle row) centered, so target = faceAngle * 1 + full rotations
-      var currentAngle = _slotCylinderAngles[rt.col] || 0;
-      var targetBase = faceAngle * 1; // face 1 centered
-      var fullRotations = Math.ceil(currentAngle / 360) * 360;
-      var targetAngle = fullRotations + targetBase;
-      if (targetAngle < currentAngle) targetAngle += 360;
-
-      // Smooth deceleration to target
-      cylinder.style.transition = 'transform 0.6s cubic-bezier(0.2, 0.8, 0.3, 1)';
-      cylinder.style.transform = 'rotateX(' + targetAngle + 'deg)';
+      // Smooth deceleration to target position
+      strip.style.transition = 'transform 0.6s cubic-bezier(0.1, 0.7, 0.3, 1)';
+      strip.style.transform = 'translateY(-' + targetOffset + 'px)';
 
       stoppedCount++;
       if (stoppedCount >= totalReels) {
