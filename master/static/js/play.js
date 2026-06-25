@@ -174,7 +174,7 @@ async function playSelectMachine(machineId, enabled, machineType) {
       // Login response
       playLog('<<< [LOGIN] response: ' + JSON.stringify(resp));
       _playSessionToken = resp.session_token || '';
-      _playCurrentMachine = {machine_id: machineId, response: resp, config: machineConfig, type: machineType || 'bingo', machineEntry: machineEntry};
+      _playCurrentMachine = {machine_id: machineId, response: resp, config: machineConfig, type: machineType || 'bingo', machineEntry: machineEntry, name: machineName};
 
       // Hide loading overlay
       playHideLoading();
@@ -185,36 +185,24 @@ async function playSelectMachine(machineId, enabled, machineType) {
       document.getElementById('playBackBtn').style.display = '';
       document.getElementById('playAuthBar').style.display = 'none';
 
-      if (machineType === 'slot') {
-        _slotState.machineId = machineId;
-        slotRenderGame(resp, machineConfig, machineName);
-      } else {
-        playRenderGame(resp, machineConfig);
-      }
+      // Route through engine layer
+      var engine = (machineType === 'slot') ? SlotEngine : BingoEngine;
+      engine.render(resp, machineConfig, machineName);
     } else if (resp.cmd === 'solicitajogada') {
       // Spin or Buy EB response
       playLog('<<< [SPIN/EB] response: ' + JSON.stringify(resp));
-      if (machineType === 'slot') {
-        slotHandleSpinResponse(resp);
-      } else {
-        playHandleSpinResponse(resp);
-      }
+      var engine = (machineType === 'slot') ? SlotEngine : BingoEngine;
+      engine.onSpinResponse(resp, machineName);
     } else if (resp.cmd === 'finalizajogada') {
       // Round over response
       playLog('<<< [ROUND OVER] response: ' + JSON.stringify(resp));
-      if (machineType === 'slot') {
-        slotHandleRoundOverResponse(resp);
-      } else {
-        playHandleRoundOverResponse(resp);
-      }
+      var engine = (machineType === 'slot') ? SlotEngine : BingoEngine;
+      engine.onRoundOver(resp, machineName);
     } else if (resp.cmd === 'Jackpot_update') {
       // Async jackpot update
       playLog('<<< [JACKPOT UPDATE] ' + JSON.stringify(resp));
-      if (machineType === 'slot') {
-        slotUpdateJackpotFromFeatures(resp.features);
-      } else {
-        playUpdateJackpotFromFeatures(resp.features);
-      }
+      var engine = (machineType === 'slot') ? SlotEngine : BingoEngine;
+      engine.onJackpotUpdate(resp.features, machineName);
     } else {
       playLog('<<< [WS] unknown cmd: ' + JSON.stringify(resp));
     }
