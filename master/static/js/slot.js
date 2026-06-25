@@ -97,7 +97,7 @@ function slotRenderUI() {
   var stripLength = 20; // total icons per reel strip
   var resultPosition = 14; // where final 3 icons sit in the strip (index 14,15,16)
 
-  html += '<div id="slotReelsContainer" style="position:absolute;top:26%;left:17%;width:66%;height:48%;overflow:hidden;display:flex;gap:0;align-items:center;">';
+  html += '<div id="slotReelsContainer" style="position:absolute;top:20%;left:17%;width:66%;height:52%;overflow:hidden;display:flex;gap:2px;align-items:center;">';
   var containerH = cellHeight * visibleRows; // visible window height
 
   for (var col = 0; col < st.colCount; col++) {
@@ -119,7 +119,7 @@ function slotRenderUI() {
       }
     }
 
-    html += '<div class="slot-reel-wrapper" data-col="' + col + '" style="flex:1;height:' + containerH + 'px;overflow:hidden;margin-left:' + marginL + '%;margin-right:' + marginR + '%;position:relative;perspective:800px;">';
+    html += '<div class="slot-reel-wrapper" data-col="' + col + '" style="flex:1;height:' + containerH + 'px;overflow:hidden;margin-left:' + marginL + '%;margin-right:' + marginR + '%;position:relative;perspective:800px;border:2px solid #1a1a1a;border-radius:4px;box-shadow:inset 0 4px 8px rgba(0,0,0,0.7),inset 0 -2px 4px rgba(0,0,0,0.4),0 1px 0 rgba(255,255,255,0.05);">';
     html += '<div class="slot-reel-strip" data-col="' + col + '" style="display:flex;flex-direction:column;position:absolute;top:0;left:0;width:100%;will-change:transform;transform-style:preserve-3d;">';
     for (var s = 0; s < stripLength; s++) {
       html += '<div style="width:100%;height:' + cellHeight + 'px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">';
@@ -140,8 +140,8 @@ function slotRenderUI() {
   // BET controls (left box area ~80% top, ~7% left)
   html += '<div style="position:absolute;top:80.5%;left:7%;display:flex;align-items:center;gap:3px;">';
   html += '<div class="slot-btn-3d" onclick="slotChangeBet(-1)" style="width:28px;height:28px;">-</div>';
-  var totalBet = (st.betList[st.betIndex] || 0) * st.activeLines;
-  html += '<div id="slotBetDisplay" style="min-width:52px;height:28px;background:#0a0a0a;border:2px solid #f5d742;border-radius:4px;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:28px;box-shadow:inset 0 2px 6px rgba(0,0,0,0.8);">' + totalBet.toFixed(st.displayPrecision) + '</div>';
+  var betVal = (st.betList[st.betIndex] || 0) * st.activeLines;
+  html += '<div id="slotBetDisplay" style="min-width:52px;height:28px;background:#0a0a0a;border:2px solid #f5d742;border-radius:4px;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:28px;box-shadow:inset 0 2px 6px rgba(0,0,0,0.8);">' + betVal.toFixed(st.displayPrecision) + '</div>';
   html += '<div class="slot-btn-3d" onclick="slotChangeBet(1)" style="width:28px;height:28px;">+</div>';
   html += '</div>';
 
@@ -250,23 +250,23 @@ function slotClearAllLines() {
 function slotChangeBet(dir) {
   var st = _slotState; if (st.spinning) return;
   st.betIndex = Math.max(0, Math.min(st.betList.length - 1, st.betIndex + dir));
-  var total = (st.betList[st.betIndex] || 0) * st.activeLines;
-  document.getElementById('slotBetDisplay').textContent = total.toFixed(st.displayPrecision);
+  var displayBet = (st.betList[st.betIndex] || 0) * st.activeLines;
+  document.getElementById('slotBetDisplay').textContent = displayBet.toFixed(st.displayPrecision);
   slotUpdateJackpot();
 }
 function slotMaxBet() {
   var st = _slotState; if (st.spinning) return;
   st.betIndex = st.betList.length - 1;
-  var total = (st.betList[st.betIndex] || 0) * st.activeLines;
-  document.getElementById('slotBetDisplay').textContent = total.toFixed(st.displayPrecision);
+  var displayBet = (st.betList[st.betIndex] || 0) * st.activeLines;
+  document.getElementById('slotBetDisplay').textContent = displayBet.toFixed(st.displayPrecision);
   slotUpdateJackpot();
 }
 function slotChangeLines(dir) {
   var st = _slotState; if (st.spinning) return;
   st.activeLines = Math.max(1, Math.min(st.maxLines, st.activeLines + dir));
   document.getElementById('slotLinesDisplay').textContent = st.activeLines;
-  var total = (st.betList[st.betIndex] || 0) * st.activeLines;
-  document.getElementById('slotBetDisplay').textContent = total.toFixed(st.displayPrecision);
+  var displayBet = (st.betList[st.betIndex] || 0) * st.activeLines;
+  document.getElementById('slotBetDisplay').textContent = displayBet.toFixed(st.displayPrecision);
   document.querySelectorAll('.slot-line-num').forEach(function(el) {
     el.style.opacity = parseInt(el.getAttribute('data-line')) < st.activeLines ? '1' : '0.3';
   });

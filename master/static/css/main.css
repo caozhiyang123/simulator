@@ -75,52 +75,74 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 /* Slot 3D button styles */
 .slot-btn-3d {
   width: 32px; height: 32px;
-  background: linear-gradient(160deg, #ff3377 0%, #cc0044 40%, #880033 100%);
-  border: 2px solid #f5d742;
-  border-radius: 6px;
-  box-shadow:
-    inset 0 1px 3px rgba(255,150,200,0.5),
-    inset 0 -2px 4px rgba(0,0,0,0.6),
-    0 3px 6px rgba(0,0,0,0.7),
-    0 0 8px rgba(255,50,100,0.25);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer; color: #fff; font-size: 18px; font-weight: 700;
   display: flex; align-items: center; justify-content: center;
-  cursor: pointer; color: #fff; font-size: 16px; font-weight: 700;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-  transition: transform 0.1s, box-shadow 0.1s;
+  /* Raised button: lighter top, darker bottom simulates light from above */
+  background: linear-gradient(to bottom, #e84a80 0%, #c0003a 45%, #8a0028 100%);
+  /* Thick bottom/right shadow = button sticks out from surface */
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,0.35),
+    0 4px 0 #4a0015,
+    0 5px 8px rgba(0,0,0,0.5);
+  text-shadow: 0 -1px 1px rgba(0,0,0,0.6);
+  transition: all 0.08s ease;
+  position: relative;
+  top: 0;
 }
 .slot-btn-3d:hover {
-  transform: scale(1.05);
+  background: linear-gradient(to bottom, #f05a90 0%, #d0004a 45%, #9a0032 100%);
   box-shadow:
-    inset 0 1px 3px rgba(255,150,200,0.6),
-    inset 0 -2px 4px rgba(0,0,0,0.6),
-    0 4px 10px rgba(0,0,0,0.7),
-    0 0 14px rgba(255,50,100,0.5);
+    inset 0 1px 1px rgba(255,255,255,0.4),
+    0 4px 0 #4a0015,
+    0 6px 12px rgba(0,0,0,0.5);
 }
-.slot-btn-3d:active { transform: scale(0.95); }
+.slot-btn-3d:active {
+  top: 3px;
+  box-shadow:
+    inset 0 2px 3px rgba(0,0,0,0.4),
+    0 1px 0 #4a0015,
+    0 1px 3px rgba(0,0,0,0.4);
+  background: linear-gradient(to bottom, #a00030 0%, #8a0028 45%, #6a0020 100%);
+}
 
 .slot-spin-3d {
   width: 80px; height: 80px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #ff5588, #cc0044 50%, #660022);
-  border: 4px solid #f5d742;
-  box-shadow:
-    inset 0 2px 6px rgba(255,200,220,0.4),
-    inset 0 -3px 8px rgba(0,0,0,0.6),
-    0 4px 12px rgba(0,0,0,0.7),
-    0 0 20px rgba(255,50,100,0.4);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border: none;
   cursor: pointer; position: relative;
-  transition: transform 0.1s, box-shadow 0.1s;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  /* Convex sphere: radial gradient for dome highlight */
+  background: radial-gradient(circle at 40% 35%, #ff6699 0%, #cc0044 40%, #7a0028 75%, #3a0012 100%);
+  box-shadow:
+    inset 0 3px 6px rgba(255,200,220,0.4),
+    inset 0 -4px 8px rgba(0,0,0,0.5),
+    0 6px 0 #2a000e,
+    0 8px 16px rgba(0,0,0,0.6),
+    0 0 20px rgba(200,0,60,0.3);
+  text-shadow: 0 -1px 2px rgba(0,0,0,0.6);
+  transition: all 0.08s ease;
+  top: 0;
 }
 .slot-spin-3d:hover {
-  transform: scale(1.04);
+  background: radial-gradient(circle at 40% 35%, #ff80aa 0%, #dd1155 40%, #8a0030 75%, #4a0018 100%);
   box-shadow:
-    inset 0 2px 6px rgba(255,200,220,0.5),
-    inset 0 -3px 8px rgba(0,0,0,0.6),
-    0 6px 16px rgba(0,0,0,0.7),
-    0 0 28px rgba(255,50,100,0.6);
+    inset 0 3px 6px rgba(255,200,220,0.5),
+    inset 0 -4px 8px rgba(0,0,0,0.5),
+    0 6px 0 #2a000e,
+    0 10px 20px rgba(0,0,0,0.6),
+    0 0 30px rgba(200,0,60,0.5);
 }
-.slot-spin-3d:active { transform: scale(0.96); }
+.slot-spin-3d:active {
+  top: 4px;
+  box-shadow:
+    inset 0 4px 8px rgba(0,0,0,0.5),
+    inset 0 -1px 2px rgba(255,200,220,0.2),
+    0 1px 0 #2a000e,
+    0 2px 4px rgba(0,0,0,0.5);
+  background: radial-gradient(circle at 40% 45%, #cc3366 0%, #990033 40%, #5a0020 75%, #2a000e 100%);
+}
 /* Dot ring lights around spin button */
 .slot-spin-3d::before {
   content: '';
