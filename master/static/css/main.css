@@ -174,3 +174,9 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 .slot-maxbet-3d:hover { transform: scale(1.05); }
 .slot-maxbet-3d:active { transform: scale(0.95); }
+
+/* Slot win animation */
+@keyframes slotWinPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}

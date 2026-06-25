@@ -292,10 +292,18 @@ function slotSpin() {
   document.getElementById('slotWinDisplay').textContent = '';
   slotClearAllLines();
 
+  // Client-side: deduct total bet from displayed balance immediately
+  var bet = st.betList[st.betIndex] || 0.01;
+  var totalBet = bet * st.activeLines;
+  var balEl = document.getElementById('slotBalance');
+  if (balEl) {
+    var curBal = parseFloat(balEl.textContent.replace(/[^\d.-]/g, '')) || 0;
+    slotUpdateBalance(curBal - totalBet);
+  }
+
   // Start reel spin animation (visual only, will stop when response arrives)
   slotStartReelAnimation();
 
-  var bet = st.betList[st.betIndex] || 0.01;
   var linesStr = '';
   for (var i = 0; i < st.maxLines; i++) linesStr += (i < st.activeLines ? '1' : '0');
   var spinCmd = {
@@ -395,7 +403,8 @@ function slotStopReelAnimation(onComplete) {
 function slotHandleSpinResponse(resp) {
   var st = _slotState;
   playLog('<<< [SLOT SPIN] icons: ' + JSON.stringify(resp.icons) + ', won: ' + resp.total_won);
-  if (resp.balance !== undefined) slotUpdateBalance(resp.balance);
+  // Don't update balance yet if won > 0 (wait for animation)
+  if (resp.total_won <= 0 && resp.balance !== undefined) slotUpdateBalance(resp.balance);
   if (resp.features) slotUpdateJackpotFromFeatures(resp.features);
   if (resp.icons && resp.icons.length >= st.rowCount * st.colCount) {
     st.reelIcons = resp.icons.slice();
@@ -403,8 +412,12 @@ function slotHandleSpinResponse(resp) {
   // Stop animation with final icons
   slotStopReelAnimation(function() {
     if (resp.total_won > 0) {
-      document.getElementById('slotWinDisplay').innerHTML = '<span style="color:#f39c12;font-size:18px;">\uD83C\uDF89 WIN: ' + resp.total_won.toFixed(st.displayPrecision) + '</span>';
+      slotShowWinAnimation(resp.total_won);
       slotShowWinningLines(resp);
+      // Update balance after animation (5s)
+      setTimeout(function() {
+        if (resp.balance !== undefined) slotUpdateBalance(resp.balance);
+      }, 5000);
     }
     slotRoundOver();
   });
@@ -435,12 +448,19 @@ function slotRoundOver() {
 
 function slotHandleRoundOverResponse(resp) {
   var st = _slotState;
-  if (resp.balance !== undefined) slotUpdateBalance(resp.balance);
   if (resp.total_won !== undefined && resp.total_won > 0) {
-    document.getElementById('slotWinDisplay').innerHTML = '<span style="color:#f39c12;font-size:18px;">\uD83C\uDF89 WIN: ' + resp.total_won.toFixed(st.displayPrecision) + '</span>';
+    slotShowWinAnimation(resp.total_won);
+    // Update balance after animation (5s)
+    setTimeout(function() {
+      if (resp.balance !== undefined) slotUpdateBalance(resp.balance);
+      st.spinning = false;
+      slotEnableSpinBtn();
+    }, 5000);
+  } else {
+    if (resp.balance !== undefined) slotUpdateBalance(resp.balance);
+    st.spinning = false;
+    slotEnableSpinBtn();
   }
-  st.spinning = false;
-  slotEnableSpinBtn();
 }
 
 function slotEnableSpinBtn() {
@@ -476,4 +496,53 @@ function slotShowPattern() {
   overlay.onclick = function() { overlay.remove(); };
   overlay.innerHTML = '<img src="' + patPath + '" style="max-width:90%;max-height:90%;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.8);">';
   document.body.appendChild(overlay);
+}
+
+function slotShowWinAnimation(amount) {
+  var st = _slotState;
+  var winEl = document.getElementById('slotWinDisplay');
+  if (winEl) {
+    winEl.innerHTML = '<span class="slot-win-text" style="color:#f39c12;font-size:20px;font-weight:800;text-shadow:0 0 10px #f5d742,0 0 20px #f39c12;animation:slotWinPulse 0.5s ease-in-out 5;">\uD83C\uDF89 WIN: ' + amount.toFixed(st.displayPrecision) + '</span>';
+  }
+
+  // Spawn coins from reels area flying to balance
+  var skin = document.getElementById('slotSkin');
+  if (!skin) return;
+  var balEl = document.getElementById('slotBalance');
+  var skinRect = skin.getBoundingClientRect();
+  var balRect = balEl ? balEl.getBoundingClientRect() : {left: skinRect.left + 50, top: skinRect.top + 50};
+
+  var coinCount = Math.min(Math.max(8, Math.floor(amount)), 20);
+  for (var i = 0; i < coinCount; i++) {
+    (function(idx) {
+      setTimeout(function() {
+        var coin = document.createElement('div');
+        coin.className = 'slot-coin-fly';
+        // Start from random position in reels area
+        var startX = 80 + Math.random() * 300;
+        var startY = 200 + Math.random() * 200;
+        // End at balance position (relative to skin)
+        var endX = balRect.left - skinRect.left + 30;
+        var endY = balRect.top - skinRect.top + 10;
+        coin.style.cssText = 'position:absolute;left:' + startX + 'px;top:' + startY + 'px;width:20px;height:20px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#ffe066,#f5a623,#c87800);border:2px solid #f5d742;box-shadow:0 2px 6px rgba(0,0,0,0.5),inset 0 -2px 3px rgba(0,0,0,0.3);z-index:100;font-size:10px;text-align:center;line-height:20px;color:#7a5000;font-weight:700;pointer-events:none;';
+        coin.textContent = '$';
+        skin.appendChild(coin);
+
+        // Animate: rise up, then fly to balance
+        var keyframes = [
+          {transform: 'translateY(0) scale(1) rotateY(0deg)', opacity: 1},
+          {transform: 'translateY(-40px) scale(1.3) rotateY(180deg)', opacity: 1, offset: 0.3},
+          {transform: 'translate(' + (endX - startX) + 'px,' + (endY - startY) + 'px) scale(0.5) rotateY(720deg)', opacity: 0.6}
+        ];
+        var anim = coin.animate(keyframes, {duration: 1500 + Math.random() * 500, easing: 'cubic-bezier(0.2,0.8,0.3,1)', fill: 'forwards'});
+        anim.onfinish = function() { coin.remove(); };
+      }, idx * 200);
+    })(i);
+  }
+
+  // Clear win text after 5 seconds
+  setTimeout(function() {
+    var el = document.getElementById('slotWinDisplay');
+    if (el) el.innerHTML = '';
+  }, 5000);
 }
