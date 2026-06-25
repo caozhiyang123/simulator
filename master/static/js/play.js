@@ -456,20 +456,34 @@ function playRenderGame(resp, machineConfig) {
   // Ball area - fixed height for 4 rows of balls (prevents bottom controls from jumping)
   html += '<div id="playBallArea" style="min-height:136px;padding:8px;display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start;background:#1a1a2e;border-radius:6px;margin-bottom:12px;"></div>';
 
-  // Bottom controls: Bet left, WIN centered, Spin right
-  html += '<div style="display:flex;align-items:center;padding:12px;background:#333;border-radius:6px;">';
-  // Bet selector (left)
-  html += '<div style="flex:1;display:flex;align-items:center;gap:8px;">';
-  html += '<span style="color:#aaa;font-size:12px;">Bet:</span>';
+  // Bottom controls: Bet +-, Cards +-, WIN, SPIN (slot-style 3D)
   var activeCards = qtd || 4;
-  html += '<select id="playBetSelect" onchange="playUpdateJackpot()" style="width:80px;padding:6px 8px;border-radius:8px;border:1px solid #555;background:#222;color:#fff;font-size:12px;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url(\'data:image/svg+xml;utf8,<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; width=&quot;10&quot; height=&quot;6&quot;><polyline points=&quot;0,0 5,6 10,0&quot; fill=&quot;%23888&quot;/></svg>\');background-repeat:no-repeat;background-position:right 8px center;">';
-  betList.forEach(function(b) { html += '<option value="' + b + '">' + (b * activeCards).toFixed(2) + '</option>'; });
-  html += '</select>';
+  var defaultBet = betList.length > 0 ? betList[0] : 0.01;
+  window._playBetIndex = 0;
+  window._playBetList = betList;
+  window._playActiveCards = activeCards;
+  window._playMaxCards = qtd;
+
+  html += '<div style="display:flex;align-items:center;padding:10px 12px;background:linear-gradient(180deg,#2a2a3e,#1a1a2e);border-radius:6px;gap:8px;border:1px solid #444;">';
+  // Bet controls
+  html += '<div class="slot-btn-3d" onclick="playChangeBet(-1)" style="width:28px;height:28px;">-</div>';
+  html += '<div id="playBetDisplay" style="min-width:52px;height:28px;background:#0a0a0a;border:2px solid #f5d742;border-radius:4px;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:28px;box-shadow:inset 0 2px 6px rgba(0,0,0,0.8);">' + (defaultBet * activeCards).toFixed(2) + '</div>';
+  html += '<div class="slot-btn-3d" onclick="playChangeBet(1)" style="width:28px;height:28px;">+</div>';
+  // Card controls
+  html += '<div style="margin-left:8px;display:flex;align-items:center;gap:4px;">';
+  html += '<div class="slot-btn-3d" onclick="playChangeCards(-1)" style="width:28px;height:28px;">-</div>';
+  html += '<div id="playCardsDisplay" style="min-width:28px;height:28px;background:#0a0a0a;border:2px solid #f5d742;border-radius:4px;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:28px;box-shadow:inset 0 2px 6px rgba(0,0,0,0.8);">' + activeCards + '</div>';
+  html += '<div class="slot-btn-3d" onclick="playChangeCards(1)" style="width:28px;height:28px;">+</div>';
   html += '</div>';
   // Win display (center)
-  html += '<div style="flex:1;text-align:center;color:#27ae60;font-size:14px;font-weight:600;" id="playWinDisplay">WIN: 0.00</div>';
-  // Spin button (right)
-  html += '<div style="flex:1;display:flex;justify-content:flex-end;"><button onclick="playSpin()" style="padding:10px 24px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;">SPIN</button></div>';
+  html += '<div style="flex:1;text-align:center;color:#f5d742;font-size:14px;font-weight:700;" id="playWinDisplay">WIN: 0.00</div>';
+  // Collect button (shown when round_is_over=false, hidden otherwise)
+  var showCollect = resp.round_is_over === false;
+  html += '<div id="playCollectBtn" class="slot-btn-3d" onclick="playCollectRound()" style="width:60px;height:40px;font-size:10px;display:' + (showCollect ? 'flex' : 'none') + ';">COLLECT</div>';
+  // Spin button (square 3D for bingo)
+  html += '<div id="playSpinBtn" class="slot-btn-3d" onclick="playSpin()" style="width:70px;height:46px;font-size:13px;border-radius:8px;">';
+  html += '<span style="font-weight:800;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,0.6);">SPIN</span>';
+  html += '</div>';
   html += '</div>';
 
   gameArea.innerHTML = html;
@@ -486,8 +500,7 @@ function playCalcJackpot(betIndex) {
 }
 
 function playUpdateJackpot() {
-  var sel = document.getElementById('playBetSelect');
-  var betIndex = sel.selectedIndex || 0;
+  var betIndex = window._playBetIndex || 0;
   var jp = playCalcJackpot(betIndex);
   var precision = window._playDisplayPrecision || 2;
   var jpEl = document.getElementById('playJackpotDisplay');
@@ -499,6 +512,92 @@ function playUpdateJackpot() {
       jpEl.style.color = '#f39c12';
     }
   }
+}
+
+function playChangeBet(dir) {
+  var bl = window._playBetList || [];
+  var idx = window._playBetIndex || 0;
+  idx = Math.max(0, Math.min(bl.length - 1, idx + dir));
+  window._playBetIndex = idx;
+  var cards = window._playActiveCards || 4;
+  var display = (bl[idx] || 0) * cards;
+  var el = document.getElementById('playBetDisplay');
+  if (el) el.textContent = display.toFixed(2);
+  playUpdateJackpot();
+}
+
+function playChangeCards(dir) {
+  var maxCards = window._playMaxCards || 4;
+  var cards = window._playActiveCards || maxCards;
+  // Can only close from back: min 1 card
+  cards = Math.max(1, Math.min(maxCards, cards + dir));
+  window._playActiveCards = cards;
+  // Update card_idx
+  _playCardIdx = [];
+  for (var i = 1; i <= cards; i++) _playCardIdx.push(i);
+  // Update display
+  var el = document.getElementById('playCardsDisplay');
+  if (el) el.textContent = cards;
+  // Update bet display (bet * cards)
+  var bl = window._playBetList || [];
+  var idx = window._playBetIndex || 0;
+  var display = (bl[idx] || 0) * cards;
+  var betEl = document.getElementById('playBetDisplay');
+  if (betEl) betEl.textContent = display.toFixed(2);
+  // Apply card masks
+  playUpdateCardMasks();
+}
+
+function playUpdateCardMasks() {
+  var maxCards = window._playMaxCards || 4;
+  var activeCards = window._playActiveCards || maxCards;
+  for (var c = 0; c < maxCards; c++) {
+    var maskId = 'playCardMask' + c;
+    var existing = document.getElementById(maskId);
+    if (c < activeCards) {
+      // Active card - remove mask
+      if (existing) existing.style.display = 'none';
+    } else {
+      // Inactive card - show gray overlay
+      if (existing) {
+        existing.style.display = '';
+      } else {
+        // Try to find the card container and add mask
+        var cells = document.querySelectorAll('.play-card-cell[data-card="' + c + '"]');
+        if (cells.length > 0) {
+          var parent = cells[0].closest('div[style*="text-align:center"]') || cells[0].parentElement.parentElement;
+          if (parent && !document.getElementById(maskId)) {
+            parent.style.position = 'relative';
+            var mask = document.createElement('div');
+            mask.id = maskId;
+            mask.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);border-radius:4px;z-index:5;';
+            parent.appendChild(mask);
+          }
+        }
+      }
+    }
+  }
+}
+
+function playCollectRound() {
+  if (!_playWs || _playWs.readyState !== WebSocket.OPEN) { showAlert('Not connected'); return; }
+  var resp = _playCurrentMachine.response;
+  var roCmd = {
+    cmd: 'finalizajogada',
+    session_token: _playSessionToken,
+    game_id: _playCurrentMachine.machine_id,
+    currency: _playCurrency,
+    opt_id: resp.opt_id || '',
+    username: resp.username || '',
+    bonus_unique_id: '',
+    is_bonus: false,
+    finalizar: true,
+    payload_data: "[{'key':'value'}]"
+  };
+  playLog('>>> [COLLECT ROUND] send: ' + JSON.stringify(roCmd));
+  _playWs.send(JSON.stringify(roCmd));
+  var collectBtn = document.getElementById('playCollectBtn');
+  if (collectBtn) collectBtn.style.display = 'none';
 }
 
 function playRenderPreviewCard(cardIdx, cw, ch, npc, numeros) {
@@ -645,20 +744,23 @@ async function playSpin() {
   // Bingo spin
   if (_playSpinState !== 'idle') return;
   if (!_playWs || _playWs.readyState !== WebSocket.OPEN) { showAlert('WebSocket not connected'); return; }
-  var bet = parseFloat(document.getElementById('playBetSelect').value) || 0.01;
+  var bet = (window._playBetList && window._playBetList[window._playBetIndex]) || 0.01;
   var resp = _playCurrentMachine.response;
   var qtd = resp.qtd || 4;
 
-  // Build card_idx (1-based, all active cards)
-  if (!_playCardIdx.length) {
-    _playCardIdx = [];
-    for (var i = 1; i <= qtd; i++) _playCardIdx.push(i);
-  }
+  // Build card_idx (1-based, active cards from card +/- control)
+  var activeCards = window._playActiveCards || qtd;
+  _playCardIdx = [];
+  for (var i = 1; i <= activeCards; i++) _playCardIdx.push(i);
 
   _playSpinState = 'spinning';
   _playStopRequested = false;
-  var spinBtn = document.querySelector('#playGameArea button[onclick="playSpin()"]');
-  if (spinBtn) { spinBtn.textContent = 'STOP'; spinBtn.onclick = function() { _playStopRequested = true; }; }
+  // Change SPIN to STOP, disable greyed
+  var spinBtn = document.getElementById('playSpinBtn');
+  if (spinBtn) {
+    spinBtn.querySelector('span').textContent = 'STOP';
+    spinBtn.onclick = function() { _playStopRequested = true; };
+  }
   document.getElementById('playWinDisplay').textContent = 'SPINNING...';
 
   var spinCmd = {
@@ -710,8 +812,9 @@ function playHandleSpinResponse(spinResp) {
     if (spinResp.finalizou === true) {
       _playSpinState = 'waiting_roundover';
       playResetSpinBtn();
-      var btn = document.querySelector('#playGameArea button[onclick="playSpin()"]');
-      if (btn) btn.disabled = true;
+      // Keep spin disabled during round over
+      var spinBtn2 = document.getElementById('playSpinBtn');
+      if (spinBtn2) { spinBtn2.style.opacity = '0.5'; spinBtn2.style.pointerEvents = 'none'; }
       playRoundOver();
     } else {
       _playSpinState = 'eb_available';
@@ -941,18 +1044,18 @@ function playShowEbButtons(ebPrice) {
   // Remove existing EB buttons
   var existingEb = document.getElementById('playEbBtns');
   if (existingEb) existingEb.remove();
-  // Find the bottom controls div
-  var controlsDiv = document.querySelector('#playGameArea > div:last-child');
-  if (!controlsDiv) return;
-  // Replace the spin button wrapper with EB buttons (collect + eb price), keep right-aligned
-  var spinBtn = document.querySelector('#playGameArea button[onclick="playSpin()"]');
+  // Hide the spin button and show EB buttons in its place
+  var spinBtn = document.getElementById('playSpinBtn');
+  if (spinBtn) spinBtn.style.display = 'none';
+  // Create EB buttons div next to where spin was
   var ebDiv = document.createElement('div');
   ebDiv.id = 'playEbBtns';
-  ebDiv.style.cssText = 'flex:1;display:flex;gap:8px;align-items:center;justify-content:flex-end;';
-  ebDiv.innerHTML = '<button onclick="playCollect()" style="padding:10px 16px;background:#f39c12;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">COLLECT</button>' +
-    '<button id="playEbPriceBtn" onclick="playBuyEb()" style="padding:10px 16px;background:#e74c3c;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">EB ' + (ebPrice > 0 ? ebPrice.toFixed(2) : 'FREE') + '</button>';
-  if (spinBtn) {
-    spinBtn.parentElement.replaceWith(ebDiv);
+  ebDiv.style.cssText = 'display:flex;gap:6px;align-items:center;';
+  ebDiv.innerHTML = '<div class="slot-btn-3d" onclick="playCollect()" style="width:60px;height:40px;font-size:10px;">COLLECT</div>' +
+    '<div id="playEbPriceBtn" class="slot-btn-3d" onclick="playBuyEb()" style="width:70px;height:40px;font-size:10px;background:linear-gradient(to bottom,#e84a80 0%,#c0003a 45%,#8a0028 100%);">EB ' + (ebPrice > 0 ? ebPrice.toFixed(2) : 'FREE') + '</div>';
+  // Insert after spin button's parent or at end of controls
+  if (spinBtn && spinBtn.parentElement) {
+    spinBtn.parentElement.appendChild(ebDiv);
   }
 }
 
@@ -1004,26 +1107,23 @@ function playRoundOver() {
 function playResetSpinBtn() {
   // Remove EB buttons if present
   playRemoveEbButtons();
-  // Find or recreate spin button
-  var gameArea = document.getElementById('playGameArea');
-  if (!gameArea) return;
-  var existingBtn = gameArea.querySelector('button[onclick="playSpin()"]');
-  if (existingBtn) {
-    existingBtn.textContent = 'SPIN';
-    existingBtn.disabled = false;
-    existingBtn.onclick = playSpin;
+  // Re-enable spin button and restore SPIN text
+  var spinBtn = document.getElementById('playSpinBtn');
+  if (spinBtn) {
+    spinBtn.style.opacity = '1';
+    spinBtn.style.pointerEvents = 'auto';
+    var span = spinBtn.querySelector('span');
+    if (span) span.textContent = 'SPIN';
+    spinBtn.onclick = playSpin;
   }
 }
 
 function playRemoveEbButtons() {
   var ebDiv = document.getElementById('playEbBtns');
-  if (ebDiv) {
-    // Replace with spin button wrapped in right-aligned container
-    var wrapper = document.createElement('div');
-    wrapper.style.cssText = 'flex:1;display:flex;justify-content:flex-end;';
-    wrapper.innerHTML = '<button onclick="playSpin()" style="padding:10px 24px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;">SPIN</button>';
-    ebDiv.replaceWith(wrapper);
-  }
+  if (ebDiv) ebDiv.remove();
+  // Show spin button again
+  var spinBtn = document.getElementById('playSpinBtn');
+  if (spinBtn) spinBtn.style.display = '';
 }
 
 function playUpdateBalance(newBalance) {

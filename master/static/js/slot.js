@@ -134,8 +134,8 @@ function slotRenderUI() {
   html += '<svg id="slotLineSvg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></svg>';
   html += '</div>';
 
-  // Win display
-  html += '<div id="slotWinDisplay" style="position:absolute;top:75.5%;left:0;width:100%;text-align:center;font-size:14px;font-weight:700;color:#f5d742;text-shadow:0 2px 4px #000;"></div>';
+  // Win display (centered over reels area where coins appear)
+  html += '<div id="slotWinDisplay" style="position:absolute;top:45%;left:17%;width:66%;text-align:center;font-size:20px;font-weight:800;color:#f5d742;text-shadow:0 0 10px #f5d742,0 2px 4px #000;z-index:50;pointer-events:none;"></div>';
 
   // BET controls (left box area ~80% top, ~7% left)
   html += '<div style="position:absolute;top:80.5%;left:7%;display:flex;align-items:center;gap:3px;">';
@@ -155,6 +155,10 @@ function slotRenderUI() {
     html += '<div class="slot-btn-3d" onclick="slotChangeLines(1)" style="width:28px;height:28px;">+</div>';
   }
   html += '</div>';
+
+  // COLLECT button (shown when round_is_over=false)
+  var showCollect = resp.round_is_over === false;
+  html += '<div id="slotCollectBtn" class="slot-btn-3d" onclick="slotCollectRound()" style="position:absolute;top:78%;right:24%;width:52px;height:36px;font-size:9px;display:' + (showCollect ? 'flex' : 'none') + ';">COLLECT</div>';
 
   // SPIN button (large circle, shifted left-up to align with background)
   html += '<div id="slotSpinBtn" class="slot-spin-3d" onclick="slotSpin()" style="position:absolute;top:74%;right:10%;width:86px;height:86px;">';
@@ -298,7 +302,7 @@ function slotSpin() {
   var balEl = document.getElementById('slotBalance');
   if (balEl) {
     var curBal = parseFloat(balEl.textContent.replace(/[^\d.-]/g, '')) || 0;
-    slotUpdateBalance(curBal - totalBet);
+    slotUpdateBalance(curBal - totalBet, false);
   }
 
   // Start reel spin animation (visual only, will stop when response arrives)
@@ -404,7 +408,7 @@ function slotHandleSpinResponse(resp) {
   var st = _slotState;
   playLog('<<< [SLOT SPIN] icons: ' + JSON.stringify(resp.icons) + ', won: ' + resp.total_won);
   // Don't update balance yet if won > 0 (wait for animation)
-  if (resp.total_won <= 0 && resp.balance !== undefined) slotUpdateBalance(resp.balance);
+  if (resp.total_won <= 0 && resp.balance !== undefined) slotUpdateBalance(resp.balance, false);
   if (resp.features) slotUpdateJackpotFromFeatures(resp.features);
   if (resp.icons && resp.icons.length >= st.rowCount * st.colCount) {
     st.reelIcons = resp.icons.slice();
@@ -414,10 +418,8 @@ function slotHandleSpinResponse(resp) {
     if (resp.total_won > 0) {
       slotShowWinAnimation(resp.total_won);
       slotShowWinningLines(resp);
-      // Update balance after animation (5s)
-      setTimeout(function() {
-        if (resp.balance !== undefined) slotUpdateBalance(resp.balance);
-      }, 5000);
+      // Start balance animation immediately (coins are flying)
+      if (resp.balance !== undefined) slotUpdateBalance(resp.balance);
     }
     slotRoundOver();
   });
@@ -450,14 +452,15 @@ function slotHandleRoundOverResponse(resp) {
   var st = _slotState;
   if (resp.total_won !== undefined && resp.total_won > 0) {
     slotShowWinAnimation(resp.total_won);
-    // Update balance after animation (5s)
+    // Start balance animation immediately (coins are flying)
+    if (resp.balance !== undefined) slotUpdateBalance(resp.balance);
+    // Enable spin after animation finishes
     setTimeout(function() {
-      if (resp.balance !== undefined) slotUpdateBalance(resp.balance);
       st.spinning = false;
       slotEnableSpinBtn();
     }, 5000);
   } else {
-    if (resp.balance !== undefined) slotUpdateBalance(resp.balance);
+    if (resp.balance !== undefined) slotUpdateBalance(resp.balance, false);
     st.spinning = false;
     slotEnableSpinBtn();
   }
@@ -468,11 +471,43 @@ function slotEnableSpinBtn() {
   if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
 }
 
-function slotUpdateBalance(newBalance) {
+var _slotBalanceTimer = null;
+
+function slotUpdateBalance(newBalance, animate) {
   var st = _slotState;
   var el = document.getElementById('slotBalance');
-  if (el) el.textContent = '\uD83D\uDCB0 ' + newBalance.toLocaleString() + ' ' + st.displaySymbol;
-  document.getElementById('playBottomText').textContent = 'Balance: ' + newBalance.toLocaleString() + ' ' + st.displaySymbol;
+  if (!el) return;
+
+  // Get current displayed balance
+  var curText = el.textContent.replace(/[^\d.-]/g, '');
+  var curBal = parseFloat(curText) || 0;
+  var diff = newBalance - curBal;
+
+  // If difference is negligible or animate=false, just set directly
+  if (Math.abs(diff) < 0.005 || animate === false) {
+    el.textContent = '\uD83D\uDCB0 ' + newBalance.toLocaleString(undefined, {minimumFractionDigits: st.displayPrecision, maximumFractionDigits: st.displayPrecision}) + ' ' + st.displaySymbol;
+    document.getElementById('playBottomText').textContent = 'Balance: ' + newBalance.toLocaleString() + ' ' + st.displaySymbol;
+    return;
+  }
+
+  // Animate: increment by 0.01 steps over ~2 seconds
+  if (_slotBalanceTimer) clearInterval(_slotBalanceTimer);
+  var step = 0.01 * (diff > 0 ? 1 : -1);
+  var steps = Math.abs(Math.round(diff / 0.01));
+  var interval = Math.max(10, Math.min(50, 2000 / steps)); // 2s total, min 10ms per tick
+  var current = curBal;
+
+  _slotBalanceTimer = setInterval(function() {
+    current += step;
+    // Check if we've reached or passed the target
+    if ((step > 0 && current >= newBalance) || (step < 0 && current <= newBalance)) {
+      current = newBalance;
+      clearInterval(_slotBalanceTimer);
+      _slotBalanceTimer = null;
+    }
+    el.textContent = '\uD83D\uDCB0 ' + current.toLocaleString(undefined, {minimumFractionDigits: st.displayPrecision, maximumFractionDigits: st.displayPrecision}) + ' ' + st.displaySymbol;
+    document.getElementById('playBottomText').textContent = 'Balance: ' + current.toLocaleString() + ' ' + st.displaySymbol;
+  }, interval);
 }
 
 function slotUpdateJackpotFromFeatures(features) {
@@ -524,7 +559,7 @@ function slotShowWinAnimation(amount) {
         // End at balance position (relative to skin)
         var endX = balRect.left - skinRect.left + 30;
         var endY = balRect.top - skinRect.top + 10;
-        coin.style.cssText = 'position:absolute;left:' + startX + 'px;top:' + startY + 'px;width:20px;height:20px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#ffe066,#f5a623,#c87800);border:2px solid #f5d742;box-shadow:0 2px 6px rgba(0,0,0,0.5),inset 0 -2px 3px rgba(0,0,0,0.3);z-index:100;font-size:10px;text-align:center;line-height:20px;color:#7a5000;font-weight:700;pointer-events:none;';
+        coin.style.cssText = 'position:absolute;left:' + startX + 'px;top:' + startY + 'px;width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#ffe066,#f5a623,#c87800);border:3px solid #f5d742;box-shadow:0 3px 8px rgba(0,0,0,0.5),inset 0 -3px 4px rgba(0,0,0,0.3),0 0 12px rgba(245,166,35,0.4);z-index:100;font-size:16px;text-align:center;line-height:36px;color:#7a5000;font-weight:700;pointer-events:none;';
         coin.textContent = '$';
         skin.appendChild(coin);
 
@@ -545,4 +580,20 @@ function slotShowWinAnimation(amount) {
     var el = document.getElementById('slotWinDisplay');
     if (el) el.innerHTML = '';
   }, 5000);
+}
+
+function slotCollectRound() {
+  if (!_playWs || _playWs.readyState !== WebSocket.OPEN) { showAlert('Not connected'); return; }
+  var st = _slotState;
+  var roCmd = {
+    cmd: 'finalizajogada', session_token: st.sessionToken,
+    game_id: st.machineId, currency: st.currency,
+    opt_id: st.loginResp.opt_id || '', username: st.loginResp.username || '',
+    bonus_unique_id: '', is_bonus: false, finalizar: true,
+    payload_data: "[{'key':'value'}]"
+  };
+  playLog('>>> [SLOT COLLECT ROUND] send: ' + JSON.stringify(roCmd));
+  _playWs.send(JSON.stringify(roCmd));
+  var btn = document.getElementById('slotCollectBtn');
+  if (btn) btn.style.display = 'none';
 }
