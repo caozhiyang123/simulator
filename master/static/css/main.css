@@ -190,3 +190,15 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   50% { transform: scale(0.9); }
   100% { transform: scale(1); }
 }
+
+/* DoubleMania 3D PLAY button */
+.dm-play-btn {
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+.dm-play-btn:hover {
+  background: linear-gradient(to bottom, #f88 0%, #e55 40%, #c11 60%, #a00 100%) !important;
+}
+.dm-play-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #600, 0 3px 6px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.3) !important;
+}

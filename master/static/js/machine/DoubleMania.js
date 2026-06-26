@@ -89,23 +89,23 @@ function doubleManiaOpenBonusGame() {
   topHtml += '</div></div>';
   topHtml += '</div>';
 
-  // === MIDDLE SECTION: Slot reels (1x4) ===
-  var midHtml = '<div style="background:linear-gradient(to bottom,#1a3a8a,#2a4aaa,#1a3a8a);border-radius:10px;padding:16px;margin-bottom:16px;border:3px solid #f5d742;">';
-  midHtml += '<div id="dmBonusReels" style="display:flex;gap:8px;justify-content:center;align-items:center;">';
+  // === MIDDLE SECTION: Slot reels (1x4, no gap, icons fill red border) ===
+  var midHtml = '<div style="background:linear-gradient(to bottom,#1a3a8a,#2a4aaa,#1a3a8a);border-radius:10px;padding:20px 16px;margin-bottom:16px;border:3px solid #f5d742;">';
+  midHtml += '<div id="dmBonusReels" style="display:flex;gap:0;justify-content:center;align-items:center;">';
   for (var r = 0; r < 4; r++) {
-    midHtml += '<div class="dm-reel-frame" style="width:120px;height:120px;background:linear-gradient(to bottom,#ddd,#fff,#ddd);border-radius:8px;border:4px solid #c44;overflow:hidden;position:relative;">';
-    midHtml += '<div id="dmReel' + r + '" class="dm-reel-strip" style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;transition:none;">';
-    midHtml += '<img src="/static/machine/DoubleMania/BonusGame/icon/i1.PNG" style="width:80px;height:80px;object-fit:contain;">';
+    midHtml += '<div class="dm-reel-frame" style="width:130px;height:130px;background:#fff;border:5px solid #c00;overflow:hidden;position:relative;">';
+    midHtml += '<div id="dmReel' + r + '" class="dm-reel-strip" style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">';
+    midHtml += '<img src="/static/machine/DoubleMania/BonusGame/icon/i1.PNG" style="width:100%;height:100%;object-fit:cover;">';
     midHtml += '</div>';
     midHtml += '</div>';
   }
   midHtml += '</div>';
   midHtml += '</div>';
 
-  // === BOTTOM SECTION: PLAY button (right-aligned) ===
-  var botHtml = '<div style="display:flex;justify-content:flex-end;align-items:center;">';
+  // === BOTTOM SECTION: Status + 3D PLAY button (right-aligned) ===
+  var botHtml = '<div style="display:flex;justify-content:flex-end;align-items:center;padding:4px 0;">';
   botHtml += '<div style="color:#fff;font-size:12px;margin-right:auto;" id="dmBonusStatus">🎰 Press PLAY to spin!</div>';
-  botHtml += '<div id="dmBonusPlayBtn" onclick="doubleManiaSpinBonus()" style="width:100px;height:40px;background:linear-gradient(to bottom,#e44,#a00);border-radius:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;font-size:14px;font-weight:700;border:2px solid #f66;box-shadow:0 4px 8px rgba(0,0,0,0.4);user-select:none;">PLAY</div>';
+  botHtml += '<div id="dmBonusPlayBtn" onclick="doubleManiaSpinBonus()" class="dm-play-btn" style="width:110px;height:44px;border-radius:22px;cursor:pointer;user-select:none;position:relative;background:linear-gradient(to bottom,#f66 0%,#e33 40%,#b00 60%,#900 100%);border:2px solid #faa;box-shadow:0 4px 0 #600,0 6px 12px rgba(0,0,0,0.4),inset 0 1px 2px rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,0.5);letter-spacing:1px;">PLAY</div>';
   botHtml += '</div>';
 
   container.innerHTML = topHtml + midHtml + botHtml;
@@ -178,17 +178,28 @@ function doubleManiaSpinBonus() {
 var _dmReelTimers = [];
 
 function doubleManiaAnimateReels() {
-  // Each reel cycles through random icons rapidly
+  // Each reel scrolls icons vertically (3 icons visible, moving up)
   for (var r = 0; r < 4; r++) {
     (function(reelIdx) {
-      var iconIdx = 1;
+      var offset = 0;
       _dmReelTimers[reelIdx] = setInterval(function() {
-        iconIdx = (iconIdx % 4) + 1;
         var reelEl = document.getElementById('dmReel' + reelIdx);
-        if (reelEl) {
-          reelEl.innerHTML = '<img src="/static/machine/DoubleMania/BonusGame/icon/i' + iconIdx + '.PNG" style="width:80px;height:80px;object-fit:contain;filter:blur(2px);">';
+        if (!reelEl) return;
+        // Build a tall strip of icons scrolling vertically
+        offset -= 20;
+        if (offset <= -130) offset = 0;
+        var icons = '';
+        for (var k = 0; k < 4; k++) {
+          var iconId = ((reelIdx + k + Math.floor(Math.abs(offset) / 30)) % 4) + 1;
+          icons += '<img src="/static/machine/DoubleMania/BonusGame/icon/i' + iconId + '.PNG" style="width:100%;height:130px;object-fit:cover;display:block;flex-shrink:0;">';
         }
-      }, 80 + reelIdx * 20);
+        reelEl.style.display = 'flex';
+        reelEl.style.flexDirection = 'column';
+        reelEl.style.alignItems = 'stretch';
+        reelEl.style.justifyContent = 'flex-start';
+        reelEl.style.top = offset + 'px';
+        reelEl.innerHTML = icons;
+      }, 50 + reelIdx * 10);
     })(r);
   }
 }
@@ -208,14 +219,19 @@ function doubleManiaStopReels(icons) {
         var iconId = icons[reelIdx] || 1;
         var reelEl = document.getElementById('dmReel' + reelIdx);
         if (reelEl) {
+          reelEl.style.top = '0';
+          reelEl.style.display = 'flex';
+          reelEl.style.flexDirection = 'column';
+          reelEl.style.alignItems = 'center';
+          reelEl.style.justifyContent = 'center';
           // Check if this is the "over" icon (game over icon = 5)
           var config = doubleManiaGetBonusConfig();
           var overIcon = config.over_icon || 5;
           if (iconId === overIcon) {
-            // Show X mark for lose
-            reelEl.innerHTML = '<div style="width:80px;height:80px;display:flex;align-items:center;justify-content:center;font-size:50px;color:#c00;font-weight:700;">✕</div>';
+            // Show X mark for lose — fills the frame
+            reelEl.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#fff;font-size:70px;color:#c00;font-weight:700;">✕</div>';
           } else {
-            reelEl.innerHTML = '<img src="/static/machine/DoubleMania/BonusGame/icon/i' + iconId + '.PNG" style="width:80px;height:80px;object-fit:contain;animation:dmReelBounce 0.3s ease;">';
+            reelEl.innerHTML = '<img src="/static/machine/DoubleMania/BonusGame/icon/i' + iconId + '.PNG" style="width:100%;height:100%;object-fit:cover;animation:dmReelBounce 0.3s ease;">';
           }
         }
       }, 400 + reelIdx * 300);
