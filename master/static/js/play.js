@@ -203,6 +203,12 @@ async function playSelectMachine(machineId, enabled, machineType) {
       playLog('<<< [JACKPOT UPDATE] ' + JSON.stringify(resp));
       var engine = (machineType === 'slot') ? SlotEngine : BingoEngine;
       engine.onJackpotUpdate(resp.features, machineName);
+    } else if (resp.cmd === 'bonus_game') {
+      // Bonus game response (e.g. DoubleMania BonusGameFeature)
+      playLog('<<< [BONUS GAME] response: ' + JSON.stringify(resp));
+      if (typeof doubleManiaHandleBonusResponse === 'function') {
+        doubleManiaHandleBonusResponse(resp);
+      }
     } else {
       playLog('<<< [WS] unknown cmd: ' + JSON.stringify(resp));
     }
@@ -721,6 +727,7 @@ var _playCardIdx = [];
 var _playSpinResponse = null;
 var _playBalanceAnimTimer = null; // balance counting animation timer
 var _playCurrentBalance = 0; // tracks the currently displayed balance value
+var _playBonusPending = false; // set by machine plugins to defer round over
 
 // ---------------------------------------------------------------------------
 // Coin Effect & Animated Balance Helpers (Bingo Common)
@@ -1064,7 +1071,10 @@ function playHandleSpinResponse(spinResp) {
       // Keep spin disabled during round over
       var spinBtn2 = document.getElementById('playSpinBtn');
       if (spinBtn2) { spinBtn2.style.opacity = '0.5'; spinBtn2.style.pointerEvents = 'none'; }
-      playRoundOver();
+      // If a bonus game is pending, defer round over until bonus finishes
+      if (!_playBonusPending) {
+        playRoundOver();
+      }
     } else {
       _playSpinState = 'eb_available';
       playShowEbButtons(spinResp.eb_price || 0);
