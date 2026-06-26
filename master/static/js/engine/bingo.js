@@ -106,6 +106,13 @@ function bingoSpinToolToggle() {
 }
 
 function bingoSpinToolChoosePattern() {
+  // Mutual exclusion: clear other selections
+  _bingoSpinTool.targetFeatureIds = [];
+  _bingoSpinTool.targetBalls = [];
+  document.querySelectorAll('.play-card-cell').forEach(function(c) { c.style.outline = ''; c.style.cursor = ''; });
+  var listEl = document.getElementById('bstFeatureList');
+  if (listEl) listEl.style.display = 'none';
+
   _bingoSpinTool.mode = 'pattern';
   bingoSpinToolUpdateStatus();
   // Scroll to pattern area and enable click on pattern grids
@@ -139,6 +146,12 @@ function bingoSpinToolChoosePattern() {
 }
 
 function bingoSpinToolChooseFeature() {
+  // Mutual exclusion: clear other selections
+  _bingoSpinTool.targetPatternIds = [];
+  _bingoSpinTool.targetBalls = [];
+  document.querySelectorAll('.play-pat-grid').forEach(function(g) { g.style.outline = ''; });
+  document.querySelectorAll('.play-card-cell').forEach(function(c) { c.style.outline = ''; c.style.cursor = ''; });
+
   var listEl = document.getElementById('bstFeatureList');
   if (!listEl) return;
   if (listEl.style.display !== 'none') { listEl.style.display = 'none'; return; }
@@ -158,6 +171,12 @@ function bingoSpinToolChooseFeature() {
 }
 
 function bingoSpinToolSelectFeature(fid, el) {
+  // Mutual exclusion: clear other selections
+  _bingoSpinTool.targetPatternIds = [];
+  _bingoSpinTool.targetBalls = [];
+  document.querySelectorAll('.play-pat-grid').forEach(function(g) { g.style.outline = ''; });
+  document.querySelectorAll('.play-card-cell').forEach(function(c) { c.style.outline = ''; c.style.cursor = ''; });
+
   _bingoSpinTool.targetFeatureIds = [fid];
   // Update all sibling styles
   var siblings = el.parentElement.children;
@@ -171,6 +190,13 @@ function bingoSpinToolSelectFeature(fid, el) {
 }
 
 function bingoSpinToolChooseBalls() {
+  // Mutual exclusion: clear other selections
+  _bingoSpinTool.targetPatternIds = [];
+  _bingoSpinTool.targetFeatureIds = [];
+  document.querySelectorAll('.play-pat-grid').forEach(function(g) { g.style.outline = ''; });
+  var listEl = document.getElementById('bstFeatureList');
+  if (listEl) listEl.style.display = 'none';
+
   _bingoSpinTool.mode = 'balls';
   _bingoSpinTool.targetBalls = [];
   bingoSpinToolUpdateStatus();

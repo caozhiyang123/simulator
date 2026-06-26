@@ -216,6 +216,7 @@ function playRenderGame(resp, machineConfig) {
   var gameArea = document.getElementById('playGameArea');
   var betList = resp.bet_list || [];
   var balance = resp.balance || 0;
+  _playCurrentBalance = balance; // initialize tracked balance
   var nickname = resp.nickname || 'Player';
   var gameId = resp.game_id || '';
   var currency = resp.display_currency_symbol || '';
@@ -718,6 +719,209 @@ var _playStopRequested = false;
 var _playSpinState = 'idle'; // idle, spinning, eb_available, waiting_roundover
 var _playCardIdx = [];
 var _playSpinResponse = null;
+var _playBalanceAnimTimer = null; // balance counting animation timer
+var _playCurrentBalance = 0; // tracks the currently displayed balance value
+
+// ---------------------------------------------------------------------------
+// Coin Effect & Animated Balance Helpers (Bingo Common)
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the current displayed balance value.
+ */
+function playGetCurrentBalance() {
+  return _playCurrentBalance;
+}
+
+/**
+ * Set balance display immediately (no animation).
+ */
+function playSetBalanceImmediate(val) {
+  if (_playBalanceAnimTimer) { clearInterval(_playBalanceAnimTimer); _playBalanceAnimTimer = null; }
+  _playCurrentBalance = val;
+  playRenderBalanceValue(val);
+}
+
+/**
+ * Render the balance number in the UI elements.
+ */
+function playRenderBalanceValue(val) {
+  var currency = (_playCurrentMachine && _playCurrentMachine.response) ? (_playCurrentMachine.response.display_currency_symbol || '') : '';
+  var precision = window._playDisplayPrecision || 2;
+  var formatted = val.toFixed(precision);
+  var topBar = document.querySelector('#playGameArea > div:first-child');
+  if (topBar) {
+    var spans = topBar.querySelectorAll('span');
+    for (var i = 0; i < spans.length; i++) {
+      if (spans[i].textContent.indexOf('\uD83D\uDCB0') >= 0) {
+        spans[i].textContent = '\uD83D\uDCB0 ' + formatted + ' ' + currency;
+        break;
+      }
+    }
+  }
+  var bottomEl = document.getElementById('playBottomText');
+  if (bottomEl) bottomEl.textContent = 'Balance: ' + formatted + ' ' + currency;
+}
+
+/**
+ * Animate balance from current value to target value over duration ms.
+ * Steps in increments of 0.01.
+ */
+function playAnimateBalance(targetBalance, duration) {
+  if (_playBalanceAnimTimer) { clearInterval(_playBalanceAnimTimer); _playBalanceAnimTimer = null; }
+  var start = _playCurrentBalance;
+  var diff = targetBalance - start;
+  if (Math.abs(diff) < 0.005) {
+    playSetBalanceImmediate(targetBalance);
+    return;
+  }
+  var stepSize = 0.01;
+  var totalSteps = Math.ceil(Math.abs(diff) / stepSize);
+  // Cap steps to keep animation smooth (max ~150 steps)
+  if (totalSteps > 150) { stepSize = Math.abs(diff) / 150; totalSteps = 150; }
+  var interval = Math.max(10, Math.floor(duration / totalSteps));
+  var step = 0;
+  var direction = diff > 0 ? 1 : -1;
+  _playBalanceAnimTimer = setInterval(function() {
+    step++;
+    if (step >= totalSteps) {
+      clearInterval(_playBalanceAnimTimer);
+      _playBalanceAnimTimer = null;
+      _playCurrentBalance = targetBalance;
+      playRenderBalanceValue(targetBalance);
+    } else {
+      _playCurrentBalance = start + direction * stepSize * step;
+      playRenderBalanceValue(_playCurrentBalance);
+    }
+  }, interval);
+}
+
+/**
+ * Spawn coin particles on winning card cells and fly them to the balance area.
+ * winningCards: array of {cardIdx, cellIndices[]} from pattern matching
+ */
+function playSpawnCoinEffect(winningCards, onStart) {
+  var playContent = document.getElementById('playContent') || document.getElementById('playGameArea');
+  if (!playContent) { if (onStart) onStart(); return; }
+  playContent.style.position = 'relative';
+
+  // Find balance element position
+  var balSpan = null;
+  var topBar = document.querySelector('#playGameArea > div:first-child');
+  if (topBar) {
+    var spans = topBar.querySelectorAll('span');
+    for (var i = 0; i < spans.length; i++) {
+      if (spans[i].textContent.indexOf('\uD83D\uDCB0') >= 0) { balSpan = spans[i]; break; }
+    }
+  }
+  var containerRect = playContent.getBoundingClientRect();
+  var balRect = balSpan ? balSpan.getBoundingClientRect() : { left: containerRect.left + 100, top: containerRect.top + 10, width: 60, height: 20 };
+  var endX = balRect.left - containerRect.left + balRect.width / 2;
+  var endY = balRect.top - containerRect.top + balRect.height / 2;
+
+  var coinCount = 0;
+  var maxCoins = 12; // limit to avoid too many particles
+  var coinSources = [];
+
+  // Collect source positions from winning card cells
+  winningCards.forEach(function(wc) {
+    wc.cellIndices.forEach(function(idx) {
+      if (coinCount >= maxCoins) return;
+      var cell = document.querySelector('.play-card-cell[data-card="' + wc.cardIdx + '"][data-idx="' + idx + '"]');
+      if (cell) {
+        var cellRect = cell.getBoundingClientRect();
+        coinSources.push({
+          x: cellRect.left - containerRect.left + cellRect.width / 2,
+          y: cellRect.top - containerRect.top + cellRect.height / 2
+        });
+        coinCount++;
+      }
+    });
+  });
+
+  if (coinSources.length === 0) {
+    // Fallback: if no cells found, spawn from center of card area
+    var cardsArea = document.getElementById('playCardsArea');
+    if (cardsArea) {
+      var caRect = cardsArea.getBoundingClientRect();
+      coinSources.push({ x: caRect.left - containerRect.left + caRect.width / 2, y: caRect.top - containerRect.top + caRect.height / 2 });
+    }
+  }
+
+  // Fire onStart callback when first coin starts flying (balance animation begins)
+  var startFired = false;
+
+  // Create coins with staggered launch
+  coinSources.forEach(function(src, i) {
+    setTimeout(function() {
+      if (!startFired && onStart) { startFired = true; onStart(); }
+      var coin = document.createElement('div');
+      coin.style.cssText = 'position:absolute;left:' + src.x + 'px;top:' + src.y + 'px;width:20px;height:20px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#ffe066,#f5a623,#c87800);border:2px solid #f5d742;box-shadow:0 2px 6px rgba(0,0,0,0.5);z-index:200;pointer-events:none;font-size:10px;text-align:center;line-height:20px;color:#7a5000;font-weight:700;transform:translate(-50%,-50%);animation:hotBingoCoinSpin 0.3s linear infinite;';
+      coin.textContent = '$';
+      playContent.appendChild(coin);
+
+      // Animate: pop up then fly to balance
+      var keyframes = [
+        { transform: 'translate(-50%,-50%) scale(0.3)', opacity: 0 },
+        { transform: 'translate(-50%,-50%) scale(1.2)', opacity: 1, offset: 0.2 },
+        { transform: 'translate(' + (endX - src.x) + 'px,' + (endY - src.y) + 'px) scale(0.5)', opacity: 0.6 }
+      ];
+      var anim = coin.animate(keyframes, {
+        duration: 800 + Math.random() * 400,
+        easing: 'cubic-bezier(0.2,0.8,0.3,1)',
+        fill: 'forwards'
+      });
+      anim.onfinish = function() { coin.remove(); };
+    }, i * 80); // stagger 80ms per coin
+  });
+
+  // If no coins, still fire onStart
+  if (coinSources.length === 0 && onStart) onStart();
+}
+
+/**
+ * Detect winning cards and their pattern-matched cell indices from the current state.
+ * Returns array of {cardIdx, cellIndices[]}
+ */
+function playDetectWinningCards(ballList) {
+  if (!_playCurrentMachine || !_playCurrentMachine.config) return [];
+  var mathModel = (_playCurrentMachine.config.math_model && _playCurrentMachine.config.math_model[0]) || {};
+  var patterns = mathModel.pattern || [];
+  var numPerCard = mathModel.numPerCard || 25;
+  var qtd = (_playCurrentMachine.response && _playCurrentMachine.response.qtd) || 4;
+  var numeros = (_playCurrentMachine.response && _playCurrentMachine.response.numeros) || [];
+  var ballSet = new Set(ballList);
+  var result = [];
+  var seenCards = {};
+
+  for (var c = 0; c < qtd; c++) {
+    var cardOffset = c * numPerCard;
+    var cardHits = [];
+    for (var i = 0; i < numPerCard; i++) {
+      var num = numeros[cardOffset + i];
+      cardHits.push(num === 0 || ballSet.has(num));
+    }
+    patterns.forEach(function(p) {
+      var fmt = p.format || '';
+      if (fmt.length !== numPerCard) return;
+      var allMatch = true;
+      for (var i = 0; i < numPerCard; i++) {
+        if (fmt[i] === '1' && !cardHits[i]) { allMatch = false; break; }
+      }
+      if (allMatch) {
+        if (!seenCards[c]) { seenCards[c] = []; }
+        for (var i = 0; i < numPerCard; i++) {
+          if (fmt[i] === '1' && seenCards[c].indexOf(i) < 0) seenCards[c].push(i);
+        }
+      }
+    });
+  }
+
+  for (var c in seenCards) {
+    result.push({ cardIdx: parseInt(c), cellIndices: seenCards[c] });
+  }
+  return result;
+}
 
 async function playSpin() {
   if (!_playSessionToken || !_playCurrentMachine) { showAlert('Not connected'); return; }
@@ -750,6 +954,10 @@ async function playSpin() {
     spinBtn.onclick = function() { _playStopRequested = true; };
   }
   document.getElementById('playWinDisplay').textContent = 'SPINNING...';
+
+  // Immediately deduct total bet from displayed balance
+  var totalBet = bet * activeCards;
+  playSetBalanceImmediate(playGetCurrentBalance() - totalBet);
 
   // Get spin tool overrides (admin/qa only)
   var toolOverrides = (typeof bingoSpinToolGetOverrides === 'function') ? bingoSpinToolGetOverrides() : {};
@@ -786,7 +994,7 @@ function playHandleSpinResponse(spinResp) {
   }
 
   _playSpinResponse = spinResp;
-  playUpdateBalance(spinResp.balance);
+  // Don't update balance immediately — will animate after balls
   playUpdateJackpotFromFeatures(spinResp.features);
 
   // Reset cards before showing new balls
@@ -803,6 +1011,18 @@ function playHandleSpinResponse(spinResp) {
 
     // Check pattern matches and "miss one" after all balls displayed
     playCheckPatterns(spinResp.balls || []);
+
+    // Coin effect + animated balance
+    if (spinResp.total_won > 0) {
+      var winCards = playDetectWinningCards(spinResp.balls || []);
+      playSpawnCoinEffect(winCards, function() {
+        // Animate balance from current to server balance over ~1.5s
+        playAnimateBalance(spinResp.balance, 1500);
+      });
+    } else {
+      // No win — just set balance to server value
+      playSetBalanceImmediate(spinResp.balance);
+    }
 
     if (spinResp.finalizou === true) {
       _playSpinState = 'waiting_roundover';
@@ -915,7 +1135,8 @@ function playCheckPatterns(ballList) {
 }
 
 function playHandleRoundOverResponse(roResp) {
-  playUpdateBalance(roResp.balance);
+  // Round over — set final balance (no coin effect, just sync to server value)
+  playSetBalanceImmediate(roResp.balance);
   if (roResp.total_won !== undefined) {
     document.getElementById('playWinDisplay').textContent = 'WIN: ' + roResp.total_won.toFixed(2);
   }
@@ -926,7 +1147,6 @@ function playHandleRoundOverResponse(roResp) {
 function playHandleBuyEbResponse(ebResp) {
   playLog('<<< [BUY EB] handling: extra=' + ebResp.extra + ', won=' + ebResp.total_won + ', has_eb=' + ebResp.has_extra_ball + ', eb_price=' + ebResp.eb_price);
   document.getElementById('playWinDisplay').textContent = 'WIN: ' + (ebResp.total_won || 0).toFixed(2);
-  playUpdateBalance(ebResp.balance);
   playUpdateJackpotFromFeatures(ebResp.features);
 
   // Show the extra ball
@@ -938,6 +1158,27 @@ function playHandleBuyEbResponse(ebResp) {
 
   // Re-check patterns with updated ball list (original balls + all EBs so far)
   playRecheckPatternsAfterEb();
+
+  // Coin effect + animated balance if there's a win increase
+  var prevBalance = playGetCurrentBalance();
+  if (ebResp.balance > prevBalance) {
+    // Collect all balls for pattern detection
+    var allBalls = [];
+    var ballAreaEl = document.getElementById('playBallArea');
+    if (ballAreaEl) {
+      ballAreaEl.querySelectorAll('div').forEach(function(d) { var n = parseInt(d.textContent); if (!isNaN(n)) allBalls.push(n); });
+    }
+    if (_playSpinResponse && _playSpinResponse.balls) {
+      _playSpinResponse.balls.forEach(function(b) { if (allBalls.indexOf(b) < 0) allBalls.push(b); });
+    }
+    var winCards = playDetectWinningCards(allBalls);
+    playSpawnCoinEffect(winCards, function() {
+      playAnimateBalance(ebResp.balance, 1200);
+    });
+  } else {
+    // No win increase or loss (EB cost), just set balance
+    playSetBalanceImmediate(ebResp.balance);
+  }
 
   // Check if more EBs available
   if (ebResp.has_extra_ball === true && ebResp.eb_price !== undefined) {
@@ -1057,6 +1298,18 @@ function playShowEbButtons(ebPrice) {
 function playBuyEb() {
   if (!_playWs || _playWs.readyState !== WebSocket.OPEN) { showAlert('Not connected'); return; }
   var resp = _playCurrentMachine.response;
+
+  // Immediately deduct EB price from displayed balance
+  var ebPrice = 0;
+  var ebBtn = document.getElementById('playEbPriceBtn');
+  if (ebBtn) {
+    var match = ebBtn.textContent.match(/[\d.]+/);
+    if (match) ebPrice = parseFloat(match[0]) || 0;
+  }
+  if (ebPrice > 0) {
+    playSetBalanceImmediate(playGetCurrentBalance() - ebPrice);
+  }
+
   var ebCmd = {
     cmd: 'solicitajogada',
     session_token: _playSessionToken,
@@ -1123,20 +1376,8 @@ function playRemoveEbButtons() {
 
 function playUpdateBalance(newBalance) {
   if (newBalance === undefined || newBalance === null) return;
-  var currency = (_playCurrentMachine && _playCurrentMachine.response) ? (_playCurrentMachine.response.display_currency_symbol || '') : '';
-  // Update top info bar balance
-  var topBar = document.querySelector('#playGameArea > div:first-child');
-  if (topBar) {
-    var spans = topBar.querySelectorAll('span');
-    for (var i = 0; i < spans.length; i++) {
-      if (spans[i].textContent.indexOf('\uD83D\uDCB0') >= 0) {
-        spans[i].textContent = '\uD83D\uDCB0 ' + newBalance.toLocaleString() + ' ' + currency;
-        break;
-      }
-    }
-  }
-  // Update bottom text
-  document.getElementById('playBottomText').textContent = 'Balance: ' + newBalance.toLocaleString() + ' ' + currency;
+  // Use the new animated system — immediate set for backward compatibility
+  playSetBalanceImmediate(newBalance);
 }
 
 function playUpdateJackpotFromFeatures(features) {
