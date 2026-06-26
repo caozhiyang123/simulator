@@ -881,6 +881,7 @@ function playSpawnCoinEffect(winningCards, onStart) {
 
 /**
  * Detect winning cards and their pattern-matched cell indices from the current state.
+ * Uses the same type-based rules as playCheckPatterns.
  * Returns array of {cardIdx, cellIndices[]}
  */
 function playDetectWinningCards(ballList) {
@@ -892,7 +893,9 @@ function playDetectWinningCards(ballList) {
   var numeros = (_playCurrentMachine.response && _playCurrentMachine.response.numeros) || [];
   var ballSet = new Set(ballList);
   var result = [];
-  var seenCards = {};
+
+  // Sort patterns by value descending
+  var sortedPatterns = patterns.slice().sort(function(a, b) { return (b.value || 0) - (a.value || 0); });
 
   for (var c = 0; c < qtd; c++) {
     var cardOffset = c * numPerCard;
@@ -901,25 +904,56 @@ function playDetectWinningCards(ballList) {
       var num = numeros[cardOffset + i];
       cardHits.push(num === 0 || ballSet.has(num));
     }
-    patterns.forEach(function(p) {
+
+    var winPatterns = [];
+    var cardDone = false;
+
+    for (var pi = 0; pi < sortedPatterns.length; pi++) {
+      if (cardDone) break;
+      var p = sortedPatterns[pi];
       var fmt = p.format || '';
-      if (fmt.length !== numPerCard) return;
+      if (fmt.length !== numPerCard) continue;
+      var pType = p.type || 1;
+
       var allMatch = true;
       for (var i = 0; i < numPerCard; i++) {
         if (fmt[i] === '1' && !cardHits[i]) { allMatch = false; break; }
       }
-      if (allMatch) {
-        if (!seenCards[c]) { seenCards[c] = []; }
-        for (var i = 0; i < numPerCard; i++) {
-          if (fmt[i] === '1' && seenCards[c].indexOf(i) < 0) seenCards[c].push(i);
+      if (!allMatch) continue;
+
+      if (pType === 1) {
+        winPatterns.push(p);
+        cardDone = true;
+      } else if (pType === 3) {
+        winPatterns.push(p);
+      } else {
+        // type 2: add if not fully covered by existing winPatterns
+        var covered = false;
+        for (var wi = 0; wi < winPatterns.length; wi++) {
+          var wFmt = winPatterns[wi].format || '';
+          var isCovered = true;
+          for (var i = 0; i < numPerCard; i++) {
+            if (fmt[i] === '1' && wFmt[i] !== '1') { isCovered = false; break; }
+          }
+          if (isCovered) { covered = true; break; }
         }
+        if (!covered) winPatterns.push(p);
       }
-    });
+    }
+
+    // Collect cell indices from all winning patterns
+    if (winPatterns.length > 0) {
+      var cellIndices = [];
+      winPatterns.forEach(function(p) {
+        var fmt = p.format || '';
+        for (var i = 0; i < numPerCard; i++) {
+          if (fmt[i] === '1' && cellIndices.indexOf(i) < 0) cellIndices.push(i);
+        }
+      });
+      result.push({ cardIdx: c, cellIndices: cellIndices });
+    }
   }
 
-  for (var c in seenCards) {
-    result.push({ cardIdx: parseInt(c), cellIndices: seenCards[c] });
-  }
   return result;
 }
 
@@ -1068,6 +1102,9 @@ function playCheckPatterns(ballList) {
   var ballSet = new Set(ballList);
   var bet = parseFloat((document.getElementById('playBetSelect') || {}).value) || 0.01;
 
+  // Sort patterns by value descending (should already be sorted, but ensure)
+  var sortedPatterns = patterns.slice().sort(function(a, b) { return (b.value || 0) - (a.value || 0); });
+
   // Track hits per card for label display and preview priority
   var cardHitsInfo = {}; // cardIdx -> [{alias, value}]
   var firstWinCard = -1;
@@ -1081,41 +1118,79 @@ function playCheckPatterns(ballList) {
       cardHits.push(num === 0 || ballSet.has(num));
     }
 
-    // Check each pattern
-    patterns.forEach(function(p) {
+    // Compute winning patterns for this card based on type rules
+    var winPatterns = []; // [{format, alias, value, type}]
+    var cardDone = false;
+
+    for (var pi = 0; pi < sortedPatterns.length; pi++) {
+      if (cardDone) break;
+      var p = sortedPatterns[pi];
       var fmt = p.format || '';
-      if (fmt.length !== numPerCard) return;
+      if (fmt.length !== numPerCard) continue;
+      var pType = p.type || 1;
+
+      // Check if pattern matches
       var missCount = 0, missIdx = -1;
       for (var i = 0; i < numPerCard; i++) {
         if (fmt[i] === '1' && !cardHits[i]) { missCount++; missIdx = i; if (missCount > 1) break; }
       }
 
       if (missCount === 0) {
-        // Full match - red line through matched cells
-        for (var i = 0; i < numPerCard; i++) {
-          if (fmt[i] === '1') {
-            var cell = document.querySelector('.play-card-cell[data-card="' + c + '"][data-idx="' + i + '"]');
-            if (cell) {
-              cell.style.textDecoration = 'line-through';
-              cell.style.textDecorationColor = '#e74c3c';
-              cell.style.textDecorationThickness = '2px';
+        // Pattern fully matched
+        if (pType === 1) {
+          // highest_win: this card only gets this one pattern, then stop
+          winPatterns.push(p);
+          cardDone = true;
+        } else if (pType === 3) {
+          // Always add, no coverage check
+          winPatterns.push(p);
+        } else {
+          // type 2: add if not fully covered by any already-won pattern
+          var covered = false;
+          for (var wi = 0; wi < winPatterns.length; wi++) {
+            var wFmt = winPatterns[wi].format || '';
+            // Check if current pattern is fully covered by winPatterns[wi]
+            var isCovered = true;
+            for (var i = 0; i < numPerCard; i++) {
+              if (fmt[i] === '1' && wFmt[i] !== '1') { isCovered = false; break; }
             }
+            if (isCovered) { covered = true; break; }
+          }
+          if (!covered) {
+            winPatterns.push(p);
           }
         }
-        // Record hit info
-        if (!cardHitsInfo[c]) cardHitsInfo[c] = [];
-        cardHitsInfo[c].push({alias: p.alias || p.name, value: (bet * (p.value || 0)).toFixed(2)});
-        if (firstWinCard < 0) firstWinCard = c;
       } else if (missCount === 1) {
-        // Miss one - show expected win on the missing cell
-        var cell = document.querySelector('.play-card-cell[data-card="' + c + '"][data-idx="' + missIdx + '"]');
-        if (cell) {
-          var origNum = numeros[cardOffset + missIdx];
-          cell.style.background = '#ffe600';
-          cell.style.color = '#333';
-          cell.innerHTML = '<span style="font-size:8px;color:#666;display:block;line-height:1;">' + (origNum < 10 ? '0'+origNum : origNum) + '</span><span style="font-size:12px;font-weight:700;color:#333;display:block;line-height:1.1;">x' + p.value + '</span>';
+        // Miss one - show expected win on the missing cell (only if card not already done)
+        if (!cardDone) {
+          var cell = document.querySelector('.play-card-cell[data-card="' + c + '"][data-idx="' + missIdx + '"]');
+          if (cell) {
+            var origNum = numeros[cardOffset + missIdx];
+            cell.style.background = '#ffe600';
+            cell.style.color = '#333';
+            cell.innerHTML = '<span style="font-size:8px;color:#666;display:block;line-height:1;">' + (origNum < 10 ? '0'+origNum : origNum) + '</span><span style="font-size:12px;font-weight:700;color:#333;display:block;line-height:1.1;">x' + p.value + '</span>';
+          }
         }
       }
+    }
+
+    // Apply visual decoration for winning patterns
+    winPatterns.forEach(function(p) {
+      var fmt = p.format || '';
+      for (var i = 0; i < numPerCard; i++) {
+        if (fmt[i] === '1') {
+          var cell = document.querySelector('.play-card-cell[data-card="' + c + '"][data-idx="' + i + '"]');
+          if (cell) {
+            cell.style.textDecoration = 'line-through';
+            cell.style.textDecorationColor = '#e74c3c';
+            cell.style.textDecorationThickness = '2px';
+          }
+        }
+      }
+      // Record hit info
+      if (!cardHitsInfo[c]) cardHitsInfo[c] = [];
+      cardHitsInfo[c].push({alias: p.alias || p.name, value: (bet * (p.value || 0)).toFixed(2)});
+      if (firstWinCard < 0) firstWinCard = c;
     });
   }
 
