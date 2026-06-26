@@ -751,6 +751,12 @@ async function playSpin() {
   }
   document.getElementById('playWinDisplay').textContent = 'SPINNING...';
 
+  // Get spin tool overrides (admin/qa only)
+  var toolOverrides = (typeof bingoSpinToolGetOverrides === 'function') ? bingoSpinToolGetOverrides() : {};
+  var targetPatterns = (toolOverrides.targetPatternIds && toolOverrides.targetPatternIds.length) ? toolOverrides.targetPatternIds : [];
+  var targetFeatures = (toolOverrides.targetFeatureIds && toolOverrides.targetFeatureIds.length) ? toolOverrides.targetFeatureIds : [];
+  var targetBalls = (toolOverrides.balls && toolOverrides.balls.length) ? toolOverrides.balls : [];
+
   var spinCmd = {
     cmd: 'solicitajogada',
     session_token: _playSessionToken,
@@ -762,10 +768,11 @@ async function playSpin() {
     card_idx: _playCardIdx,
     bonus_unique_id: '',
     is_bonus: false,
-    target_pattern_ids: [],
-    target_feature_ids: [],
+    target_pattern_ids: targetPatterns,
+    target_feature_ids: targetFeatures,
     payload_data: "[{'key':'value'}]"
   };
+  if (targetBalls.length) spinCmd.balls = targetBalls;
   playLog('>>> [SPIN] send: ' + JSON.stringify(spinCmd));
   _playWs.send(JSON.stringify(spinCmd));
   // Response handled in _playWs.onmessage -> playHandleSpinResponse

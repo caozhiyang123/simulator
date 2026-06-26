@@ -177,3 +177,9 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.2); }
 }
+
+/* HotBingo coin spin animation */
+@keyframes hotBingoCoinSpin {
+  0% { transform: rotateY(0deg); }
+  100% { transform: rotateY(360deg); }
+}
