@@ -77,15 +77,29 @@ MachineRegistry.register('GoldenFortune', {
     if (collectBtn) {
       collectBtn.style.top = '68%';
       collectBtn.style.right = '32%';
+      collectBtn.className = 'gf-btn-retro';
     }
 
-    // SPIN button - bottom right
+    // SPIN button - retro 3D rectangular
     var spinBtn = document.getElementById('slotSpinBtn');
     if (spinBtn) {
-      spinBtn.style.top = '67%';
+      spinBtn.style.top = '68%';
       spinBtn.style.right = '18%';
-      spinBtn.style.width = '60px';
-      spinBtn.style.height = '60px';
+      spinBtn.style.width = '80px';
+      spinBtn.style.height = '44px';
+      spinBtn.className = 'gf-spin-retro';
+      spinBtn.style.display = 'flex';
+      spinBtn.style.flexDirection = 'column';
+      spinBtn.style.alignItems = 'center';
+      spinBtn.style.justifyContent = 'center';
+      spinBtn.style.position = 'absolute';
+      spinBtn.innerHTML = '<span style="font-size:14px;font-weight:900;color:#fff;text-shadow:0 -1px 0 #333,0 1px 0 #000,1px 0 0 #000,-1px 0 0 #000;letter-spacing:2px;z-index:1;">SPIN</span>';
     }
+
+    // Override BET and LINE +/- buttons to retro 3D style
+    var btns = document.querySelectorAll('#slotSkin .slot-btn-3d');
+    btns.forEach(function(btn) {
+      btn.className = 'gf-btn-retro';
+    });
   }
 });

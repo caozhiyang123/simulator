@@ -202,3 +202,109 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   transform: translateY(2px);
   box-shadow: 0 2px 0 #600, 0 3px 6px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.3) !important;
 }
+
+/* GoldenFortune retro 3D SPIN button (rectangular, no border) */
+.gf-spin-retro {
+  width: 80px;
+  height: 44px;
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  border: none;
+  background: linear-gradient(to bottom, #d48a3a 0%, #b86a24 15%, #9d4a16 50%, #6b320e 85%, #3a1a06 100%);
+  box-shadow:
+    0 6px 0 0 #2d1204,
+    0 8px 8px 0 rgba(0,0,0,0.5),
+    inset 0 2px 1px rgba(255,200,150,0.6),
+    inset 0 -2px 3px rgba(0,0,0,0.4);
+  transition: transform 0.08s, box-shadow 0.08s;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gf-spin-retro::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 45%;
+  border-radius: 6px 6px 50% 50%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.0) 100%);
+  pointer-events: none;
+}
+.gf-spin-retro::after {
+  content: none;
+}
+.gf-spin-retro:hover {
+  background: linear-gradient(to bottom, #e09848 0%, #c87830 15%, #ad5a1e 50%, #7a3c10 85%, #4a2208 100%);
+  box-shadow:
+    0 6px 0 0 #2d1204,
+    0 9px 12px 0 rgba(0,0,0,0.45),
+    inset 0 2px 1px rgba(255,210,160,0.7),
+    inset 0 -2px 3px rgba(0,0,0,0.35);
+}
+.gf-spin-retro:active {
+  transform: translateY(5px);
+  box-shadow:
+    0 1px 0 0 #2d1204,
+    0 2px 3px 0 rgba(0,0,0,0.4),
+    inset 0 3px 5px rgba(0,0,0,0.5),
+    inset 0 -1px 1px rgba(255,200,150,0.15);
+  background: linear-gradient(to bottom, #7a3c10 0%, #6b320e 20%, #4a2208 55%, #2d1204 90%, #1a0a02 100%);
+}
+
+/* GoldenFortune retro 3D small buttons (BET +/-, LINE +/-, COLLECT, no border) */
+.gf-btn-retro {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+  border: none;
+  background: linear-gradient(to bottom, #d48a3a 0%, #b86a24 15%, #9d4a16 50%, #6b320e 85%, #3a1a06 100%);
+  box-shadow:
+    0 4px 0 0 #2d1204,
+    0 5px 6px 0 rgba(0,0,0,0.4),
+    inset 0 1px 1px rgba(255,200,150,0.5),
+    inset 0 -1px 2px rgba(0,0,0,0.35);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.08s, box-shadow 0.08s;
+  overflow: hidden;
+}
+.gf-btn-retro::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 45%;
+  border-radius: 4px 4px 50% 50%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.0) 100%);
+  pointer-events: none;
+}
+.gf-btn-retro:hover {
+  background: linear-gradient(to bottom, #e09848 0%, #c87830 15%, #ad5a1e 50%, #7a3c10 85%, #4a2208 100%);
+  box-shadow:
+    0 4px 0 0 #2d1204,
+    0 6px 8px 0 rgba(0,0,0,0.35),
+    inset 0 1px 1px rgba(255,210,160,0.6),
+    inset 0 -1px 2px rgba(0,0,0,0.3);
+}
+.gf-btn-retro:active {
+  transform: translateY(3px);
+  box-shadow:
+    0 1px 0 0 #2d1204,
+    0 1px 2px 0 rgba(0,0,0,0.3),
+    inset 0 2px 4px rgba(0,0,0,0.5),
+    inset 0 -1px 1px rgba(255,200,150,0.1);
+  background: linear-gradient(to bottom, #7a3c10 0%, #6b320e 20%, #4a2208 55%, #2d1204 90%, #1a0a02 100%);
+}
