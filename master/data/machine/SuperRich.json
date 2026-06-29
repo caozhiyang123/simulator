@@ -1,0 +1,477 @@
+{
+    "id": 198,
+    "rtp_range": "94%",
+    "enabled_features": [],
+    "math_model": [
+        {
+            "name": "SuperRich",
+            "ball_count": 300,
+            "base_ball_count": 30,
+            "eb_ball_count": 10,
+            "card_width": 5,
+            "card_height": 3,
+            "numPerCard": 15,
+            "miniCardNum": 1,
+            "maxCardNum": 90,
+            "cardSize": 100,
+            "max_cards": 20,
+            "pattern_match_type": "overlap_win",
+            "class_name": "com.gamesmart.wild.videobingo.core.WildEBMachine",
+            "features": {
+                "lists": [
+                    {
+                        "reference": "com.gamesmart.wild.videobingo.feature.MoreRepeatNumberFeature",
+                        "config": {
+							"feature_id": 6,
+                            "positions": [
+                                [20,30,65,100,130,165,190,220,230,255],
+								[33,48,67,108,124,192,217,252,273,292],
+								[25,56,76,96,171,186,197,226,291],
+								[0,45,60,90,120,150,180,285],
+								[40,66,81,131,176,191,250,296],
+								[97,113,129,188,198,237,278,293],
+								[21,86,107,123,157,251,266],
+								[3,38,53,72,77,153,297],
+								[29,44,84,164,179,194,299],
+								[50,95,110,125,160,200],
+								[46,70,80,115,201,295],
+								[35,61,151,166,206,260],
+								[47,101,111,231,265,271],
+								[133,168,212,227,257,282],
+								[18,73,98,137,193,268],
+								[13,39,69,83,159,274],
+								[74,104,139,229,249,279],
+								[9,19,54,88,234,254],
+								[24,59,79,144,184,284],
+								[15,135,155,195,215],
+								[10,55,240,270,290],
+								[91,121,170,205,235],
+								[51,85,106,181,286],
+								[32,161,177,221,241],
+								[37,132,136,246,261],
+								[17,42,117,187,242],
+								[92,146,183,232,243],
+								[102,178,222,267,298],
+								[22,68,93,169,258],
+								[27,109,203,228,263],
+								[64,87,114,208,259],
+								[23,94,138,213,264],
+								[34,143,154,199,233],
+								[4,209,214,238,294],
+								[149,189,219,239,269],
+								[6,126,156,245],
+								[36,116,122,276],
+								[11,31,216,236],
+								[145,202,281,287],
+								[16,41,127,172],
+								[57,141,207,277],
+								[8,82,248,288],
+								[63,118,158,289],
+								[58,103,142,283],
+								[43,78,119,163],
+								[28,99,174,218],
+								[148,204,223,244],
+								[14,89,134,224],
+								[105,185,210],
+								[175,196,275],
+								[1,211,280],
+								[52,167,182],
+								[2,71,256],
+								[7,152,272],
+								[26,112,128],
+								[12,62,247],
+								[162,173,262],
+								[49,147,253],
+								[75,140],
+								[5,225]
+                            ],
+                            "empty_index": -1
+                        }
+                    },{
+                        "reference": "com.gamesmart.wild.videobingo.feature.BuffDoubleFreeEBFeature",
+                        "config": {
+							"feature_id": 2,
+							"buff_id": 2,
+                            "min_index": 3,
+                            "max_index": 9,
+                            "max_free_eb_count": 1
+                        }
+                    },{
+                        "reference": "com.gamesmart.wild.videobingo.feature.BuffCalaWildEBFeature",
+                        "config": {
+							"feature_id": 3,
+							"buff_id": 3,
+                            "select_num_range": [
+                                33,
+                                39
+                            ],
+                            "no_win_multiplier": [
+                                0,
+                                500
+                            ],
+                            "win_factor": [
+                                0,
+                                10
+                            ]
+                        }
+                    },{
+					  "reference":"com.gamesmart.wild.videobingo.feature.ManageBuffFeature",
+					  "config":{
+					    "feature_id": 7,
+					    "buffs":[
+						  {"buff_id": [0],"feature_id": [0], "weight_per_card":[0.333,0.333,0.333,0.333,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003], "group":[]},
+						  {"buff_id": [2],"feature_id": [2], "weight_per_card":[0.333,0.333,0.333,0.333,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003], "group":["FreeEB"]},
+						  {"buff_id": [3],"feature_id": [3], "weight_per_card":[0.333,0.333,0.333,0.333,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003], "group":["WildEB"]}
+					    ]
+					  }
+					},{
+					  "reference":"com.gamesmart.wild.videobingo.feature.BuffFeature",
+					  "config":{
+					    "feature_id": 0,	
+					    "buff_id": 0
+					  }
+				    },{
+                        "reference": "com.gamesmart.wild.videobingo.feature.SuperRichBonusFeature",
+                        "config": {
+							"feature_id": 5,
+                            "pattern_id_group": [
+                                [1,2,3,4],[5,6,7,8],[9,10,11,12]
+                            ],
+                            "pattern_completion_count": {
+                                "1": 50,
+                                "2": 25,
+                                "3": 25,
+                                "4": 10,
+                                "5": 8,
+                                "6": 7,
+                                "7": 5,
+                                "8": 5,
+                                "9": 3,
+                                "10": 3,
+                                "11": 2,
+                                "12": 1
+                            },
+                            "golden_group": [
+                                1.0,
+                                2.0,
+                                3.0,
+                                4.0,
+                                5.0,
+                                6.0,
+                                7.0,
+                                8.0
+                            ],
+                            "golden_available_group": [
+                                1,
+                                2,
+                                3
+                            ],
+                            "golden_available_count_down_seconds": 10
+                        }
+                    },{
+                        "reference": "com.gamesmart.wild.videobingo.feature.SynchronizedMachineStatusFeature",
+                        "config": {
+                            "feature_id": 4
+                        }
+                    }
+                ]
+            },
+            "pattern": [{"id": 13,"name": "bingo","alias": "P00","format": "111111111111111","value": 1500,"r": 26,"weight": 0.001,"is_eb": true,"type": 1,"super_eb": true},
+						{"id": 12,"name": "4sides","alias": "P01","format": "111111000111111","value": 500,"r": 25,"weight": 0.002,"is_eb": true,"type": 2,"super_eb": true},
+						{"id": 11,"name": "miss4corner","alias": "P02","format": "011101111101110","value": 300,"r": 25,"weight": 0.004,"is_eb": true,"type": 2},
+						{"id": 10,"name": "miss4corner1P","alias": "P03","format": "011101101101110","value": 200,"r": 25,"weight": 0.004,"is_eb": true,"type": 2},
+						{"id": 9,"name": "2line1P","alias": "P04","format": "111110010011111","value": 200,"r": 25,"weight": 0.004,"is_eb": true,"type": 2},
+						{"id": 8,"name": "2line","alias": "P05","format": "000001111111111","value": 100,"r": 20,"weight": 0.002,"is_eb": true,"type": 2},
+						{"id": 8,"name": "2line","alias": "P06","format": "111110000011111","value": 100,"r": 20,"weight": 0.002,"is_eb": true,"type": 2},
+						{"id": 8,"name": "2line","alias": "P07","format": "111111111100000","value": 100,"r": 20,"weight": 0.002,"is_eb": true,"type": 2},
+						{"id": 7,"name": "LTRT1P","alias": "P08","format": "010101101101110","value": 100,"r": 15,"weight": 0.002,"is_eb": true,"type": 2},
+						{"id": 6,"name": "O","alias": "P09","format": "011100101001110","value": 50,"r": 7,"weight": 0.04,"is_eb": true,"type": 2},
+						{"id": 5,"name": "LTRT","alias": "P10","format": "010101101101010","value": 40,"r": 5,"weight": 0.01,"is_eb": true,"type": 2},
+						{"id": 4,"name": "T","alias": "P11","format": "111110010000100","value": 10,"r": 5,"weight": 0.02,"is_eb": true,"type": 2},
+						{"id": 4,"name": "T","alias": "P12","format": "001000010011111","value": 10,"r": 5,"weight": 0.02,"is_eb": true,"type": 2},
+						{"id": 3,"name": "2column","alias": "P13","format": "010100101001010","value": 8,"r": 1,"weight": 0.03,"is_eb": true,"type": 2},
+						{"id": 2,"name": "6P","alias": "P14","format": "010101000101010","value": 8,"r": 1,"weight": 0.03,"is_eb": true,"type": 2},
+						{"id": 1,"name": "1line","alias": "P15","format": "111110000000000","value": 3,"r": 1,"weight": 0.04,"is_eb": false,"type": 2},
+						{"id": 1,"name": "1line","alias": "P16","format": "000001111100000","value": 3,"r": 1,"weight": 0.04,"is_eb": false,"type": 2},
+						{"id": 1,"name": "1line","alias": "P17","format": "000000000011111","value": 3,"r": 1,"weight": 0.04,"is_eb": false,"type": 2}],
+            "math_model": [
+                {
+                    "id": 1,
+                    "event": "default",
+                    "eb_settings": {
+                        "collect_all_ebs": true,
+                        "house_edge": 1,
+                        "eb_target": 0.905,
+                        "min_price": 1
+                    },
+                    "pattern": [
+                        {
+                            "id": -1,
+                            "format": "111111111111111",
+                            "value": 1500.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111111101111111",
+                            "value": 700.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111111010111111",
+                            "value": 700.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111111000111111",
+                            "value": 500.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "011101111111111",
+                            "value": 410.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111111111101110",
+                            "value": 410.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "011101111101110",
+                            "value": 300.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111110111011111",
+                            "value": 250.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111111101101110",
+                            "value": 203.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "011101101111111",
+                            "value": 203.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "010101111111111",
+                            "value": 200.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111110010011111",
+                            "value": 200.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "011101101101110",
+                            "value": 200.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111110101011111",
+                            "value": 150.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111111111101010",
+                            "value": 140.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "001001111111111",
+                            "value": 110.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111111111100100",
+                            "value": 110.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "010101101111111",
+                            "value": 103.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "010101111101110",
+                            "value": 103.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "000001111111111",
+                            "value": 100.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111110000011111",
+                            "value": 100.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111111111100000",
+                            "value": 100.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "010101101101110",
+                            "value": 100.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111110111001110",
+                            "value": 60.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "011100111011111",
+                            "value": 60.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111110101001110",
+                            "value": 53.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "011100101011111",
+                            "value": 53.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "011100101001110",
+                            "value": 50.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111111101101010",
+                            "value": 43.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "010101111101010",
+                            "value": 43.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "010101101101010",
+                            "value": 40.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111111010101110",
+                            "value": 18.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "011101010111111",
+                            "value": 18.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111110101001010",
+                            "value": 11.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "010100101011111",
+                            "value": 11.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111111000101010",
+                            "value": 11.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "010101000111111",
+                            "value": 11.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111110010000100",
+                            "value": 10.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "001000010011111",
+                            "value": 10.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "010100101001010",
+                            "value": 8.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "010101000101010",
+                            "value": 8.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "111110000000000",
+                            "value": 3.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "000001111100000",
+                            "value": 3.0,
+                            "weight": 0.0
+                        },
+                        {
+                            "id": -1,
+                            "format": "000000000011111",
+                            "value": 3.0,
+                            "weight": 0.0
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

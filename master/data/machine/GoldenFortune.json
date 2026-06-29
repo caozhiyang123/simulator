@@ -1,0 +1,183 @@
+{
+  "id": 78,
+  "rtp_range": "94%-96%",
+  "enabled_features": [],
+  "math_model": [
+    {
+      "name": "GoldenFortune",
+      "row_count": 2,
+      "column_count": 3,
+      "icon_amount": 7,
+      "max_lines": 1,
+      "pattern_match_type": "highest_win",
+      "class_name": "com.gamesmart.halloween.lottoBingo.core.DiamondDazzleMachine",
+      "features": {
+        "lists": [
+          {
+            "reference": "com.gamesmart.halloween.lottoBingo.feature.MultiPrizeLineFeature",
+            "config": {
+              "feature_id": 2,
+              "multi_prize_lamp": [1,1,1,1,2,3]
+            }
+          },
+          {
+            "reference": "com.gamesmart.halloween.lottoBingo.feature.FreeSpinFeature",
+            "config": {
+              "feature_id": 3,
+              "join_free_spin_code": "i6c3",
+              "base_lock_count": 3,
+              "locks": [1,1,2,3,5],
+              "locks_weight": [0.35,0.35,0.1,0.1,0.1],
+              "next_lock_price": 5
+            }
+          },
+          {
+            "reference": "com.gamesmart.halloween.lottoBingo.feature.BonusFeature",
+            "config": {
+              "feature_id": 5,
+              "join_bonus_code": "i4c3",
+              "box_num": [1,1.5,2,2.5,3,3.5,4,4.5,5,6,7,8,9,10,12.5,15,17.5,20,25,100],
+              "box_weight": [0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05],
+              "stop_open_box_position": [5,4,3,2,1,1,1,1,1]
+            }
+          },
+          {
+            "reference": "com.gamesmart.halloween.lottoBingo.feature.SynchronizedMachineStatusFeature",
+            "config": {
+              "feature_id": 4
+            }
+          }
+        ]
+      },
+      "icon": [
+        0,1,2,3,4,5,6
+      ],
+      "lines": [
+        [0,1,2],
+		[3,4,5],
+		[0,4,2],
+		[3,1,5],
+		[0,1,5],
+		[3,1,2]
+      ],
+      "pay_table_line": [
+        {
+          "1,1,1": [{"line_position": "0,1,2","line_num": 1}]
+        },
+        {
+          "2,2,2": [{"line_position": "0,1,2","line_num": 2},{"line_position": "3,4,5","line_num": 8}]
+        },
+        {
+          "1,2,1": [{"line_position": "0,1,2","line_num": 6},{"line_position": "0,4,2","line_num": 9}]
+        },
+        {
+          "2,1,2": [{"line_position": "0,1,2","line_num": 7},{"line_position": "3,1,5","line_num": 5},{"line_position": "0,1,5","line_num": 4},{"line_position": "3,1,2","line_num": 3}]
+        }
+      ],
+      "line_direction": [
+        0,0,0,0,0,0
+      ],
+      "pattern": [
+        {"id": 7,"name": "3RedSeven","alias": "P00","format": "i1i1i1","value": 5,"type": 0},
+        {"id": 7,"name": "3RedSeven","alias": "P01","format": "i4i1i1","value": 5,"type": 0},
+        {"id": 7,"name": "3RedSeven","alias": "P02","format": "i1i4i1","value": 5,"type": 0},
+        {"id": 7,"name": "3RedSeven","alias": "P03","format": "i1i1i4","value": 5,"type": 0},
+        {"id": 7,"name": "3RedSeven","alias": "P04","format": "i4i4i1","value": 5,"type": 0},
+        {"id": 7,"name": "3RedSeven","alias": "P05","format": "i4i1i4","value": 5,"type": 0},
+        {"id": 7,"name": "3RedSeven","alias": "P06","format": "i1i4i4","value": 5,"type": 0},
+        {"id": 6,"name": "3PurpleSeven","alias": "P07","format": "i2i2i2","value": 3,"type": 0},
+        {"id": 6,"name": "3PurpleSeven","alias": "P08","format": "i4i2i2","value": 3,"type": 0},
+        {"id": 6,"name": "3PurpleSeven","alias": "P09","format": "i2i4i2","value": 3,"type": 0},
+        {"id": 6,"name": "3PurpleSeven","alias": "P10","format": "i2i2i4","value": 3,"type": 0},
+        {"id": 6,"name": "3PurpleSeven","alias": "P11","format": "i4i4i2","value": 3,"type": 0},
+        {"id": 6,"name": "3PurpleSeven","alias": "P12","format": "i4i2i4","value": 3,"type": 0},
+        {"id": 6,"name": "3PurpleSeven","alias": "P13","format": "i2i4i4","value": 3,"type": 0},
+        {"id": 5,"name": "3BlueSeven","alias": "P14","format": "i3i3i3","value": 2,"type": 0},
+        {"id": 5,"name": "3BlueSeven","alias": "P15","format": "i4i3i3","value": 2,"type": 0},
+        {"id": 5,"name": "3BlueSeven","alias": "P16","format": "i3i4i3","value": 2,"type": 0},
+        {"id": 5,"name": "3BlueSeven","alias": "P17","format": "i3i3i4","value": 2,"type": 0},
+        {"id": 5,"name": "3BlueSeven","alias": "P18","format": "i4i4i3","value": 2,"type": 0},
+        {"id": 5,"name": "3BlueSeven","alias": "P19","format": "i4i3i4","value": 2,"type": 0},
+        {"id": 5,"name": "3BlueSeven","alias": "P20","format": "i3i4i4","value": 2,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P21","format": "i1i2i3","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P22","format": "i4i2i3","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P23","format": "i1i4i3","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P24","format": "i1i2i4","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P25","format": "i1i3i2","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P26","format": "i4i3i2","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P27","format": "i1i4i2","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P28","format": "i1i3i4","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P29","format": "i2i1i3","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P30","format": "i4i1i3","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P31","format": "i2i4i3","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P32","format": "i2i1i4","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P33","format": "i2i3i1","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P34","format": "i4i3i1","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P35","format": "i2i4i1","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P36","format": "i2i3i4","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P37","format": "i3i2i1","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P38","format": "i4i2i1","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P39","format": "i3i4i1","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P40","format": "i3i2i4","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P41","format": "i3i1i2","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P42","format": "i4i1i2","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P43","format": "i3i4i2","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P44","format": "i3i1i4","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P45","format": "i1i1i2","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P46","format": "i1i2i1","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P47","format": "i2i1i1","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P48","format": "i1i1i3","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P49","format": "i1i3i1","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P50","format": "i3i1i1","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P51","format": "i2i2i1","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P52","format": "i2i1i2","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P53","format": "i1i2i2","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P54","format": "i2i2i3","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P55","format": "i2i3i2","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P56","format": "i3i2i2","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P57","format": "i1i3i3","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P58","format": "i3i1i3","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P59","format": "i3i3i1","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P60","format": "i2i3i3","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P61","format": "i3i2i3","value": 1,"type": 0},
+        {"id": 4,"name": "3MixedSeven","alias": "P62","format": "i3i3i2","value": 1,"type": 0},
+        {"id": 3,"name": "3Cherry","alias": "P63","format": "i5i5i5","value": 3,"type": 0},
+        {"id": 3,"name": "3Cherry","alias": "P64","format": "i4i5i5","value": 3,"type": 0},
+        {"id": 3,"name": "3Cherry","alias": "P65","format": "i5i4i5","value": 3,"type": 0},
+        {"id": 3,"name": "3Cherry","alias": "P66","format": "i5i5i4","value": 3,"type": 0},
+        {"id": 3,"name": "3Cherry","alias": "P67","format": "i4i4i5","value": 3,"type": 0},
+        {"id": 3,"name": "3Cherry","alias": "P68","format": "i4i5i4","value": 3,"type": 0},
+        {"id": 3,"name": "3Cherry","alias": "P69","format": "i5i4i4","value": 3,"type": 0},
+        {"id": 2,"name": "2AnyCherry","alias": "P70","format": "i5i5i-5","value": 2,"type": 0},
+        {"id": 2,"name": "2AnyCherry","alias": "P71","format": "i5i4i-5","value": 2,"type": 0},
+        {"id": 2,"name": "2AnyCherry","alias": "P72","format": "i4i5i-5","value": 2,"type": 0},
+        {"id": 2,"name": "2AnyCherry","alias": "P73","format": "i-5i5i5","value": 2,"type": 0},
+        {"id": 2,"name": "2AnyCherry","alias": "P74","format": "i-5i4i5","value": 2,"type": 0},
+        {"id": 2,"name": "2AnyCherry","alias": "P75","format": "i-5i5i4","value": 2,"type": 0},
+        {"id": 2,"name": "2AnyCherry","alias": "P76","format": "i5i-5i5","value": 2,"type": 0},
+        {"id": 2,"name": "2AnyCherry","alias": "P77","format": "i4i-5i5","value": 2,"type": 0},
+        {"id": 2,"name": "2AnyCherry","alias": "P78","format": "i5i-5i4","value": 2,"type": 0},
+        {"id": 1,"name": "1AnyCherry","alias": "P79","format": "i5i-5i-5","value": 1,"type": 0},
+        {"id": 1,"name": "1AnyCherry","alias": "P80","format": "i-5i5i-5","value": 1,"type": 0},
+        {"id": 1,"name": "1AnyCherry","alias": "P81","format": "i-5i-5i5","value": 1,"type": 0}
+      ],
+      "math_model": [
+        {
+          "id": 1,
+          "event": "default",
+          "pattern": [],
+          "actual_reel_icons": [
+            [0,1,2,3,4,5,6],
+            [0,1,2,3,4,5,6],
+            [0,1,2,3,4,5,6]
+          ],
+          "actual_reel_weight": [
+            [0.14,0.14,0.14,0.14,0.14,0.14,0.14],
+			[0.14,0.14,0.14,0.14,0.14,0.14,0.14],
+			[0.14,0.14,0.14,0.14,0.14,0.14,0.14]
+          ]
+        }
+      ]
+    }
+  ]
+}

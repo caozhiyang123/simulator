@@ -1,0 +1,636 @@
+{
+    "id": 41,
+    "rtp_range": "95%",
+    "enabled_features": [],
+    "math_model": [
+        {
+            "name": "pachinko3",
+            "ball_count": 96,
+            "base_ball_count": 44,
+            "eb_ball_count": 10,
+            "card_width": 5,
+            "card_height": 5,
+            "numPerCard": 25,
+            "miniCardNum": 1,
+            "maxCardNum": 75,
+            "cardSize": 100,
+            "max_cards": 4,
+            "pattern_match_type": "overlap_win",
+            "class_name": "com.gamesmart.videobingo.core.RepeatNumberMachine",
+            "features": {
+                "lists": [
+                    {
+                        "reference": "com.gamesmart.videobingo.feature.SequancePatternsFeature",
+                        "config": {
+                            "table": "Letras",
+                            "patterns": [
+                                {
+                                    "id": 12,
+                                    "name": "letraP",
+                                    "effect": "letraP",
+                                    "alias": "P09",
+                                    "format": "1111010010110101000010000",
+                                    "value": 100,
+                                    "r": 1,
+                                    "weight": 0.000000000000000,
+                                    "type": 3,
+                                    "is_eb": true
+                                },
+                                {
+                                    "id": 13,
+                                    "name": "letraA",
+                                    "effect": "letraA",
+                                    "alias": "P10",
+                                    "format": "1111010010110101001010010",
+                                    "value": 100,
+                                    "r": 1,
+                                    "weight": 0.000000000000000,
+                                    "type": 3,
+                                    "is_eb": true
+                                },
+                                {
+                                    "id": 14,
+                                    "name": "letraC",
+                                    "effect": "letraC",
+                                    "alias": "P11",
+                                    "format": "1111010000100001000011110",
+                                    "value": 100,
+                                    "r": 1,
+                                    "weight": 0.000000000000000,
+                                    "type": 3,
+                                    "is_eb": true
+                                },
+                                {
+                                    "id": 15,
+                                    "name": "letraH",
+                                    "effect": "letraH",
+                                    "alias": "P12",
+                                    "format": "1001010010110101001010010",
+                                    "value": 100,
+                                    "r": 1,
+                                    "weight": 0.000000000000000,
+                                    "type": 3,
+                                    "is_eb": true
+                                },
+                                {
+                                    "id": 16,
+                                    "name": "letraI",
+                                    "effect": "letraI",
+                                    "alias": "P13",
+                                    "format": "1110001000010000100011100",
+                                    "value": 100,
+                                    "r": 1,
+                                    "weight": 0.000000000000000,
+                                    "type": 3,
+                                    "is_eb": true
+                                },
+                                {
+                                    "id": 17,
+                                    "name": "letraN",
+                                    "effect": "letraN",
+                                    "alias": "P14",
+                                    "format": "1001011010110101011010010",
+                                    "value": 100,
+                                    "r": 1,
+                                    "weight": 0.000000000000000,
+                                    "type": 3,
+                                    "is_eb": true
+                                },
+                                {
+                                    "id": 18,
+                                    "name": "letraK",
+                                    "effect": "letraK",
+                                    "alias": "P15",
+                                    "format": "1001010100110001010010010",
+                                    "value": 100,
+                                    "r": 1,
+                                    "weight": 0.000000000000000,
+                                    "type": 3,
+                                    "is_eb": true
+                                },
+                                {
+                                    "id": 19,
+                                    "name": "letraO",
+                                    "effect": "letraO",
+                                    "alias": "P16",
+                                    "format": "1111010010100101001011110",
+                                    "value": 500,
+                                    "r": 1,
+                                    "weight": 0.000000000000000,
+                                    "type": 3,
+                                    "is_eb": true
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "reference": "com.gamesmart.videobingo.feature.FreeEBFeature",
+                        "config": {
+                            "feature_id": 2,
+                            "trigger_rate": 0.25,
+                            "min_index": 2,
+                            "max_index": 9
+                        }
+                    },
+                    {
+                        "reference": "com.gamesmart.videobingo.feature.RepeatNumberFeature",
+                        "config": {
+                            "feature_id": 3,
+                            "positions": [
+                                {
+                                    "key": 1,
+                                    "value": 26
+                                },
+                                {
+                                    "key": 6,
+                                    "value": 56
+                                },
+                                {
+                                    "key": 7,
+                                    "value": 82
+                                },
+                                {
+                                    "key": 11,
+                                    "value": 61
+                                },
+                                {
+                                    "key": 19,
+                                    "value": 94
+                                },
+                                {
+                                    "key": 20,
+                                    "value": 70
+                                },
+                                {
+                                    "key": 22,
+                                    "value": 47
+                                },
+                                {
+                                    "key": 24,
+                                    "value": 49
+                                },
+                                {
+                                    "key": 27,
+                                    "value": 77
+                                },
+                                {
+                                    "key": 29,
+                                    "value": 79
+                                },
+                                {
+                                    "key": 30,
+                                    "value": 55
+                                },
+                                {
+                                    "key": 32,
+                                    "value": 57
+                                },
+                                {
+                                    "key": 35,
+                                    "value": 85
+                                },
+                                {
+                                    "key": 40,
+                                    "value": 65
+                                },
+                                {
+                                    "key": 41,
+                                    "value": 91
+                                },
+                                {
+                                    "key": 42,
+                                    "value": 67
+                                },
+                                {
+                                    "key": 59,
+                                    "value": 84
+                                },
+                                {
+                                    "key": 64,
+                                    "value": 89
+                                },
+                                {
+                                    "key": 71,
+                                    "value": 96
+                                },
+                                {
+                                    "key": 73,
+                                    "value": 98
+                                },
+                                {
+                                    "key": 75,
+                                    "value": 100
+                                }
+                            ],
+                            "empty_index": 12
+                        }
+                    },
+                    {
+                        "reference": "com.gamesmart.videobingo.feature.SynchronizedMachineStatusFeature",
+                        "config": {
+                            "feature_id": 4
+                        }
+                    }
+                ]
+            },
+            "pattern": [
+                {
+                    "id": 11,
+                    "name": "bingo",
+                    "effect": "bingo",
+                    "alias": "P00",
+                    "format": "1111111111110111111111111",
+                    "value": 3000,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 10,
+                    "name": "bingofalso",
+                    "effect": "bingofalso",
+                    "alias": "P01",
+                    "format": "1111111011100011101111111",
+                    "value": 1500,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 9,
+                    "name": "4line",
+                    "effect": "4linhas",
+                    "alias": "P02",
+                    "format": "1111111111110111111100000",
+                    "value": 500,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 9,
+                    "name": "4line",
+                    "effect": "4linhas",
+                    "alias": "P03",
+                    "format": "1111111111110110000011111",
+                    "value": 500,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 9,
+                    "name": "4line",
+                    "effect": "4linhas",
+                    "alias": "P04",
+                    "format": "1111111111000001111111111",
+                    "value": 500,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 9,
+                    "name": "4line",
+                    "effect": "4linhas",
+                    "alias": "P05",
+                    "format": "1111100000110111111111111",
+                    "value": 500,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 9,
+                    "name": "4line",
+                    "effect": "4linhas",
+                    "alias": "P06",
+                    "format": "0000011111110111111111111",
+                    "value": 500,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 8,
+                    "name": "perimetro",
+                    "effect": "perimetro",
+                    "alias": "P07",
+                    "format": "1111110001100011000111111",
+                    "value": 250,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 7,
+                    "name": "jogovelha",
+                    "effect": "jogovelha",
+                    "alias": "P08",
+                    "format": "0101011111010101111101010",
+                    "value": 150,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "effect": "3linhas",
+                    "alias": "P17",
+                    "format": "0000000000110111111111111",
+                    "value": 50,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "effect": "3linhas",
+                    "alias": "P18",
+                    "format": "0000011111000001111111111",
+                    "value": 50,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "effect": "3linhas",
+                    "alias": "P19",
+                    "format": "0000011111110110000011111",
+                    "value": 50,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "effect": "3linhas",
+                    "alias": "P20",
+                    "format": "0000011111110111111100000",
+                    "value": 50,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "effect": "3linhas",
+                    "alias": "P21",
+                    "format": "1111100000000001111111111",
+                    "value": 50,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "effect": "3linhas",
+                    "alias": "P22",
+                    "format": "1111100000110110000011111",
+                    "value": 50,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "effect": "3linhas",
+                    "alias": "P23",
+                    "format": "1111100000110111111100000",
+                    "value": 50,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "effect": "3linhas",
+                    "alias": "P24",
+                    "format": "1111111111000000000011111",
+                    "value": 50,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "effect": "3linhas",
+                    "alias": "P25",
+                    "format": "1111111111000001111100000",
+                    "value": 50,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "effect": "3linhas",
+                    "alias": "P26",
+                    "format": "1111111111110110000000000",
+                    "value": 50,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 5,
+                    "name": "xadrez",
+                    "effect": "xadrez",
+                    "alias": "P27",
+                    "format": "1010101010100010101010101",
+                    "value": 25,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": true
+                },
+                {
+                    "id": 4,
+                    "name": "quadrado",
+                    "effect": "quadrado",
+                    "alias": "P28",
+                    "format": "0000001110010100111000000",
+                    "value": 10,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 3,
+                    "is_eb": false
+                },
+                {
+                    "id": 3,
+                    "name": "cruz",
+                    "effect": "cruz",
+                    "alias": "P29",
+                    "format": "0010000100110110010000100",
+                    "value": 10,
+                    "r": -3,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": false
+                },
+                {
+                    "id": 2,
+                    "name": "2line",
+                    "effect": "2linhas",
+                    "alias": "P30",
+                    "format": "1111111111000000000000000",
+                    "value": 8,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": false
+                },
+                {
+                    "id": 2,
+                    "name": "2line",
+                    "effect": "2linhas",
+                    "alias": "P31",
+                    "format": "1111100000110110000000000",
+                    "value": 8,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": false
+                },
+                {
+                    "id": 2,
+                    "name": "2line",
+                    "effect": "2linhas",
+                    "alias": "P32",
+                    "format": "1111100000000001111100000",
+                    "value": 8,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": false
+                },
+                {
+                    "id": 2,
+                    "name": "2line",
+                    "effect": "2linhas",
+                    "alias": "P33",
+                    "format": "1111100000000000000011111",
+                    "value": 8,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": false
+                },
+                {
+                    "id": 2,
+                    "name": "2line",
+                    "effect": "2linhas",
+                    "alias": "P34",
+                    "format": "0000011111110110000000000",
+                    "value": 8,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": false
+                },
+                {
+                    "id": 2,
+                    "name": "2line",
+                    "effect": "2linhas",
+                    "alias": "P35",
+                    "format": "0000011111000001111100000",
+                    "value": 8,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": false
+                },
+                {
+                    "id": 2,
+                    "name": "2line",
+                    "effect": "2linhas",
+                    "alias": "P36",
+                    "format": "0000011111000000000011111",
+                    "value": 8,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": false
+                },
+                {
+                    "id": 2,
+                    "name": "2line",
+                    "effect": "2linhas",
+                    "alias": "P37",
+                    "format": "0000000000110111111100000",
+                    "value": 8,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": false
+                },
+                {
+                    "id": 2,
+                    "name": "2line",
+                    "effect": "2linhas",
+                    "alias": "P38",
+                    "format": "0000000000110110000011111",
+                    "value": 8,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": false
+                },
+                {
+                    "id": 2,
+                    "name": "2line",
+                    "effect": "2linhas",
+                    "alias": "P39",
+                    "format": "0000000000000001111111111",
+                    "value": 8,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": false
+                },
+                {
+                    "id": 1,
+                    "name": "4corner",
+                    "effect": "quatrocantos",
+                    "alias": "P40",
+                    "format": "1000100000000000000010001",
+                    "value": 2,
+                    "r": 2,
+                    "weight": 0.000000000000000,
+                    "type": 2,
+                    "is_eb": false
+                }
+            ]
+        }
+    ]
+}

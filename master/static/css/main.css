@@ -308,3 +308,13 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
     inset 0 -1px 1px rgba(255,200,150,0.1);
   background: linear-gradient(to bottom, #7a3c10 0%, #6b320e 20%, #4a2208 55%, #2d1204 90%, #1a0a02 100%);
 }
+
+/* SuperRich Lucky Ball picker */
+.sr-lucky-ball-option:hover {
+  border-color: #f5d742 !important;
+  background: rgba(245,215,66,0.1);
+  transform: scale(1.1);
+}
+.sr-lucky-ball-option:active {
+  transform: scale(0.95);
+}

@@ -1,0 +1,77 @@
+{
+    "id": 54,
+    "rtp_range": "91%",
+    "enabled_features": [],
+    "math_model": [
+        {
+            "name": "HotBingo",
+            "ball_count": 60,
+            "base_ball_count": 33,
+            "eb_ball_count": 3,
+            "card_width": 5,
+            "card_height": 3,
+            "numPerCard": 15,
+            "miniCardNum": 1,
+            "maxCardNum": 90,
+            "cardSize": 100,
+            "max_cards": 4,
+            "pattern_match_type": "highest_win",
+            "class_name": "com.gamesmart.wild.videobingo.core.VideoBingoMachine",
+            "features": {
+                "lists": [
+                    {
+                        "reference": "com.gamesmart.wild.videobingo.feature.SynchronizedMachineStatusFeature",
+                        "config": {
+                            "feature_id": 4
+                        }
+                    },
+					{
+						"reference": "com.gamesmart.wild.videobingo.feature.SuperPatternFeature",
+						"config": {
+							"feature_id": 3,
+							"amount": 18,
+							"prizes": [2, 5, 10, 25],
+							"prizes_weight": [0.25, 0.25, 0.25, 0.25],
+							"patternIds": [2]
+						}
+					}
+                ]
+            },
+            "pattern": [
+				{"id":4,"name": "bingo", "alias": "P00", "format": "111111111111111", "value": 1000, "type":1, "is_eb": true},
+				{"id":3,"name": "2line", "alias": "P01", "format": "111110000011111", "value": 100, "type":1, "is_eb": true},
+				{"id":3,"name": "2line", "alias": "P02", "format": "111111111100000", "value": 100, "type":1, "is_eb": true},
+				{"id":3,"name": "2line", "alias": "P03", "format": "000001111111111", "value": 100, "type":1, "is_eb": true},
+				{"id":2,"name": "1line", "alias": "P04", "format": "111110000000000", "value": 4, "type":1, "is_eb": false},
+				{"id":2,"name": "1line", "alias": "P05", "format": "000001111100000", "value": 4, "type":1, "is_eb": false},
+				{"id":2,"name": "1line", "alias": "P06", "format": "000000000011111", "value": 4, "type":1, "is_eb": false},
+				{"id":1,"name": "4corner", "alias": "P07", "format": "100010000010001", "value": 1, "type":1, "is_eb": false}
+			],
+            "math_model": [
+                {
+                    "id": 1,
+                    "event": "default",
+                    "eb_settings": {
+                        "collect_all_ebs": true,
+                        "house_edge": 1,
+                        "eb_target": 1.01,
+                        "bucket": {
+                            "win_weight": 0.0,
+                            "not_win_weight": 0.0,
+                            "nature_weight": 1.0
+                        }
+				},
+				"pattern": [
+					{"id":-1,"name": "bingo", "alias": "P00", "format": "111111111111111", "value": 1000, "weight": 0.00069497053205, "type":1, "is_eb": true},
+					{"id":-1,"name": "2line", "alias": "P01", "format": "111110000011111", "value": 100, "weight": 0.00069497053205, "type":1, "is_eb": true},
+					{"id":-1,"name": "2line", "alias": "P02", "format": "111111111100000", "value": 100, "weight": 0.00069497053205, "type":1, "is_eb": true},
+					{"id":-1,"name": "2line", "alias": "P03", "format": "000001111111111", "value": 100, "weight": 0.00069497053205, "type":1, "is_eb": true},
+					{"id":-1,"name": "1line", "alias": "P04", "format": "111110000000000", "value": 4, "weight": 0.00069497053205, "type":1, "is_eb": false},
+					{"id":-1,"name": "1line", "alias": "P05", "format": "000001111100000", "value": 4, "weight": 0.00069497053205, "type":1, "is_eb": false},
+					{"id":-1,"name": "1line", "alias": "P06", "format": "000000000011111", "value": 4, "weight": 0.00069497053205, "type":1, "is_eb": false},
+					{"id":-1,"name": "4corner", "alias": "P07", "format": "100010000010001", "value": 1, "weight": 0.00069497053205, "type":1, "is_eb": false}
+				]}
+            ]
+        }
+    ]
+}

@@ -1,0 +1,412 @@
+{
+    "id": 19,
+    "enabled_features": [],
+    "math_model": [
+        {
+            "name": "American_Champion",
+            "ball_count": 100,
+            "base_ball_count": 50,
+            "eb_ball_count": 3,
+            "super_eb_count": 0,
+            "card_width": 5,
+            "card_height": 5,
+            "numPerCard": 25,
+            "miniCardNum": 1,
+            "maxCardNum": 90,
+            "cardSize": 100,
+            "max_cards": 4,
+            "pattern_match_type": "highest_win",
+            "class_name": "com.gamesmart.videobingo.core.RepeatNumberMachine",
+            "features": {
+                "lists": [
+                    {
+                        "reference": "com.gamesmart.videobingo.feature.RepeatNumberFeature",
+                        "config": {
+                            "feature_id": 3,
+                            "positions": [
+                                {
+                                    "key": 21,
+                                    "value": 96
+                                },
+                                {
+                                    "key": 17,
+                                    "value": 67
+                                },
+                                {
+                                    "key": 8,
+                                    "value": 83
+                                },
+                                {
+                                    "key": 4,
+                                    "value": 54
+                                },
+                                {
+                                    "key": 15,
+                                    "value": 40
+                                },
+                                {
+                                    "key": 31,
+                                    "value": 6
+                                },
+                                {
+                                    "key": 47,
+                                    "value": 97
+                                },
+                                {
+                                    "key": 28,
+                                    "value": 78
+                                },
+                                {
+                                    "key": 39,
+                                    "value": 14
+                                },
+                                {
+                                    "key": 45,
+                                    "value": 70
+                                },
+                                {
+                                    "key": 66,
+                                    "value": 16
+                                },
+                                {
+                                    "key": 57,
+                                    "value": 32
+                                },
+                                {
+                                    "key": 63,
+                                    "value": 88
+                                },
+                                {
+                                    "key": 74,
+                                    "value": 49
+                                },
+                                {
+                                    "key": 55,
+                                    "value": 5
+                                },
+                                {
+                                    "key": 86,
+                                    "value": 61
+                                },
+                                {
+                                    "key": 77,
+                                    "value": 27
+                                },
+                                {
+                                    "key": 98,
+                                    "value": 23
+                                },
+                                {
+                                    "key": 94,
+                                    "value": 44
+                                },
+                                {
+                                    "key": 85,
+                                    "value": 60
+                                }
+                            ],
+                            "empty_index": -1
+                        }
+                    },
+                    {
+                        "reference": "com.gamesmart.videobingo.feature.SynchronizedMachineStatusFeature",
+                        "config": {
+                            "feature_id": 4
+                        }
+                    }
+                ]
+            },
+            "pattern": [
+                {
+                    "id": 9,
+                    "name": "bingo",
+                    "alias": "P00",
+                    "format": "1111111111111111111111111",
+                    "value": 1500,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 8,
+                    "name": "4line",
+                    "alias": "P01",
+                    "format": "1111111111111111111100000",
+                    "value": 750,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 8,
+                    "name": "4line",
+                    "alias": "P02",
+                    "format": "1111111111111110000011111",
+                    "value": 750,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 8,
+                    "name": "4line",
+                    "alias": "P03",
+                    "format": "1111111111000001111111111",
+                    "value": 750,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 8,
+                    "name": "4line",
+                    "alias": "P04",
+                    "format": "1111100000111111111111111",
+                    "value": 750,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 8,
+                    "name": "4line",
+                    "alias": "P05",
+                    "format": "0000011111111111111111111",
+                    "value": 750,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 7,
+                    "name": "perimeter",
+                    "alias": "P06",
+                    "format": "1111110001100011000111111",
+                    "value": 250,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "alias": "P07",
+                    "format": "0000000000111111111111111",
+                    "value": 60,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "alias": "P08",
+                    "format": "0000011111000001111111111",
+                    "value": 60,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "alias": "P09",
+                    "format": "0000011111111110000011111",
+                    "value": 60,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "alias": "P10",
+                    "format": "0000011111111111111100000",
+                    "value": 60,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "alias": "P11",
+                    "format": "1111100000000001111111111",
+                    "value": 60,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "alias": "P12",
+                    "format": "1111100000111110000011111",
+                    "value": 60,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "alias": "P13",
+                    "format": "1111100000111111111100000",
+                    "value": 60,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "alias": "P14",
+                    "format": "1111111111000000000011111",
+                    "value": 60,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "alias": "P15",
+                    "format": "1111111111000001111100000",
+                    "value": 60,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 6,
+                    "name": "3line",
+                    "alias": "P16",
+                    "format": "1111111111111110000000000",
+                    "value": 60,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 5,
+                    "name": "X",
+                    "alias": "P17",
+                    "format": "1000101010001000101010001",
+                    "value": 10,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 4,
+                    "name": "T",
+                    "alias": "P18",
+                    "format": "1111100100001000010000100",
+                    "value": 10,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 3,
+                    "name": "2line",
+                    "alias": "P19",
+                    "format": "1111111111000000000000000",
+                    "value": 5,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 3,
+                    "name": "2line",
+                    "alias": "P20",
+                    "format": "1111100000111110000000000",
+                    "value": 5,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 3,
+                    "name": "2line",
+                    "alias": "P21",
+                    "format": "1111100000000001111100000",
+                    "value": 5,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 3,
+                    "name": "2line",
+                    "alias": "P22",
+                    "format": "1111100000000000000011111",
+                    "value": 5,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 3,
+                    "name": "2line",
+                    "alias": "P23",
+                    "format": "0000011111111110000000000",
+                    "value": 5,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 3,
+                    "name": "2line",
+                    "alias": "P24",
+                    "format": "0000011111000001111100000",
+                    "value": 5,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 3,
+                    "name": "2line",
+                    "alias": "P25",
+                    "format": "0000011111000000000011111",
+                    "value": 5,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 3,
+                    "name": "2line",
+                    "alias": "P26",
+                    "format": "0000000000111111111100000",
+                    "value": 5,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 3,
+                    "name": "2line",
+                    "alias": "P27",
+                    "format": "0000000000111110000011111",
+                    "value": 5,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 3,
+                    "name": "2line",
+                    "alias": "P28",
+                    "format": "0000000000000001111111111",
+                    "value": 5,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 2,
+                    "name": "4corner",
+                    "alias": "P29",
+                    "format": "1000100000000000000010001",
+                    "value": 1,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 1,
+                    "name": "diagonal",
+                    "alias": "P30",
+                    "format": "0000100010001000100010000",
+                    "value": 1,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 1,
+                    "name": "diagonal",
+                    "alias": "P31",
+                    "format": "1000001000001000001000001",
+                    "value": 1,
+                    "type": 1,
+                    "is_eb": false
+                }
+            ]
+        }
+    ],
+    "rtp_range": "95%"
+}

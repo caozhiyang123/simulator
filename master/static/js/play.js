@@ -209,6 +209,12 @@ async function playSelectMachine(machineId, enabled, machineType) {
       if (typeof doubleManiaHandleBonusResponse === 'function') {
         doubleManiaHandleBonusResponse(resp);
       }
+    } else if (resp.cmd === 'magic_ball') {
+      // Magic ball response (e.g. SuperRich lucky ball)
+      playLog('<<< [MAGIC BALL] response: ' + JSON.stringify(resp));
+      if (typeof superRichHandleMagicBallResponse === 'function') {
+        superRichHandleMagicBallResponse(resp);
+      }
     } else {
       playLog('<<< [WS] unknown cmd: ' + JSON.stringify(resp));
     }

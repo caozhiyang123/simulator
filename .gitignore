@@ -3,7 +3,7 @@
 .venv
 .vscode
 progress_data/
-master/data
+master/out
 master/build
 master/dist
 worker/build
