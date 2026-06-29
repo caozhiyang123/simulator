@@ -75,7 +75,11 @@ function slotRenderUI() {
   var resp = st.loginResp;
   var balance = resp.balance || 0;
   var gameId = resp.game_id || st.machineId;
-  var bgPath = '/static/machine/' + st.machineName + '/background/' + st.machineName + '.png';
+
+  // Check for plugin asset overrides
+  var plugin = MachineRegistry.get(st.machineName);
+  var pluginAssets = (plugin && plugin.assets) || {};
+  var bgPath = pluginAssets.background || ('/static/machine/' + st.machineName + '/background/' + st.machineName + '.png');
 
   var html = '';
   // Full background container
@@ -524,7 +528,9 @@ function slotUpdateJackpotFromFeatures(features) {
 
 function slotShowPattern() {
   var st = _slotState;
-  var patPath = '/static/machine/' + st.machineName + '/background/pattern/' + st.machineName + '.png';
+  var plugin = MachineRegistry.get(st.machineName);
+  var pluginAssets = (plugin && plugin.assets) || {};
+  var patPath = pluginAssets.pattern || ('/static/machine/' + st.machineName + '/background/pattern/' + st.machineName + '.png');
   // Show pattern image in a modal overlay
   var overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:pointer;';
