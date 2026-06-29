@@ -1280,6 +1280,8 @@ function playHandleBuyEbResponse(ebResp) {
     } else {
       playShowEbButtons(ebResp.eb_price);
     }
+    // Re-enable EB button (unless a feature modal is blocking)
+    playEnableEbButton();
   } else {
     // No more EBs or finalizou, round over
     playRemoveEbButtons();
@@ -1386,8 +1388,46 @@ function playShowEbButtons(ebPrice) {
   }
 }
 
+/**
+ * Re-enable the EB price button (unless a feature modal is blocking).
+ */
+function playEnableEbButton() {
+  // Don't re-enable if a feature modal is currently visible
+  if (document.getElementById('srLuckyModal')) return;
+  if (document.getElementById('srCoinsModal')) return;
+  if (document.getElementById('dmBonusModal')) return;
+  var ebBtn = document.getElementById('playEbPriceBtn');
+  if (ebBtn) {
+    ebBtn.removeAttribute('data-disabled');
+    ebBtn.style.opacity = '1';
+    ebBtn.style.pointerEvents = '';
+  }
+}
+
+/**
+ * Disable the EB price button.
+ */
+function playDisableEbButton() {
+  var ebBtn = document.getElementById('playEbPriceBtn');
+  if (ebBtn) {
+    ebBtn.setAttribute('data-disabled', '1');
+    ebBtn.style.opacity = '0.5';
+    ebBtn.style.pointerEvents = 'none';
+  }
+}
+
 function playBuyEb() {
   if (!_playWs || _playWs.readyState !== WebSocket.OPEN) { showAlert('Not connected'); return; }
+
+  // Disable EB button until response is fully handled
+  var ebBtn = document.getElementById('playEbPriceBtn');
+  if (ebBtn) {
+    if (ebBtn.getAttribute('data-disabled') === '1') return; // already pending
+    ebBtn.setAttribute('data-disabled', '1');
+    ebBtn.style.opacity = '0.5';
+    ebBtn.style.pointerEvents = 'none';
+  }
+
   var resp = _playCurrentMachine.response;
 
   // Immediately deduct EB price from displayed balance

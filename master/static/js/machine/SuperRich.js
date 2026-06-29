@@ -20,6 +20,8 @@ MachineRegistry.register('SuperRich', {
       _superRichMagicBalls = resp.magic_available_balls;
       _superRichLastEb = resp.extra;
       playHandleBuyEbResponse(resp);
+      // Disable EB button while lucky ball modal is active
+      playDisableEbButton();
       // Show lucky ball modal after a short delay for the EB ball to appear
       setTimeout(function() {
         superRichShowLuckyBallModal(_superRichMagicBalls);
@@ -198,6 +200,8 @@ function superRichHandleMagicBallResponse(resp) {
     } else {
       playShowEbButtons(ebPrice);
     }
+    // Re-enable EB button after magic ball is resolved
+    playEnableEbButton();
   } else if (hasEb === false) {
     playRemoveEbButtons();
     _playSpinState = 'waiting_roundover';
@@ -510,5 +514,7 @@ function superRichGoldenCoinsFinish() {
     // Update balance with the prize
     var newBal = playGetCurrentBalance() + _srCoins.prize;
     playAnimateBalance(newBal, 1000);
+    // Re-enable EB button after bonus is resolved
+    playEnableEbButton();
   }, 2000);
 }
