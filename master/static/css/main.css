@@ -335,108 +335,133 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   100% { transform: scale(1); opacity: 1; box-shadow: 0 0 8px rgba(255,235,59,0.6); }
 }
 
-/* BingoAmazonia silver SPIN button (square, no border) */
+/* BingoAmazonia SPIN button (3D box with top, front, right faces) */
 .ba-spin-btn {
   width: 70px;
   height: 70px;
-  border-radius: 6px;
+  border-radius: 0;
   cursor: pointer;
   position: relative;
   border: none;
-  background: linear-gradient(to bottom, #e0e0e8 0%, #c0c0cb 20%, #a8a8b4 55%, #808090 85%, #5a5a68 100%);
-  box-shadow:
-    0 6px 0 0 #3a3a44,
-    0 8px 8px 0 rgba(0,0,0,0.4),
-    inset 0 2px 1px rgba(255,255,255,0.7),
-    inset 0 -2px 3px rgba(0,0,0,0.3);
-  transition: transform 0.08s, box-shadow 0.08s;
-  overflow: hidden;
+  background: none;
+  box-shadow: none;
+  transition: transform 0.1s;
+  overflow: visible;
   display: flex;
   align-items: center;
   justify-content: center;
+  transform: rotateX(10deg) rotateY(-10deg);
+  transform-style: preserve-3d;
 }
-.ba-spin-btn::before {
-  content: '';
+.ba-spin-btn .ba-face-front {
   position: absolute;
-  top: 0;
-  left: 0;
   width: 100%;
-  height: 45%;
-  border-radius: 6px 6px 50% 50%;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.0) 100%);
-  pointer-events: none;
+  height: 100%;
+  background: linear-gradient(to bottom, #c83020, #9c1d14, #7a1610);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #6a140e;
 }
-.ba-spin-btn::after {
-  content: none;
+.ba-spin-btn .ba-face-top {
+  position: absolute;
+  width: 100%;
+  height: 14px;
+  bottom: 100%;
+  left: 0;
+  background: linear-gradient(to bottom, #e85848, #d44a3a);
+  transform-origin: bottom;
+  transform: rotateX(70deg);
+  border: 1px solid #b83020;
 }
-.ba-spin-btn:hover {
-  background: linear-gradient(to bottom, #eaeaf0 0%, #d0d0d8 20%, #b8b8c4 55%, #90909c 85%, #6a6a78 100%);
-  box-shadow:
-    0 6px 0 0 #3a3a44,
-    0 9px 12px 0 rgba(0,0,0,0.35),
-    inset 0 2px 1px rgba(255,255,255,0.8),
-    inset 0 -2px 3px rgba(0,0,0,0.25);
+.ba-spin-btn .ba-face-right {
+  position: absolute;
+  width: 14px;
+  height: 100%;
+  left: 100%;
+  top: 0;
+  background: linear-gradient(to right, #7a1610, #4a0e08);
+  transform-origin: left;
+  transform: rotateY(70deg);
+  border: 1px solid #6a140e;
+}
+.ba-spin-btn:hover .ba-face-front {
+  background: linear-gradient(to bottom, #d44a3a, #ac2a1c, #8a1c12);
 }
 .ba-spin-btn:active {
-  transform: translateY(5px);
-  box-shadow:
-    0 1px 0 0 #3a3a44,
-    0 2px 3px 0 rgba(0,0,0,0.3),
-    inset 0 3px 5px rgba(0,0,0,0.4),
-    inset 0 -1px 1px rgba(255,255,255,0.15);
-  background: linear-gradient(to bottom, #90909c 0%, #808090 20%, #6a6a78 55%, #4a4a56 85%, #3a3a44 100%);
+  transform: rotateX(10deg) rotateY(-10deg) translateY(3px) translateX(-2px);
+}
+.ba-spin-btn:active .ba-face-top {
+  height: 8px;
+}
+.ba-spin-btn:active .ba-face-right {
+  width: 8px;
 }
 
-/* BingoAmazonia silver small buttons (BET +/-, LINE +/-) */
+/* BingoAmazonia small buttons (3D box with top, front, right faces) */
 .ba-btn-silver {
   min-width: 28px;
   height: 28px;
   padding: 0 8px;
-  border-radius: 4px;
+  border-radius: 0;
   cursor: pointer;
   position: relative;
   border: none;
-  background: linear-gradient(to bottom, #e0e0e8 0%, #c0c0cb 20%, #a8a8b4 55%, #808090 85%, #5a5a68 100%);
-  box-shadow:
-    0 4px 0 0 #3a3a44,
-    0 5px 6px 0 rgba(0,0,0,0.35),
-    inset 0 1px 1px rgba(255,255,255,0.6),
-    inset 0 -1px 2px rgba(0,0,0,0.25);
-  color: #333;
+  background: none;
+  box-shadow: none;
+  color: #fff;
   font-size: 14px;
   font-weight: 800;
-  text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.08s, box-shadow 0.08s;
-  overflow: hidden;
+  transition: transform 0.1s;
+  overflow: visible;
+  transform: rotateX(10deg) rotateY(-10deg);
+  transform-style: preserve-3d;
 }
-.ba-btn-silver::before {
-  content: '';
+.ba-btn-silver .ba-face-front {
   position: absolute;
-  top: 0;
-  left: 0;
   width: 100%;
-  height: 45%;
-  border-radius: 4px 4px 50% 50%;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.0) 100%);
-  pointer-events: none;
+  height: 100%;
+  background: linear-gradient(to bottom, #c83020, #9c1d14, #7a1610);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #6a140e;
 }
-.ba-btn-silver:hover {
-  background: linear-gradient(to bottom, #eaeaf0 0%, #d0d0d8 20%, #b8b8c4 55%, #90909c 85%, #6a6a78 100%);
-  box-shadow:
-    0 4px 0 0 #3a3a44,
-    0 6px 8px 0 rgba(0,0,0,0.3),
-    inset 0 1px 1px rgba(255,255,255,0.7),
-    inset 0 -1px 2px rgba(0,0,0,0.2);
+.ba-btn-silver .ba-face-top {
+  position: absolute;
+  width: 100%;
+  height: 8px;
+  bottom: 100%;
+  left: 0;
+  background: linear-gradient(to bottom, #e85848, #d44a3a);
+  transform-origin: bottom;
+  transform: rotateX(70deg);
+  border: 1px solid #b83020;
+}
+.ba-btn-silver .ba-face-right {
+  position: absolute;
+  width: 8px;
+  height: 100%;
+  left: 100%;
+  top: 0;
+  background: linear-gradient(to right, #7a1610, #4a0e08);
+  transform-origin: left;
+  transform: rotateY(70deg);
+  border: 1px solid #6a140e;
+}
+.ba-btn-silver:hover .ba-face-front {
+  background: linear-gradient(to bottom, #d44a3a, #ac2a1c, #8a1c12);
 }
 .ba-btn-silver:active {
-  transform: translateY(3px);
-  box-shadow:
-    0 1px 0 0 #3a3a44,
-    0 1px 2px 0 rgba(0,0,0,0.25),
-    inset 0 2px 4px rgba(0,0,0,0.4),
-    inset 0 -1px 1px rgba(255,255,255,0.1);
-  background: linear-gradient(to bottom, #90909c 0%, #808090 20%, #6a6a78 55%, #4a4a56 85%, #3a3a44 100%);
+  transform: rotateX(10deg) rotateY(-10deg) translateY(2px) translateX(-1px);
+}
+.ba-btn-silver:active .ba-face-top {
+  height: 4px;
+}
+.ba-btn-silver:active .ba-face-right {
+  width: 4px;
 }

@@ -63,7 +63,7 @@ MachineRegistry.register('BingoAmazonia', {
       }
     });
 
-    // SPIN button — bottom right, square
+    // SPIN button — 3D box with top, front, right faces
     var spinBtn = document.getElementById('slotSpinBtn');
     if (spinBtn) {
       spinBtn.className = 'ba-spin-btn';
@@ -72,17 +72,18 @@ MachineRegistry.register('BingoAmazonia', {
       spinBtn.style.width = '50px';
       spinBtn.style.height = '30px';
       spinBtn.style.display = 'flex';
-      spinBtn.style.flexDirection = 'column';
       spinBtn.style.alignItems = 'center';
       spinBtn.style.justifyContent = 'center';
       spinBtn.style.position = 'absolute';
-      spinBtn.innerHTML = '<span style="font-size:14px;font-weight:900;color:#333;text-shadow:0 1px 0 rgba(156, 29, 20, 0.59);letter-spacing:1px;z-index:1;">SPIN</span>';
+      spinBtn.innerHTML = '<div class="ba-face-top"></div><div class="ba-face-front"><span style="font-size:12px;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.6);letter-spacing:1px;">SPIN</span></div><div class="ba-face-right"></div>';
     }
 
-    // Override BET and LINE +/- buttons to silver style
+    // Override BET and LINE +/- buttons to 3D box style
     var btns = document.querySelectorAll('#slotSkin .slot-btn-3d');
     btns.forEach(function(btn) {
+      var text = btn.textContent;
       btn.className = 'ba-btn-silver';
+      btn.innerHTML = '<div class="ba-face-top"></div><div class="ba-face-front"><span style="color:#fff;font-size:14px;font-weight:800;">' + text + '</span></div><div class="ba-face-right"></div>';
     });
 
     // COLLECT button
@@ -90,7 +91,71 @@ MachineRegistry.register('BingoAmazonia', {
     if (collectBtn) {
       collectBtn.style.top = '57%';
       collectBtn.style.right = '29%';
+      var collectText = collectBtn.textContent;
       collectBtn.className = 'ba-btn-silver';
+      collectBtn.innerHTML = '<div class="ba-face-top"></div><div class="ba-face-front"><span style="color:#fff;font-size:9px;font-weight:800;">' + collectText + '</span></div><div class="ba-face-right"></div>';
     }
+
+    // BingoMini card — render to the right of reels
+    bingoAmazoniaRenderMiniCard(resp, config);
   }
 });
+
+// ---------------------------------------------------------------------------
+// BingoAmazonia Mini Card (5x3) with patterns above
+// ---------------------------------------------------------------------------
+function bingoAmazoniaRenderMiniCard(resp, config) {
+  var cardsNumber = resp.cardsNumber || [];
+  if (cardsNumber.length === 0) return;
+
+  // Get BingoMiniFeature config
+  var mathModel = (config.math_model && config.math_model[0]) || {};
+  var features = (mathModel.features && mathModel.features.lists) || [];
+  var miniConfig = null;
+  for (var i = 0; i < features.length; i++) {
+    if (features[i].reference && features[i].reference.indexOf('BingoMiniFeature') >= 0) {
+      miniConfig = features[i].config;
+      break;
+    }
+  }
+  if (!miniConfig) return;
+
+  var cardWidth = miniConfig.card_width || 5;
+  var cardHeight = miniConfig.card_height || 3;
+  var patterns = miniConfig.pattern || [];
+
+  // Remove existing mini card
+  var old = document.getElementById('baMiniCardArea');
+  if (old) old.remove();
+
+  var slotSkin = document.getElementById('slotSkin');
+  if (!slotSkin) return;
+
+  // Container positioned to the right of reels (no gap)
+  var container = document.createElement('div');
+  container.id = 'baMiniCardArea';
+  container.style.cssText = 'position:absolute;top:24%;left:59%;width:22%;display:flex;flex-direction:column;gap:0;';
+
+  // Patterns area (compact grid above card)
+  var patHtml = '<div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:0;padding:2px;background:rgba(0,0,0,0.5);border-radius:3px 3px 0 0;">';
+  patterns.forEach(function(p) {
+    var fmt = p.format || '';
+    patHtml += '<div style="display:grid;grid-template-columns:repeat(' + cardWidth + ',6px);gap:0px;" title="' + p.name + ' x' + p.value + '">';
+    for (var i = 0; i < fmt.length; i++) {
+      patHtml += '<div style="width:6px;height:4px;background:' + (fmt[i] === '1' ? '#f5d742' : '#333') + ';"></div>';
+    }
+    patHtml += '</div>';
+  });
+  patHtml += '</div>';
+
+  // Card area (5x3 grid)
+  var cardHtml = '<div style="display:grid;grid-template-columns:repeat(' + cardWidth + ',1fr);gap:1px;background:#1a1a2e;border-radius:0 0 3px 3px;padding:1px;">';
+  for (var i = 0; i < cardsNumber.length; i++) {
+    var num = cardsNumber[i];
+    cardHtml += '<div class="ba-mini-cell" data-idx="' + i + '" data-num="' + num + '" style="background:#f0f0f0;text-align:center;font-size:9px;font-weight:600;color:#333;padding:2px 0;line-height:1.2;">' + (num < 10 ? '0' + num : num) + '</div>';
+  }
+  cardHtml += '</div>';
+
+  container.innerHTML = patHtml + cardHtml;
+  slotSkin.appendChild(container);
+}
