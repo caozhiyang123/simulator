@@ -215,6 +215,14 @@ async function playSelectMachine(machineId, enabled, machineType) {
       if (typeof superRichHandleMagicBallResponse === 'function') {
         superRichHandleMagicBallResponse(resp);
       }
+    } else if (resp.cmd === 'bonus_spin') {
+      // Bonus spin response (e.g. BingoSeven/BingoAmazonia/BingoMoney cage)
+      playLog('<<< [BONUS SPIN] response: ' + JSON.stringify(resp));
+      if (_playCurrentMachine && _playCurrentMachine.name === 'BingoAmazonia') {
+        if (typeof bingoAmazoniaHandleBonusSpinResponse === 'function') bingoAmazoniaHandleBonusSpinResponse(resp);
+      } else {
+        if (typeof bingoSevenHandleBonusSpinResponse === 'function') bingoSevenHandleBonusSpinResponse(resp);
+      }
     } else {
       playLog('<<< [WS] unknown cmd: ' + JSON.stringify(resp));
     }

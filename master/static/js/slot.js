@@ -83,7 +83,7 @@ function slotRenderUI() {
 
   var html = '';
   // Full background container
-  html += '<div id="slotSkin" style="position:relative;width:480px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.6);">';
+  html += '<div id="slotSkin" style="position:relative;width:480px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.6);min-height:600px;background:#1a1a2e;">';
   html += '<img src="' + bgPath + '" style="width:100%;display:block;" onerror="this.style.display=\'none\'">';
 
   // Pattern area (top) - clickable
@@ -164,6 +164,9 @@ function slotRenderUI() {
   var showCollect = resp.round_is_over === false;
   html += '<div id="slotCollectBtn" class="slot-btn-3d" onclick="slotCollectRound()" style="position:absolute;top:78%;right:24%;width:52px;height:36px;font-size:9px;display:' + (showCollect ? 'flex' : 'none') + ';">COLLECT</div>';
 
+  // WIN display (after BET/LINE controls)
+  html += '<div id="slotWinLabel" style="position:absolute;top:81%;left:60%;font-size:11px;font-weight:700;color:#f5d742;text-shadow:0 1px 2px #000;">WIN: <span id="slotWinAmount">0.00</span></div>';
+
   // SPIN button (large circle, shifted left-up to align with background)
   html += '<div id="slotSpinBtn" class="slot-spin-3d" onclick="slotSpin()" style="position:absolute;top:74%;right:10%;width:86px;height:86px;">';
   html += '<span style="font-size:15px;font-weight:800;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,0.6);z-index:1;">SPIN</span>';
@@ -192,6 +195,7 @@ function slotRenderUI() {
   gameArea.innerHTML = html;
   document.getElementById('playBottomText').textContent = 'Connected | Balance: ' + balance.toLocaleString() + ' ' + st.displaySymbol;
   slotUpdateJackpot();
+  slotSpinToolInit();
 }
 
 function slotCalcJackpot() {
@@ -298,6 +302,8 @@ function slotSpin() {
   var btn = document.getElementById('slotSpinBtn');
   if (btn) { btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; }
   document.getElementById('slotWinDisplay').textContent = '';
+  var winAmtEl = document.getElementById('slotWinAmount');
+  if (winAmtEl) winAmtEl.textContent = '0.00';
   slotClearAllLines();
 
   // Client-side: deduct total bet from displayed balance immediately
@@ -314,12 +320,18 @@ function slotSpin() {
 
   var linesStr = '';
   for (var i = 0; i < st.maxLines; i++) linesStr += (i < st.activeLines ? '1' : '0');
+
+  // Get spin tool overrides
+  var toolOverrides = slotSpinToolGetOverrides();
+
   var spinCmd = {
     cmd: 'solicitajogada', session_token: st.sessionToken,
     game_id: st.machineId, currency: st.currency,
     opt_id: st.loginResp.opt_id || '', username: st.loginResp.username || '',
     aposta: bet, lines: linesStr, bonus_unique_id: '', is_bonus: false,
-    icons: [], target_pattern_ids: [], target_feature_ids: [],
+    icons: toolOverrides.icons || [],
+    target_pattern_ids: toolOverrides.targetPatternIds || [],
+    target_feature_ids: toolOverrides.targetFeatureIds || [],
     payload_data: "[{'key':'value'}]"
   };
   playLog('>>> [SLOT SPIN] send: ' + JSON.stringify(spinCmd));
@@ -432,13 +444,42 @@ function slotHandleSpinResponse(resp) {
 function slotShowWinningLines(resp) {
   var st = _slotState;
   if (!resp.total_won || resp.total_won <= 0) return;
-  for (var i = 0; i < st.activeLines && i < st.lines.length; i++) {
-    st.visibleLines[i] = true;
-    slotDrawLine(i);
+
+  // Parse won_pattern to extract winning line numbers
+  // Format: "[l1,i1i1i1i1i-1];[l5,i2i2i2i2i2];" etc.
+  var wonPattern = resp.won_pattern || '';
+  var wonLines = [];
+  var matches = wonPattern.match(/l(\d+)/g);
+  if (matches) {
+    for (var i = 0; i < matches.length; i++) {
+      var lineNum = parseInt(matches[i].substring(1)) - 1; // convert 1-based to 0-based
+      if (lineNum >= 0 && wonLines.indexOf(lineNum) < 0) {
+        wonLines.push(lineNum);
+      }
+    }
+  }
+
+  // If we parsed specific lines, only show those; otherwise fallback to all active
+  if (wonLines.length > 0) {
+    for (var i = 0; i < wonLines.length; i++) {
+      var lineIdx = wonLines[i];
+      if (lineIdx < st.lines.length) {
+        st.visibleLines[lineIdx] = true;
+        slotDrawLine(lineIdx);
+      }
+    }
+  } else {
+    // Fallback: show all active lines
+    for (var i = 0; i < st.activeLines && i < st.lines.length; i++) {
+      st.visibleLines[i] = true;
+      slotDrawLine(i);
+    }
   }
 }
 
 function slotRoundOver() {
+  // If a bonus/feature is pending, defer round over
+  if (_playBonusPending) return;
   var st = _slotState;
   if (!_playWs || _playWs.readyState !== WebSocket.OPEN) { st.spinning = false; slotEnableSpinBtn(); return; }
   var roCmd = {
@@ -544,6 +585,9 @@ function slotShowWinAnimation(amount) {
   var winEl = document.getElementById('slotWinDisplay');
   if (winEl) {
     winEl.innerHTML = '<span class="slot-win-text" style="color:#f39c12;font-size:20px;font-weight:800;text-shadow:0 0 10px #f5d742,0 0 20px #f39c12;animation:slotWinPulse 0.5s ease-in-out 5;">\uD83C\uDF89 WIN: ' + amount.toFixed(st.displayPrecision) + '</span>';
+  // Also update the static WIN label
+  var winAmtEl = document.getElementById('slotWinAmount');
+  if (winAmtEl) winAmtEl.textContent = amount.toFixed(st.displayPrecision);
   }
 
   // Spawn coins from reels area flying to balance
@@ -602,4 +646,317 @@ function slotCollectRound() {
   _playWs.send(JSON.stringify(roCmd));
   var btn = document.getElementById('slotCollectBtn');
   if (btn) btn.style.display = 'none';
+}
+
+
+// ===========================================================================
+// Slot Spin Tool (admin/qa sidebar)
+// ===========================================================================
+var _slotSpinTool = {
+  enabled: false,
+  targetPatternIds: [],
+  targetFeatureIds: [],
+  targetIcons: [],
+  mode: null // 'pattern' | 'feature' | 'icons'
+};
+
+function slotSpinToolInit() {
+  var st = _slotState;
+  var role = (st.loginResp && st.loginResp.role) || '';
+  if (role !== 'admin' && role !== 'qa') return;
+  _slotSpinTool.enabled = true;
+  _slotSpinTool.targetPatternIds = [];
+  _slotSpinTool.targetFeatureIds = [];
+  _slotSpinTool.targetIcons = [];
+  _slotSpinTool.mode = null;
+
+  var mathModel = (st.config && st.config.math_model && st.config.math_model[0]) || {};
+  _slotSpinTool.patterns = mathModel.pattern || [];
+  _slotSpinTool.features = (mathModel.features && mathModel.features.lists) || [];
+  _slotSpinTool.icons = mathModel.icon || st.icons || [];
+  _slotSpinTool.rowCount = st.rowCount;
+  _slotSpinTool.colCount = st.colCount;
+
+  slotSpinToolRender();
+}
+
+function slotSpinToolRender() {
+  var old = document.getElementById('slotSpinTool');
+  if (old) old.remove();
+
+  var gameArea = document.getElementById('playGameArea');
+  if (!gameArea) return;
+
+  var panel = document.createElement('div');
+  panel.id = 'slotSpinTool';
+  panel.style.cssText = 'position:absolute;top:280px;left:0;z-index:200;';
+
+  panel.innerHTML = '<div id="slotSpinToolTab" onclick="slotSpinToolToggle()" style="background:#1a1a2e;border:1px solid #f5d742;border-left:none;border-radius:0 8px 8px 0;padding:8px 6px;cursor:pointer;color:#f5d742;font-size:10px;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;">🔧 TOOL</div>' +
+    '<div id="slotSpinToolPanel" style="display:none;position:absolute;top:0;left:30px;background:#1a1a2e;border:1px solid #f5d742;border-radius:0 8px 8px 0;padding:12px;width:220px;max-height:400px;overflow-y:auto;">' +
+    '<div style="color:#fff;font-size:11px;font-weight:700;margin-bottom:8px;">🔧 Slot Spin Tool</div>' +
+    '<div id="sstItemPattern" class="bst-item" onclick="slotSpinToolChoosePattern()" style="padding:6px 8px;margin-bottom:4px;background:#2a2a4e;border-radius:4px;cursor:pointer;color:#ccc;font-size:10px;">📌 Choose Pattern</div>' +
+    '<div id="sstPatternList" style="display:none;padding-left:8px;max-height:180px;overflow-y:auto;"></div>' +
+    '<div id="sstItemFeature" class="bst-item" onclick="slotSpinToolChooseFeature()" style="padding:6px 8px;margin-bottom:4px;background:#2a2a4e;border-radius:4px;cursor:pointer;color:#ccc;font-size:10px;">⚡ Choose Feature</div>' +
+    '<div id="sstFeatureList" style="display:none;padding-left:8px;"></div>' +
+    '<div id="sstItemIcons" class="bst-item" onclick="slotSpinToolChooseIcons()" style="padding:6px 8px;margin-bottom:4px;background:#2a2a4e;border-radius:4px;cursor:pointer;color:#ccc;font-size:10px;">🎰 Choose Icons</div>' +
+    '<div id="sstStatus" style="margin-top:8px;font-size:9px;color:#888;border-top:1px solid #333;padding-top:6px;"></div>' +
+    '<div onclick="slotSpinToolClear()" style="margin-top:6px;padding:4px 8px;background:#e74c3c;border-radius:4px;cursor:pointer;color:#fff;font-size:9px;text-align:center;">Clear All</div>' +
+    '</div>';
+
+  gameArea.style.position = 'relative';
+  gameArea.appendChild(panel);
+  slotSpinToolUpdateStatus();
+}
+
+function slotSpinToolToggle() {
+  var panel = document.getElementById('slotSpinToolPanel');
+  if (panel) panel.style.display = panel.style.display === 'none' ? '' : 'none';
+}
+
+function slotSpinToolChoosePattern() {
+  // Mutual exclusion
+  _slotSpinTool.targetFeatureIds = [];
+  _slotSpinTool.targetIcons = [];
+  var featList = document.getElementById('sstFeatureList');
+  if (featList) featList.style.display = 'none';
+
+  var listEl = document.getElementById('sstPatternList');
+  if (!listEl) return;
+  if (listEl.style.display !== 'none') { listEl.style.display = 'none'; return; }
+
+  var patterns = _slotSpinTool.patterns;
+  var machineName = _slotState.machineName;
+  var html = '';
+  patterns.forEach(function(p) {
+    var selected = _slotSpinTool.targetPatternIds.indexOf(p.id) >= 0;
+    // Parse format string: e.g. "i1i1i1i1i-1" -> [{icon:'i1'},{icon:'i1'},...,{icon:'i-1',wild:true}]
+    var formatIcons = slotSpinToolParseFormat(p.format || '');
+
+    html += '<div onclick="slotSpinToolSelectPattern(' + p.id + ',this)" style="padding:4px 6px;margin:3px 0;background:' + (selected ? '#f5d742' : '#333') + ';color:' + (selected ? '#000' : '#ccc') + ';border-radius:4px;cursor:pointer;font-size:9px;">';
+    // Line 1: id, name, alias, value
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">';
+    html += '<span>' + (p.alias || '') + ' <span style="opacity:0.7;">' + (p.name || '') + '</span> id:' + p.id + '</span>';
+    html += '<span style="font-weight:700;">x' + p.value + '</span>';
+    html += '</div>';
+    // Line 2: icon images from format
+    html += '<div style="display:flex;gap:2px;align-items:center;">';
+    formatIcons.forEach(function(fi) {
+      if (fi.wild) {
+        // Empty/wild position
+        html += '<div style="width:20px;height:20px;border:1px dashed #666;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:7px;color:#666;">?</div>';
+      } else {
+        html += '<img src="/static/machine/' + machineName + '/icon/' + fi.icon + '.png" style="width:20px;height:20px;object-fit:contain;border-radius:2px;background:#222;" onerror="this.outerHTML=\'<span style=color:#aaa;font-size:7px;width:20px;display:inline-block;text-align:center>' + fi.icon + '</span>\'">';
+      }
+    });
+    html += '</div>';
+    html += '</div>';
+  });
+  listEl.innerHTML = html;
+  listEl.style.display = '';
+  slotSpinToolUpdateStatus();
+}
+
+/**
+ * Parse a slot pattern format string like "i1i1i1i1i-1" into icon tokens.
+ * Returns array of {icon: 'i1', wild: false} or {icon: 'i-1', wild: true}
+ * Wild/negative icons (i-N) mean "not this icon" = empty slot in display.
+ */
+function slotSpinToolParseFormat(format) {
+  var result = [];
+  var regex = /i-?\d+/g;
+  var match;
+  while ((match = regex.exec(format)) !== null) {
+    var token = match[0];
+    if (token.indexOf('-') >= 0) {
+      result.push({ icon: token, wild: true });
+    } else {
+      result.push({ icon: token, wild: false });
+    }
+  }
+  return result;
+}
+
+function slotSpinToolSelectPattern(pid, el) {
+  _slotSpinTool.targetPatternIds = [pid];
+  _slotSpinTool.targetFeatureIds = [];
+  _slotSpinTool.targetIcons = [];
+  var siblings = el.parentElement.children;
+  for (var i = 0; i < siblings.length; i++) { siblings[i].style.background = '#333'; siblings[i].style.color = '#ccc'; }
+  el.style.background = '#f5d742'; el.style.color = '#000';
+  slotSpinToolUpdateStatus();
+}
+
+function slotSpinToolChooseFeature() {
+  // Mutual exclusion
+  _slotSpinTool.targetPatternIds = [];
+  _slotSpinTool.targetIcons = [];
+  var patList = document.getElementById('sstPatternList');
+  if (patList) patList.style.display = 'none';
+
+  var listEl = document.getElementById('sstFeatureList');
+  if (!listEl) return;
+  if (listEl.style.display !== 'none') { listEl.style.display = 'none'; return; }
+
+  var features = _slotSpinTool.features;
+  var html = '';
+  features.forEach(function(f) {
+    var ref = f.reference || '';
+    if (ref.indexOf('SynchronizedMachineStatusFeature') >= 0) return;
+    var name = ref.split('.').pop();
+    var fid = f.config && f.config.feature_id;
+    var selected = _slotSpinTool.targetFeatureIds.indexOf(fid) >= 0;
+    html += '<div onclick="slotSpinToolSelectFeature(' + fid + ',this)" style="padding:3px 6px;margin:2px 0;background:' + (selected ? '#f5d742' : '#333') + ';color:' + (selected ? '#000' : '#ccc') + ';border-radius:3px;cursor:pointer;font-size:9px;">' + name + ' (id:' + fid + ')</div>';
+  });
+  listEl.innerHTML = html;
+  listEl.style.display = '';
+  slotSpinToolUpdateStatus();
+}
+
+function slotSpinToolSelectFeature(fid, el) {
+  _slotSpinTool.targetFeatureIds = [fid];
+  _slotSpinTool.targetPatternIds = [];
+  _slotSpinTool.targetIcons = [];
+  var siblings = el.parentElement.children;
+  for (var i = 0; i < siblings.length; i++) { siblings[i].style.background = '#333'; siblings[i].style.color = '#ccc'; }
+  el.style.background = '#f5d742'; el.style.color = '#000';
+  slotSpinToolUpdateStatus();
+}
+
+function slotSpinToolChooseIcons() {
+  // Mutual exclusion
+  _slotSpinTool.targetPatternIds = [];
+  _slotSpinTool.targetFeatureIds = [];
+  _slotSpinTool.targetIcons = [];
+  var patList = document.getElementById('sstPatternList');
+  if (patList) patList.style.display = 'none';
+  var featList = document.getElementById('sstFeatureList');
+  if (featList) featList.style.display = 'none';
+
+  // Show icon picker modal
+  slotSpinToolShowIconPicker();
+  slotSpinToolUpdateStatus();
+}
+
+function slotSpinToolShowIconPicker() {
+  var old = document.getElementById('sstIconModal');
+  if (old) old.remove();
+
+  var st = _slotSpinTool;
+  var totalNeeded = st.rowCount * st.colCount;
+  var icons = st.icons;
+  var machineName = _slotState.machineName;
+
+  var modal = document.createElement('div');
+  modal.id = 'sstIconModal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+  var html = '<div style="background:#1a1a2e;border-radius:12px;padding:20px;border:2px solid #f5d742;max-width:90vw;text-align:center;">';
+  html += '<div style="color:#f5d742;font-size:14px;font-weight:700;margin-bottom:6px;">🎰 Choose Icons</div>';
+  html += '<div style="color:#aaa;font-size:11px;margin-bottom:12px;">Select ' + totalNeeded + ' icons (row×col = ' + st.rowCount + '×' + st.colCount + '). Click to add.</div>';
+
+  // Icon selection grid
+  html += '<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:12px;">';
+  icons.forEach(function(iconId) {
+    html += '<div onclick="slotSpinToolAddIcon(' + iconId + ')" style="width:48px;height:48px;border-radius:6px;background:#2a2a4e;border:2px solid #555;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.1s;" onmouseover="this.style.borderColor=\'#f5d742\'" onmouseout="this.style.borderColor=\'#555\'">';
+    html += '<img src="/static/machine/' + machineName + '/icon/i' + iconId + '.png" style="width:36px;height:36px;object-fit:contain;" onerror="this.outerHTML=\'<span style=color:#fff;font-size:14px>i' + iconId + '</span>\'">';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // Selected icons display
+  html += '<div style="color:#aaa;font-size:10px;margin-bottom:4px;">Selected: <span id="sstIconCount">0</span>/' + totalNeeded + '</div>';
+  html += '<div id="sstSelectedIcons" style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;min-height:30px;padding:6px;background:#0a0a1e;border-radius:6px;margin-bottom:12px;"></div>';
+
+  // Buttons
+  html += '<div style="display:flex;gap:8px;justify-content:center;">';
+  html += '<div onclick="slotSpinToolIconConfirm()" style="padding:6px 16px;background:#27ae60;border-radius:4px;cursor:pointer;color:#fff;font-size:11px;font-weight:700;">Confirm</div>';
+  html += '<div onclick="slotSpinToolIconCancel()" style="padding:6px 16px;background:#e74c3c;border-radius:4px;cursor:pointer;color:#fff;font-size:11px;font-weight:700;">Cancel</div>';
+  html += '<div onclick="slotSpinToolIconClear()" style="padding:6px 16px;background:#666;border-radius:4px;cursor:pointer;color:#fff;font-size:11px;font-weight:700;">Clear</div>';
+  html += '</div></div>';
+
+  modal.innerHTML = html;
+  document.body.appendChild(modal);
+}
+
+function slotSpinToolAddIcon(iconId) {
+  var st = _slotSpinTool;
+  var totalNeeded = st.rowCount * st.colCount;
+  if (st.targetIcons.length >= totalNeeded) return;
+
+  st.targetIcons.push(iconId);
+  var machineName = _slotState.machineName;
+  var container = document.getElementById('sstSelectedIcons');
+  if (container) {
+    container.innerHTML += '<div style="width:28px;height:28px;background:#2a2a4e;border-radius:4px;display:flex;align-items:center;justify-content:center;"><img src="/static/machine/' + machineName + '/icon/i' + iconId + '.png" style="width:22px;height:22px;object-fit:contain;" onerror="this.outerHTML=\'<span style=color:#fff;font-size:9px>i' + iconId + '</span>\'"></div>';
+  }
+  var countEl = document.getElementById('sstIconCount');
+  if (countEl) countEl.textContent = st.targetIcons.length;
+}
+
+function slotSpinToolIconConfirm() {
+  var st = _slotSpinTool;
+  var totalNeeded = st.rowCount * st.colCount;
+  if (st.targetIcons.length !== totalNeeded) {
+    showAlert('Need exactly ' + totalNeeded + ' icons, got ' + st.targetIcons.length);
+    return;
+  }
+  var modal = document.getElementById('sstIconModal');
+  if (modal) modal.remove();
+  slotSpinToolUpdateStatus();
+}
+
+function slotSpinToolIconCancel() {
+  _slotSpinTool.targetIcons = [];
+  var modal = document.getElementById('sstIconModal');
+  if (modal) modal.remove();
+  slotSpinToolUpdateStatus();
+}
+
+function slotSpinToolIconClear() {
+  _slotSpinTool.targetIcons = [];
+  var container = document.getElementById('sstSelectedIcons');
+  if (container) container.innerHTML = '';
+  var countEl = document.getElementById('sstIconCount');
+  if (countEl) countEl.textContent = '0';
+}
+
+function slotSpinToolClear() {
+  _slotSpinTool.targetPatternIds = [];
+  _slotSpinTool.targetFeatureIds = [];
+  _slotSpinTool.targetIcons = [];
+  _slotSpinTool.mode = null;
+  var patList = document.getElementById('sstPatternList');
+  if (patList) patList.style.display = 'none';
+  var featList = document.getElementById('sstFeatureList');
+  if (featList) featList.style.display = 'none';
+  slotSpinToolUpdateStatus();
+}
+
+function slotSpinToolUpdateStatus() {
+  var st = _slotSpinTool;
+  var el = document.getElementById('sstStatus');
+  if (!el) return;
+  var lines = [];
+  if (st.targetPatternIds.length) lines.push('Pattern: [' + st.targetPatternIds.join(',') + ']');
+  if (st.targetFeatureIds.length) lines.push('Feature: [' + st.targetFeatureIds.join(',') + ']');
+  if (st.targetIcons.length) lines.push('Icons: [' + st.targetIcons.join(',') + '] (' + st.targetIcons.length + '/' + (st.rowCount * st.colCount) + ')');
+  el.innerHTML = lines.length ? lines.join('<br>') : '<span style="color:#666;">No tool active</span>';
+
+  // Update menu item highlights
+  var patEl = document.getElementById('sstItemPattern');
+  var featEl = document.getElementById('sstItemFeature');
+  var iconEl = document.getElementById('sstItemIcons');
+  if (patEl) { patEl.style.background = st.targetPatternIds.length ? '#f5d742' : '#2a2a4e'; patEl.style.color = st.targetPatternIds.length ? '#000' : '#ccc'; }
+  if (featEl) { featEl.style.background = st.targetFeatureIds.length ? '#f5d742' : '#2a2a4e'; featEl.style.color = st.targetFeatureIds.length ? '#000' : '#ccc'; }
+  if (iconEl) { iconEl.style.background = st.targetIcons.length ? '#f5d742' : '#2a2a4e'; iconEl.style.color = st.targetIcons.length ? '#000' : '#ccc'; }
+}
+
+function slotSpinToolGetOverrides() {
+  var st = _slotSpinTool;
+  if (!st.enabled) return { targetPatternIds: [], targetFeatureIds: [], icons: [] };
+  return {
+    targetPatternIds: st.targetPatternIds.slice(),
+    targetFeatureIds: st.targetFeatureIds.slice(),
+    icons: st.targetIcons.slice()
+  };
 }
