@@ -117,7 +117,7 @@ function slotRenderUI() {
       if (s >= resultPosition && s < resultPosition + visibleRows) {
         // Final result icons
         var idx = (s - resultPosition) * st.colCount + col;
-        stripIcons.push(st.reelIcons[idx] || 1);
+        stripIcons.push((st.reelIcons[idx] !== undefined && st.reelIcons[idx] !== null) ? st.reelIcons[idx] : 1);
       } else {
         stripIcons.push(icons[Math.floor(Math.random() * icons.length)]);
       }
@@ -401,7 +401,7 @@ function slotStopReelAnimation(onComplete) {
         var cellIdx = resultPosition + row;
         if (cellIdx < allCells.length) {
           var iconIdx = row * st.colCount + rt.col;
-          var iconId = st.reelIcons[iconIdx] || 1;
+          var iconId = (st.reelIcons[iconIdx] !== undefined && st.reelIcons[iconIdx] !== null) ? st.reelIcons[iconIdx] : 1;
           var img = allCells[cellIdx].querySelector('img');
           if (img) img.src = '/static/machine/' + st.machineName + '/icon/i' + iconId + '.png';
         }
