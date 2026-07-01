@@ -127,7 +127,7 @@ function slotRenderUI() {
     html += '<div class="slot-reel-strip" data-col="' + col + '" style="display:flex;flex-direction:column;position:absolute;top:0;left:0;width:100%;will-change:transform;transform-style:preserve-3d;">';
     for (var s = 0; s < stripLength; s++) {
       html += '<div style="width:100%;height:' + cellHeight + 'px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">';
-      html += '<img src="/static/machine/' + st.machineName + '/icon/i' + stripIcons[s] + '.png" style="width:100%;height:100%;object-fit:fill;" onerror="this.outerHTML=\'<span style=color:#fff;font-size:14px>i' + stripIcons[s] + '</span>\'">';
+      html += '<img src="/static/machine/' + st.machineName + '/icon/i' + stripIcons[s] + '.png" style="width:100%;height:100%;object-fit:fill;" onerror="this.style.opacity=0">';
       html += '</div>';
     }
     html += '</div>'; // end strip
@@ -367,6 +367,7 @@ function slotStartReelAnimation() {
           var imgs = strip.querySelectorAll('img');
           for (var i = 0; i < imgs.length - st.rowCount; i++) {
             var ri = icons[Math.floor(Math.random() * icons.length)];
+            imgs[i].style.opacity = '1';
             imgs[i].src = '/static/machine/' + st.machineName + '/icon/i' + ri + '.png';
           }
         }
@@ -403,7 +404,7 @@ function slotStopReelAnimation(onComplete) {
           var iconIdx = row * st.colCount + rt.col;
           var iconId = (st.reelIcons[iconIdx] !== undefined && st.reelIcons[iconIdx] !== null) ? st.reelIcons[iconIdx] : 1;
           var img = allCells[cellIdx].querySelector('img');
-          if (img) img.src = '/static/machine/' + st.machineName + '/icon/i' + iconId + '.png';
+          if (img) { img.style.opacity = '1'; img.src = '/static/machine/' + st.machineName + '/icon/i' + iconId + '.png'; }
         }
       }
 

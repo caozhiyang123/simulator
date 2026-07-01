@@ -1,0 +1,62 @@
+{
+  "id": 199,
+  "rtp_range": "94%-96%",
+  "enabled_features": [],
+  "math_model": [
+    {
+      "name": "Pixizinho",
+      "row_count": 3,
+      "column_count": 3,
+      "icon_amount": 3,
+      "max_lines": 1,
+      "pattern_match_type": "column_collect",
+      "class_name": "com.gamesmart.halloween.lottoBingo.core.PixizinhoMachine",
+      "features": {
+        "lists": [
+          {
+            "reference": "com.gamesmart.halloween.lottoBingo.feature.PixizinhoRespinFeature",
+            "config": {
+              "feature_id": 2,
+              "respin_count": 3
+            }
+          },
+          {
+            "reference": "com.gamesmart.halloween.lottoBingo.feature.PixizinhoJackpotFeature",
+            "config": {
+              "feature_id": 3,
+              "minor_multiplier": 12.50,
+              "major_multiplier": 25.00,
+              "grand_multiplier": 100.0
+            }
+          },
+          {
+            "reference": "com.gamesmart.halloween.lottoBingo.feature.SynchronizedMachineStatusFeature",
+            "config": {
+              "feature_id": 4
+            }
+          }
+        ]
+      },
+	  "icon":[0,1,2,3,4,5,6,7,8,9,10],
+	  "icon_value":[0,"golden","minor","major","grand",0.5,1.0,1.5,2.0,2.5,5.0],
+	  "lines":[],
+	  "line_direction":[],
+	  "pattern": [],
+      "math_model": [
+        {
+          "id": 1,
+          "event": "default",
+		  "pattern": [],
+		  "actual_reel_icons":[[0,2,3,4,5,6,7,8,9,10],
+				   [1,0],
+				   [0,2,3,4,5,6,7,8,9,10]
+				  ],
+		  "actual_reel_weight":[[0.89,0.0122,0.0122,0.0122,0.0122,0.0122,0.0122,0.0122,0.0122,0.0122],
+						  [0.15,0.85],
+						  [0.89,0.0122,0.0122,0.0122,0.0122,0.0122,0.0122,0.0122,0.0122,0.0122]
+						 ]
+        }
+      ]
+    }
+  ]
+}

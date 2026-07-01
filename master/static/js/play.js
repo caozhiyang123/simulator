@@ -188,9 +188,9 @@ async function playSelectMachine(machineId, enabled, machineType) {
       // Route through engine layer
       var engine = (machineType === 'slot') ? SlotEngine : BingoEngine;
       engine.render(resp, machineConfig, machineName);
-    } else if (resp.cmd === 'solicitajogada') {
-      // Spin or Buy EB response
-      playLog('<<< [SPIN/EB] response: ' + JSON.stringify(resp));
+    } else if (resp.cmd === 'solicitajogada' || resp.cmd === 'free_spin') {
+      // Spin, Buy EB, or Free Spin response
+      playLog('<<< [SPIN/EB/FREE] response: ' + JSON.stringify(resp));
       var engine = (machineType === 'slot') ? SlotEngine : BingoEngine;
       engine.onSpinResponse(resp, machineName);
     } else if (resp.cmd === 'finalizajogada') {
