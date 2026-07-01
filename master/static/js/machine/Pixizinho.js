@@ -51,12 +51,8 @@ MachineRegistry.register('Pixizinho', {
       if (resp.golden_prize && resp.golden_prize.length > 0) {
         pixizinhoGoldenPrizeAnimation(resp.golden_prize);
       }
-      // Update free spin UI
+      // Update free spin UI and enable SPIN button for manual free spin
       pixizinhoUpdateFreeSpinUI();
-      // Auto-send next free spin if available
-      if (_pixState.freeSpinsLeft > 0) {
-        setTimeout(function() { pixizinhoSendFreeSpin(); }, 2000);
-      }
     }, 3800);
   }
 });
@@ -102,9 +98,14 @@ function pixizinhoRenderJackpotPanel(resp, config) {
   var reelTop = reelsEl ? reelsEl.style.top : '20%';
   var reelH = reelsEl ? reelsEl.style.height : '52%';
 
+  // Place jackpot panel above the reels (between balance/jackpot bar and reels)
+  var reelTopNum = parseFloat(reelTop) || 20;
+  var panelTop = reelTopNum - 21; // above reels with 1.5x gap
+  if (panelTop < 4) panelTop = 4;
+
   var panel = document.createElement('div');
   panel.id = 'pixJackpotPanel';
-  panel.style.cssText = 'position:absolute;top:' + reelTop + ';left:1%;width:15%;height:' + reelH + ';display:flex;flex-direction:column;justify-content:center;gap:10px;z-index:5;';
+  panel.style.cssText = 'position:absolute;top:' + panelTop + '%;left:2%;width:96%;display:flex;gap:12px;justify-content:center;align-items:center;z-index:5;pointer-events:none;';
 
   var mn = _slotState.machineName || 'Pixizinho';
   panel.innerHTML =
@@ -117,10 +118,10 @@ function pixizinhoRenderJackpotPanel(resp, config) {
 
 function pixizinhoJpRow(type, mn, icon, bg) {
   var val = _pixJackpot[type] || 0;
-  return '<div style="display:flex;align-items:center;">' +
-    '<img src="/static/machine/' + mn + '/icon/' + icon + '.png" style="width:26px;height:26px;object-fit:contain;flex-shrink:0;z-index:1;margin-right:-5px;" onerror="this.style.opacity=0">' +
-    '<div style="flex:1;background:' + bg + ';border-radius:4px;border:2px solid #777;padding:4px 6px 4px 10px;text-align:center;">' +
-    '<span id="pixJp_' + type + '" style="color:#fff;font-size:11px;font-weight:700;text-shadow:0 1px 2px #000;">' + val.toFixed(2) + '</span>' +
+  return '<div style="flex:1;display:flex;align-items:center;">' +
+    '<img src="/static/machine/' + mn + '/icon/' + icon + '.png" style="width:28px;height:28px;object-fit:contain;flex-shrink:0;z-index:1;margin-right:-5px;" onerror="this.style.opacity=0">' +
+    '<div style="flex:1;background:' + bg + ';border-radius:4px;border:2px solid #999;padding:4px 6px 4px 10px;text-align:center;">' +
+    '<span id="pixJp_' + type + '" style="color:#fff;font-size:12px;font-weight:700;text-shadow:0 1px 2px #000;">' + val.toFixed(2) + '</span>' +
     '</div></div>';
 }
 
@@ -180,6 +181,33 @@ function pixizinhoShowFreeSpinUI() {
     '<span id="pixFsLeft" style="color:#fff;font-size:11px;">Left: ' + _pixState.freeSpinsLeft + '</span>' +
     '<span id="pixFsPrize" style="color:#4fc3f7;font-size:11px;font-weight:700;">Won: ' + _pixState.totalFreeSpinPrize.toFixed(2) + '</span>';
   slotSkin.appendChild(bar);
+
+  // Disable SPIN button and show "N FREE"
+  pixizinhoUpdateSpinBtnFreeSpin();
+}
+
+function pixizinhoUpdateSpinBtnFreeSpin() {
+  var btn = document.getElementById('slotSpinBtn');
+  if (!btn) return;
+  if (_pixState.freeSpinsLeft > 0) {
+    // Enable button for manual free spin, show "N FREE" text
+    btn.style.opacity = '1';
+    btn.style.pointerEvents = '';
+    btn.onclick = function() { pixizinhoSendFreeSpin(); };
+    var span = btn.querySelector('span');
+    if (span) span.textContent = _pixState.freeSpinsLeft + ' FREE';
+    var span2 = btn.querySelectorAll('span')[1];
+    if (span2) span2.textContent = '';
+  } else {
+    // Restore normal SPIN button
+    btn.style.opacity = '1';
+    btn.style.pointerEvents = '';
+    btn.onclick = function() { slotSpin(); };
+    var span = btn.querySelector('span');
+    if (span) span.textContent = 'SPIN';
+    var span2 = btn.querySelectorAll('span')[1];
+    if (span2) span2.textContent = 'HOLD AUTO';
+  }
 }
 
 function pixizinhoUpdateFreeSpinUI() {
@@ -188,11 +216,16 @@ function pixizinhoUpdateFreeSpinUI() {
   if (leftEl) leftEl.textContent = 'Left: ' + _pixState.freeSpinsLeft;
   if (prizeEl) prizeEl.textContent = 'Won: ' + _pixState.totalFreeSpinPrize.toFixed(2);
 
+  // Update SPIN button text
+  pixizinhoUpdateSpinBtnFreeSpin();
+
   if (_pixState.freeSpinsLeft <= 0) {
     // Free spin phase ended
     var bar = document.getElementById('pixFreeSpinBar');
     if (bar) setTimeout(function() { bar.remove(); }, 3000);
     _pixState.stickyPositions = [];
+    // Restore SPIN button
+    setTimeout(function() { pixizinhoUpdateSpinBtnFreeSpin(); }, 3100);
   } else {
     if (!document.getElementById('pixFreeSpinBar')) pixizinhoShowFreeSpinUI();
   }

@@ -83,7 +83,7 @@ function slotRenderUI() {
 
   var html = '';
   // Full background container
-  html += '<div id="slotSkin" style="position:relative;width:480px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.6);min-height:600px;background:#1a1a2e;">';
+  html += '<div id="slotSkin" style="position:relative;width:580px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.6);min-height:600px;background:#1a1a2e;">';
   html += '<img src="' + bgPath + '" style="width:100%;display:block;" onerror="this.style.display=\'none\'">';
 
   // Pattern area (top) - clickable
@@ -141,16 +141,19 @@ function slotRenderUI() {
   // Win display (centered over reels area where coins appear)
   html += '<div id="slotWinDisplay" style="position:absolute;top:45%;left:17%;width:66%;text-align:center;font-size:20px;font-weight:800;color:#f5d742;text-shadow:0 0 10px #f5d742,0 2px 4px #000;z-index:50;pointer-events:none;"></div>';
 
-  // BET controls (left box area ~80% top, ~7% left)
-  html += '<div style="position:absolute;top:80.5%;left:7%;display:flex;align-items:center;gap:3px;">';
+  // Bottom controls bar — all on same line with equal spacing
+  html += '<div id="slotControlsBar" style="position:absolute;top:80%;left:0;width:100%;display:flex;align-items:center;justify-content:space-evenly;padding:0 8px;">';
+
+  // BET controls
+  html += '<div style="display:flex;align-items:center;gap:3px;">';
   html += '<div class="slot-btn-3d" onclick="slotChangeBet(-1)" style="width:28px;height:28px;">-</div>';
   var betVal = (st.betList[st.betIndex] || 0) * st.activeLines;
   html += '<div id="slotBetDisplay" style="min-width:52px;height:28px;background:#0a0a0a;border:2px solid #f5d742;border-radius:4px;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:28px;box-shadow:inset 0 2px 6px rgba(0,0,0,0.8);">' + betVal.toFixed(st.displayPrecision) + '</div>';
   html += '<div class="slot-btn-3d" onclick="slotChangeBet(1)" style="width:28px;height:28px;">+</div>';
   html += '</div>';
 
-  // LINES controls (right box area ~80% top, ~38% left)
-  html += '<div style="position:absolute;top:80.5%;left:38%;display:flex;align-items:center;gap:3px;">';
+  // LINES controls
+  html += '<div style="display:flex;align-items:center;gap:3px;">';
   if (st.chooseQuantity) {
     html += '<div class="slot-btn-3d" onclick="slotChangeLines(-1)" style="width:28px;height:28px;">-</div>';
   }
@@ -160,18 +163,20 @@ function slotRenderUI() {
   }
   html += '</div>';
 
-  // COLLECT button (shown when round_is_over=false)
+  // WIN display
+  html += '<div id="slotWinLabel" style="font-size:11px;font-weight:700;color:#f5d742;text-shadow:0 1px 2px #000;">WIN: <span id="slotWinAmount">0.00</span></div>';
+
+  // COLLECT button
   var showCollect = resp.round_is_over === false;
-  html += '<div id="slotCollectBtn" class="slot-btn-3d" onclick="slotCollectRound()" style="position:absolute;top:78%;right:24%;width:52px;height:36px;font-size:9px;display:' + (showCollect ? 'flex' : 'none') + ';">COLLECT</div>';
+  html += '<div id="slotCollectBtn" class="slot-btn-3d" onclick="slotCollectRound()" style="width:52px;height:36px;font-size:9px;display:' + (showCollect ? 'flex' : 'none') + ';">COLLECT</div>';
 
-  // WIN display (after BET/LINE controls)
-  html += '<div id="slotWinLabel" style="position:absolute;top:81%;left:60%;font-size:11px;font-weight:700;color:#f5d742;text-shadow:0 1px 2px #000;">WIN: <span id="slotWinAmount">0.00</span></div>';
-
-  // SPIN button (large circle, shifted left-up to align with background)
-  html += '<div id="slotSpinBtn" class="slot-spin-3d" onclick="slotSpin()" style="position:absolute;top:74%;right:10%;width:86px;height:86px;">';
-  html += '<span style="font-size:15px;font-weight:800;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,0.6);z-index:1;">SPIN</span>';
+  // SPIN button
+  html += '<div id="slotSpinBtn" class="slot-spin-3d" onclick="slotSpin()" style="width:56px;height:56px;">';
+  html += '<span style="font-size:13px;font-weight:800;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,0.6);z-index:1;">SPIN</span>';
   html += '<span style="font-size:7px;color:#ffd;z-index:1;white-space:nowrap;">HOLD AUTO</span>';
   html += '</div>';
+
+  html += '</div>'; // end controls bar
 
   // Line numbers (left side)
   html += '<div style="position:absolute;top:26%;left:3.5%;height:48%;display:flex;flex-direction:column;justify-content:space-between;">';
