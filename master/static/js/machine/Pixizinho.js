@@ -14,13 +14,23 @@ MachineRegistry.register('Pixizinho', {
 
   afterRender: function(resp, config) {
     pixizinhoRenderJackpotPanel(resp, config);
-    // Check for free spin on login
-    if (resp.left_free_spin_amount && resp.left_free_spin_amount > 0) {
-      _pixState.freeSpinsLeft = resp.left_free_spin_amount;
+    // Store free spin by bet data
+    if (resp.left_free_spin_by_bet) {
+      _pixState.freeSpinByBet = resp.left_free_spin_by_bet;
+    }
+    // Apply sticky goldens from login
+    if (resp.sticky_goldens && resp.sticky_goldens.length > 0) {
+      _pixState.stickyPositions = resp.sticky_goldens;
+      setTimeout(function() { pixizinhoApplyStickyGoldens(); }, 100);
+    }
+    // Determine free spins for current bet/line
+    pixizinhoUpdateFreeSpinFromBet();
+    // Show free spin UI if applicable
+    if (_pixState.freeSpinsLeft > 0) {
       _pixState.totalFreeSpinPrize = resp.total_free_spin_prize || 0;
       pixizinhoShowFreeSpinUI();
     }
-    // Hook bet change to update jackpot
+    // Hook bet change to update jackpot and free spin count
     pixizinhoHookBetChange();
   },
 
@@ -30,6 +40,10 @@ MachineRegistry.register('Pixizinho', {
     // Store sticky positions before spin handling
     if (resp.sticky_goldens && resp.sticky_goldens.length > 0) {
       _pixState.stickyPositions = resp.sticky_goldens;
+    }
+    // Clear sticky if no free spins left
+    if (resp.left_free_spin_amount !== undefined && resp.left_free_spin_amount <= 0) {
+      _pixState.stickyPositions = [];
     }
 
     // Default slot handling
@@ -43,9 +57,12 @@ MachineRegistry.register('Pixizinho', {
 
     // After reels stop: golden animation + sticky + free spin continuation
     setTimeout(function() {
-      // Apply sticky golden display
+      // Apply or clear sticky golden display
       if (_pixState.stickyPositions.length > 0) {
         pixizinhoApplyStickyGoldens();
+      } else {
+        // Remove all sticky overlays
+        document.querySelectorAll('.pix-sticky').forEach(function(el) { el.remove(); });
       }
       // Golden prize animation
       if (resp.golden_prize && resp.golden_prize.length > 0) {
@@ -63,7 +80,8 @@ MachineRegistry.register('Pixizinho', {
 var _pixState = {
   freeSpinsLeft: 0,
   totalFreeSpinPrize: 0,
-  stickyPositions: [] // indices that are sticky (golden icons locked)
+  stickyPositions: [],          // indices that are sticky (golden icons locked)
+  freeSpinByBet: []             // [{bet, lines, free_spin}] from login
 };
 
 // ---------------------------------------------------------------------------
@@ -98,10 +116,10 @@ function pixizinhoRenderJackpotPanel(resp, config) {
   var reelTop = reelsEl ? reelsEl.style.top : '20%';
   var reelH = reelsEl ? reelsEl.style.height : '52%';
 
-  // Place jackpot panel above the reels (between balance/jackpot bar and reels)
+  // Place jackpot panel above the reels (increased gap from reels)
   var reelTopNum = parseFloat(reelTop) || 20;
-  var panelTop = reelTopNum - 21; // above reels with 1.5x gap
-  if (panelTop < 4) panelTop = 4;
+  var panelTop = reelTopNum - 35; // above reels with 2x gap
+  if (panelTop < 2) panelTop = 2;
 
   var panel = document.createElement('div');
   panel.id = 'pixJackpotPanel';
@@ -119,10 +137,19 @@ function pixizinhoRenderJackpotPanel(resp, config) {
 function pixizinhoJpRow(type, mn, icon, bg) {
   var val = _pixJackpot[type] || 0;
   return '<div style="flex:1;display:flex;align-items:center;">' +
-    '<img src="/static/machine/' + mn + '/icon/' + icon + '.png" style="width:28px;height:28px;object-fit:contain;flex-shrink:0;z-index:1;margin-right:-5px;" onerror="this.style.opacity=0">' +
-    '<div style="flex:1;background:' + bg + ';border-radius:4px;border:2px solid #999;padding:4px 6px 4px 10px;text-align:center;">' +
-    '<span id="pixJp_' + type + '" style="color:#fff;font-size:12px;font-weight:700;text-shadow:0 1px 2px #000;">' + val.toFixed(2) + '</span>' +
+    '<img src="/static/machine/' + mn + '/icon/' + icon + '.png" style="width:56px;height:56px;object-fit:contain;flex-shrink:0;z-index:1;margin-right:-8px;" onerror="this.style.opacity=0">' +
+    '<div style="flex:1;background:' + bg + ';border-radius:6px;border:2px solid #999;padding:4px 6px 4px 16px;text-align:center;">' +
+    '<span id="pixJp_' + type + '" style="color:#fff;font-size:12px;font-weight:700;text-shadow:0 1px 2px #000;">' + pixJpFormat(val) + '</span>' +
     '</div></div>';
+}
+
+/** Format jackpot value: show actual result without forced 2 decimals */
+function pixJpFormat(val) {
+  if (val === 0) return '0';
+  // Show up to 4 decimal places, remove trailing zeros
+  var s = val.toFixed(4);
+  s = s.replace(/0+$/, '').replace(/\.$/, '');
+  return s;
 }
 
 function pixizinhoRecalcJackpot() {
@@ -134,9 +161,9 @@ function pixizinhoRecalcJackpot() {
   var el1 = document.getElementById('pixJp_minor');
   var el2 = document.getElementById('pixJp_major');
   var el3 = document.getElementById('pixJp_grand');
-  if (el1) el1.textContent = _pixJackpot.minor.toFixed(2);
-  if (el2) el2.textContent = _pixJackpot.major.toFixed(2);
-  if (el3) el3.textContent = _pixJackpot.grand.toFixed(2);
+  if (el1) el1.textContent = pixJpFormat(_pixJackpot.minor);
+  if (el2) el2.textContent = pixJpFormat(_pixJackpot.major);
+  if (el3) el3.textContent = pixJpFormat(_pixJackpot.grand);
 }
 
 function pixizinhoUpdateJackpot(jpData) {
@@ -151,18 +178,49 @@ function pixizinhoUpdateJackpot(jpData) {
   var el1 = document.getElementById('pixJp_minor');
   var el2 = document.getElementById('pixJp_major');
   var el3 = document.getElementById('pixJp_grand');
-  if (el1) el1.textContent = _pixJackpot.minor.toFixed(2);
-  if (el2) el2.textContent = _pixJackpot.major.toFixed(2);
-  if (el3) el3.textContent = _pixJackpot.grand.toFixed(2);
+  if (el1) el1.textContent = pixJpFormat(_pixJackpot.minor);
+  if (el2) el2.textContent = pixJpFormat(_pixJackpot.major);
+  if (el3) el3.textContent = pixJpFormat(_pixJackpot.grand);
 }
 
-// Hook into bet change to recalc jackpot
+// Hook into bet change to recalc jackpot and update free spin count
 function pixizinhoHookBetChange() {
   var origChangeBet = window.slotChangeBet;
   window.slotChangeBet = function(dir) {
     origChangeBet(dir);
     pixizinhoRecalcJackpot();
+    pixizinhoUpdateFreeSpinFromBet();
   };
+}
+
+/**
+ * Look up free spins for current bet/lines from left_free_spin_by_bet data.
+ */
+function pixizinhoUpdateFreeSpinFromBet() {
+  var st = _slotState;
+  var bet = (st.betList && st.betList[st.betIndex]) || 0.01;
+  var lines = st.activeLines || 1;
+  var freeSpins = 0;
+
+  for (var i = 0; i < _pixState.freeSpinByBet.length; i++) {
+    var entry = _pixState.freeSpinByBet[i];
+    if (entry.bet === bet && entry.lines === lines) {
+      freeSpins = entry.free_spin || 0;
+      break;
+    }
+  }
+
+  _pixState.freeSpinsLeft = freeSpins;
+  pixizinhoUpdateSpinBtnFreeSpin();
+
+  // Show or hide free spin UI
+  if (freeSpins > 0) {
+    if (!document.getElementById('pixFreeSpinBar')) pixizinhoShowFreeSpinUI();
+    else pixizinhoUpdateFreeSpinUI();
+  } else {
+    var bar = document.getElementById('pixFreeSpinBar');
+    if (bar) bar.remove();
+  }
 }
 
 // ---------------------------------------------------------------------------
