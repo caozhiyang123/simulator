@@ -18,6 +18,8 @@ MachineRegistry.register('Pixizinho', {
     if (resp.left_free_spin_by_bet) {
       _pixState.freeSpinByBet = resp.left_free_spin_by_bet;
     }
+    // Auto-switch to bet that has free spins
+    pixizinhoAutoSwitchToFreeSpinBet();
     // Apply sticky goldens from login
     if (resp.sticky_goldens && resp.sticky_goldens.length > 0) {
       _pixState.stickyPositions = resp.sticky_goldens;
@@ -35,6 +37,12 @@ MachineRegistry.register('Pixizinho', {
   },
 
   onSpinResponse: function(resp) {
+    // Reset WIN display
+    var winEl = document.getElementById('slotWinDisplay');
+    if (winEl) winEl.textContent = '';
+    var winAmtEl = document.getElementById('slotWinAmount');
+    if (winAmtEl) winAmtEl.textContent = '0.00';
+
     if (resp.pixizinho_jackpot) pixizinhoUpdateJackpot(resp.pixizinho_jackpot);
 
     // Store sticky positions before spin handling
@@ -187,6 +195,10 @@ function pixizinhoUpdateJackpot(jpData) {
 function pixizinhoHookBetChange() {
   var origChangeBet = window.slotChangeBet;
   window.slotChangeBet = function(dir) {
+    // Block bet change if current bet has unconsumed free spins
+    if (_pixState.freeSpinsLeft > 0) {
+      return; // cannot switch bet while free spins remain
+    }
     origChangeBet(dir);
     pixizinhoRecalcJackpot();
     pixizinhoUpdateFreeSpinFromBet();
@@ -204,7 +216,8 @@ function pixizinhoUpdateFreeSpinFromBet() {
 
   for (var i = 0; i < _pixState.freeSpinByBet.length; i++) {
     var entry = _pixState.freeSpinByBet[i];
-    if (entry.bet === bet && entry.lines === lines) {
+    // Compare bet with tolerance for floating point, and match lines
+    if (Math.abs(entry.bet - bet) < 0.0001 && entry.lines === lines) {
       freeSpins = entry.free_spin || 0;
       break;
     }
@@ -220,6 +233,36 @@ function pixizinhoUpdateFreeSpinFromBet() {
   } else {
     var bar = document.getElementById('pixFreeSpinBar');
     if (bar) bar.remove();
+  }
+}
+
+/**
+ * Auto-switch bet to one that has free spins remaining.
+ */
+function pixizinhoAutoSwitchToFreeSpinBet() {
+  var st = _slotState;
+  if (!_pixState.freeSpinByBet || _pixState.freeSpinByBet.length === 0) return;
+
+  // Find first entry with free_spin > 0
+  var targetBet = null;
+  for (var i = 0; i < _pixState.freeSpinByBet.length; i++) {
+    if (_pixState.freeSpinByBet[i].free_spin > 0) {
+      targetBet = _pixState.freeSpinByBet[i].bet;
+      break;
+    }
+  }
+  if (targetBet === null) return;
+
+  // Find the bet index that matches
+  for (var i = 0; i < st.betList.length; i++) {
+    if (Math.abs(st.betList[i] - targetBet) < 0.0001) {
+      st.betIndex = i;
+      // Update bet display
+      var displayBet = targetBet * st.activeLines;
+      var betEl = document.getElementById('slotBetDisplay');
+      if (betEl) betEl.textContent = displayBet.toFixed(st.displayPrecision);
+      break;
+    }
   }
 }
 
@@ -345,7 +388,7 @@ function pixizinhoApplyStickyGoldens() {
     overlay.className = 'pix-sticky';
     overlay.setAttribute('data-pos', pos);
     overlay.style.cssText = 'position:absolute;top:' + (row * cellH) + 'px;left:0;width:100%;height:' + cellH + 'px;z-index:5;display:flex;align-items:center;justify-content:center;background:#111;border:2px solid #f5d742;border-radius:4px;box-shadow:0 0 8px rgba(245,215,66,0.6);';
-    overlay.innerHTML = '<img src="/static/machine/' + mn + '/icon/i1.png" style="width:90%;height:90%;object-fit:contain;" onerror="this.style.opacity=0">';
+    overlay.innerHTML = '<img src="/static/machine/' + mn + '/icon/i1.png" style="width:100%;height:100%;object-fit:fill;" onerror="this.style.opacity=0">';
     wrapper.style.position = 'relative';
     wrapper.appendChild(overlay);
   });
