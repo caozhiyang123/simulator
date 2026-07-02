@@ -54,70 +54,78 @@ MachineRegistry.register('GoldenFortune', {
       winEl.style.width = '76%';
     }
 
-    // BET controls - bottom left
-    var betControls = balEl && balEl.parentElement.querySelector('[style*="top:80.5%"][style*="left:7%"]');
-    // Use direct DOM query for bet controls area
-    var allDivs = document.querySelectorAll('#slotSkin > div');
-    allDivs.forEach(function(div) {
-      var s = div.getAttribute('style') || '';
-      // BET controls
-      if (s.indexOf('top:80.5%') >= 0 && s.indexOf('left:7%') >= 0) {
-        div.style.top = '67%';
-        div.style.left = '16%';
+    // BET controls - reposition controls bar
+    // Balance at 18%, Reels at 22-68%, gap reduced to 50% of original (4% -> 2%). Controls at 67%.
+    var controlsBar = document.getElementById('slotControlsBar');
+    if (controlsBar) {
+      controlsBar.style.top = '67%';
+      // Wrap BET and LINE groups into a vertical column (left-aligned, LINE below BET)
+      var children = controlsBar.children;
+      if (children.length >= 2) {
+        var betGroup = children[0];
+        var lineGroup = children[1];
+        var wrapper = document.createElement('div');
+        wrapper.style.cssText = 'display:flex;flex-direction:column;gap:4px;align-items:flex-start;';
+        controlsBar.insertBefore(wrapper, betGroup);
+        wrapper.appendChild(betGroup);
+        wrapper.appendChild(lineGroup);
       }
-      // LINES controls
-      if (s.indexOf('top:80.5%') >= 0 && s.indexOf('left:38%') >= 0) {
-        div.style.top = '70%';
-        div.style.left = '16%';
-      }
-    });
+    }
 
-    // COLLECT button
+    // COLLECT button — retro style
     var collectBtn = document.getElementById('slotCollectBtn');
     if (collectBtn) {
-      collectBtn.style.top = '68%';
-      collectBtn.style.right = '32%';
       collectBtn.className = 'gf-btn-retro';
     }
 
     // SPIN button - retro 3D rectangular
     var spinBtn = document.getElementById('slotSpinBtn');
     if (spinBtn) {
-      spinBtn.style.top = '68%';
-      spinBtn.style.right = '18%';
+      spinBtn.className = 'gf-spin-retro';
       spinBtn.style.width = '80px';
       spinBtn.style.height = '44px';
-      spinBtn.className = 'gf-spin-retro';
-      spinBtn.style.display = 'flex';
-      spinBtn.style.flexDirection = 'column';
-      spinBtn.style.alignItems = 'center';
-      spinBtn.style.justifyContent = 'center';
-      spinBtn.style.position = 'absolute';
       spinBtn.innerHTML = '<span style="font-size:14px;font-weight:900;color:#fff;text-shadow:0 -1px 0 #333,0 1px 0 #000,1px 0 0 #000,-1px 0 0 #000;letter-spacing:2px;z-index:1;">SPIN</span>';
     }
 
-    // Win label - align horizontally with BET
-    var winLabel = document.getElementById('slotWinLabel');
-    if (winLabel) {
-      winLabel.style.top = '67%';
-      winLabel.style.left = '45%';
-    }
-
     // Override BET and LINE +/- buttons to retro 3D style
-    var btns = document.querySelectorAll('#slotSkin .slot-btn-3d');
+    var btns = document.querySelectorAll('#slotControlsBar .slot-btn-3d');
     btns.forEach(function(btn) {
       btn.className = 'gf-btn-retro';
     });
+
+    // Free spin by bet: store data, auto-switch, hook bet change
+    if (resp.left_free_spin_by_bet) {
+      _gfFreeSpinByBet = resp.left_free_spin_by_bet;
+    }
+    gfAutoSwitchToFreeSpinBet();
+    gfUpdateFreeSpinFromBet();
+    gfHookBetChange();
   },
 
   onSpinResponse: function(resp) {
+    // If locks triggered, set bonus pending to defer round over
+    if (resp.locks && resp.locks.length > 0) {
+      _playBonusPending = true;
+    }
+
+    // Update free spin count from response
+    if (resp.left_free_spin_amount !== undefined) {
+      _gfFreeSpinsLeft = resp.left_free_spin_amount;
+    }
+
     // Default handling first
     slotHandleSpinResponse(resp);
-    // After reels stop, adjust display and redraw win lines to match icon positions
+
+    // After reels stop, adjust display and handle locks/free spin
     setTimeout(function() {
       goldenFortuneAdjustReelDisplay();
-      // Redraw win lines aligned to actual icon positions
       goldenFortuneRedrawWinLines(resp);
+      // Show lock selection modal if triggered
+      if (resp.locks && resp.locks.length > 0) {
+        gfShowLocksModal(resp.locks);
+      }
+      // Update SPIN button for free spin
+      gfUpdateSpinBtnFreeSpin();
     }, 3500);
   }
 });
@@ -257,4 +265,288 @@ function goldenFortuneRedrawWinLines(resp) {
     polyline.setAttribute('data-line', lineIdx);
     svg.appendChild(polyline);
   }
+}
+
+
+// ===========================================================================
+// GoldenFortune Free Spin By Bet
+// ===========================================================================
+var _gfFreeSpinByBet = []; // [{bet, lines, free_spin}]
+var _gfFreeSpinsLeft = 0;
+
+function gfAutoSwitchToFreeSpinBet() {
+  var st = _slotState;
+  if (!_gfFreeSpinByBet || _gfFreeSpinByBet.length === 0) return;
+  var target = null;
+  for (var i = 0; i < _gfFreeSpinByBet.length; i++) {
+    if (_gfFreeSpinByBet[i].free_spin > 0) { target = _gfFreeSpinByBet[i]; break; }
+  }
+  if (!target) return;
+  // Switch bet
+  for (var i = 0; i < st.betList.length; i++) {
+    if (Math.abs(st.betList[i] - target.bet) < 0.0001) { st.betIndex = i; break; }
+  }
+  // Switch lines
+  st.activeLines = target.lines || st.activeLines;
+  // Update displays
+  var betEl = document.getElementById('slotBetDisplay');
+  if (betEl) betEl.textContent = (st.betList[st.betIndex] * st.activeLines).toFixed(st.displayPrecision);
+  var linesEl = document.getElementById('slotLinesDisplay');
+  if (linesEl) linesEl.textContent = st.activeLines;
+}
+
+function gfUpdateFreeSpinFromBet() {
+  var st = _slotState;
+  var bet = (st.betList && st.betList[st.betIndex]) || 0.01;
+  var lines = st.activeLines || 1;
+  _gfFreeSpinsLeft = 0;
+  for (var i = 0; i < _gfFreeSpinByBet.length; i++) {
+    var e = _gfFreeSpinByBet[i];
+    if (Math.abs(e.bet - bet) < 0.0001 && e.lines === lines) {
+      _gfFreeSpinsLeft = e.free_spin || 0; break;
+    }
+  }
+  gfUpdateSpinBtnFreeSpin();
+}
+
+function gfUpdateSpinBtnFreeSpin() {
+  var spinBtn = document.getElementById('slotSpinBtn');
+  if (!spinBtn) return;
+  if (_gfFreeSpinsLeft > 0) {
+    spinBtn.innerHTML = '<span style="font-size:14px;font-weight:900;color:#fff;text-shadow:0 -1px 0 #333,0 1px 0 #000,1px 0 0 #000,-1px 0 0 #000;letter-spacing:1px;z-index:1;">' + _gfFreeSpinsLeft + ' FREE</span>';
+    // Override onclick to send free_spin
+    spinBtn.onclick = function() { gfSendFreeSpin(); };
+  } else {
+    spinBtn.innerHTML = '<span style="font-size:14px;font-weight:900;color:#fff;text-shadow:0 -1px 0 #333,0 1px 0 #000,1px 0 0 #000,-1px 0 0 #000;letter-spacing:2px;z-index:1;">SPIN</span>';
+    spinBtn.onclick = function() { slotSpin(); };
+  }
+}
+
+function gfHookBetChange() {
+  var origBet = window.slotChangeBet;
+  var origLines = window.slotChangeLines;
+  window.slotChangeBet = function(dir) {
+    if (_gfFreeSpinsLeft > 0) return; // block bet change during free spin
+    origBet(dir);
+    gfUpdateFreeSpinFromBet();
+  };
+  if (origLines) {
+    window.slotChangeLines = function(dir) {
+      if (_gfFreeSpinsLeft > 0) return; // block line change during free spin
+      origLines(dir);
+      gfUpdateFreeSpinFromBet();
+    };
+  }
+}
+
+function gfSendFreeSpin() {
+  var st = _slotState;
+  if (st.spinning) return;
+  if (!_playWs || _playWs.readyState !== WebSocket.OPEN) { showAlert('Not connected'); return; }
+  st.spinning = true;
+  var btn = document.getElementById('slotSpinBtn');
+  if (btn) { btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; }
+  document.getElementById('slotWinDisplay').textContent = '';
+  var winAmtEl = document.getElementById('slotWinAmount');
+  if (winAmtEl) winAmtEl.textContent = '0.00';
+  slotClearAllLines();
+  slotStartReelAnimation();
+
+  var bet = st.betList[st.betIndex] || 0.01;
+  var linesStr = '';
+  for (var i = 0; i < st.maxLines; i++) linesStr += (i < st.activeLines ? '1' : '0');
+
+  // Get spin tool overrides (same as normal spin)
+  var toolOverrides = slotSpinToolGetOverrides();
+
+  var cmd = {
+    cmd: 'free_spin',
+    session_token: st.sessionToken,
+    game_id: st.machineId,
+    currency: st.currency,
+    opt_id: st.loginResp.opt_id || '',
+    username: st.loginResp.username || '',
+    aposta: bet,
+    lines: linesStr,
+    bonus_unique_id: '',
+    is_bonus: false,
+    icons: toolOverrides.icons || [],
+    target_pattern_ids: toolOverrides.targetPatternIds || [],
+    target_feature_ids: toolOverrides.targetFeatureIds || [],
+    payload_data: "[{'key':'value'}]"
+  };
+  playLog('>>> [GF FREE SPIN] send: ' + JSON.stringify(cmd));
+  _playWs.send(JSON.stringify(cmd));
+}
+
+// ===========================================================================
+// GoldenFortune Free Spin Lock Feature
+// ===========================================================================
+var _gfLocks = {
+  locks: [],           // lock values [1,1,2,3,5]
+  opened: [],          // opened positions
+  maxOpens: 3,         // player can open 3 locks
+  currentOpen: 0,      // how many opened so far
+  nextPrice: 0         // price to open next lock (first is free)
+};
+
+/**
+ * Show the lock selection modal.
+ */
+function gfShowLocksModal(locks) {
+  _gfLocks.locks = locks;
+  _gfLocks.opened = [];
+  _gfLocks.currentOpen = 0;
+  _gfLocks.maxOpens = 3;
+  _gfLocks.nextPrice = 0; // first lock is free
+
+  var old = document.getElementById('gfLocksModal');
+  if (old) old.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'gfLocksModal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+  var html = '<div style="background:linear-gradient(135deg,#1a1a3e,#2a2a5e);border-radius:16px;padding:24px;border:2px solid #f5d742;text-align:center;max-width:90vw;">';
+  html += '<div style="color:#f5d742;font-size:18px;font-weight:700;margin-bottom:8px;">🔓 Free Spin Locks</div>';
+  html += '<div style="color:#ccc;font-size:12px;margin-bottom:6px;">Choose 3 locks to open. First is FREE!</div>';
+  html += '<div id="gfLockPrice" style="color:#4fc3f7;font-size:11px;margin-bottom:16px;">Next lock: FREE</div>';
+
+  // Lock buttons
+  html += '<div id="gfLocksGrid" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">';
+  for (var i = 0; i < locks.length; i++) {
+    html += '<div class="gf-lock-btn" data-idx="' + i + '" onclick="gfOpenLock(' + i + ')" style="width:60px;height:70px;background:linear-gradient(to bottom,#555,#333);border-radius:8px;border:2px solid #888;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:all 0.15s;">';
+    html += '<span style="font-size:24px;">🔒</span>';
+    html += '<span style="font-size:9px;color:#888;margin-top:2px;">Lock ' + (i + 1) + '</span>';
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // Status
+  html += '<div id="gfLockStatus" style="margin-top:12px;color:#aaa;font-size:11px;">Opened: 0/3</div>';
+  html += '</div>';
+
+  modal.innerHTML = html;
+  document.body.appendChild(modal);
+
+  playLog('🔓 [LOCKS] showing: ' + JSON.stringify(locks));
+}
+
+/**
+ * Player clicks a lock to open it.
+ */
+function gfOpenLock(idx) {
+  if (_gfLocks.currentOpen >= _gfLocks.maxOpens) return;
+  if (_gfLocks.opened.indexOf(idx) >= 0) return; // already opened
+
+  // Disable all lock buttons while waiting
+  document.querySelectorAll('.gf-lock-btn').forEach(function(btn) {
+    btn.style.pointerEvents = 'none';
+    btn.style.opacity = '0.6';
+  });
+
+  var status = document.getElementById('gfLockStatus');
+  if (status) status.textContent = 'Opening lock ' + (idx + 1) + '...';
+
+  // Send bonus_spin.open_lock command
+  var st = _slotState;
+  var cmd = {
+    cmd: 'bonus_spin.open_lock',
+    session_token: st.sessionToken,
+    game_id: st.machineId,
+    currency: st.currency,
+    opt_id: st.loginResp.opt_id || '',
+    username: st.loginResp.username || '',
+    position: idx,
+    feature_id: 3,
+    bonus_unique_id: '',
+    is_bonus: false,
+    payload_data: "[{'key':'value'}]"
+  };
+  playLog('>>> [OPEN LOCK] send: ' + JSON.stringify(cmd));
+  _playWs.send(JSON.stringify(cmd));
+}
+
+/**
+ * Handle bonus_spin.open_lock response.
+ */
+function gfHandleOpenLockResponse(resp) {
+  playLog('<<< [OPEN LOCK] response');
+
+  var position = resp.position;
+  var currentLock = resp.current_lock || 0;
+  var continueOpen = resp.continue_open_next_lock;
+  var nextPrice = resp.next_lock_price || 0;
+  var balance = resp.balance;
+  var leftFreeSpin = resp.left_free_spin_amount;
+
+  _gfLocks.opened.push(position);
+  _gfLocks.currentOpen++;
+  _gfLocks.nextPrice = nextPrice;
+
+  // Update balance
+  if (balance !== undefined) {
+    slotUpdateBalance(balance, false);
+  }
+
+  // Reveal the opened lock value
+  var lockBtn = document.querySelector('.gf-lock-btn[data-idx="' + position + '"]');
+  if (lockBtn) {
+    lockBtn.style.background = 'linear-gradient(to bottom,#27ae60,#1a8a4a)';
+    lockBtn.style.borderColor = '#2ecc71';
+    lockBtn.innerHTML = '<span style="font-size:18px;font-weight:800;color:#fff;">' + currentLock + '</span><span style="font-size:8px;color:#aff;margin-top:2px;">FREE SPIN</span>';
+  }
+
+  // Update status
+  var status = document.getElementById('gfLockStatus');
+  if (status) status.textContent = 'Opened: ' + _gfLocks.currentOpen + '/3 | Got ' + currentLock + ' free spin(s)!';
+
+  // Update next price display
+  var priceEl = document.getElementById('gfLockPrice');
+  if (priceEl) {
+    if (continueOpen && _gfLocks.currentOpen < _gfLocks.maxOpens) {
+      priceEl.textContent = 'Next lock cost: ' + (nextPrice > 0 ? nextPrice.toFixed(2) : 'FREE');
+    } else {
+      priceEl.textContent = '';
+    }
+  }
+
+  if (continueOpen && _gfLocks.currentOpen < _gfLocks.maxOpens) {
+    // Re-enable unopened lock buttons
+    document.querySelectorAll('.gf-lock-btn').forEach(function(btn) {
+      var btnIdx = parseInt(btn.getAttribute('data-idx'));
+      if (_gfLocks.opened.indexOf(btnIdx) < 0) {
+        btn.style.pointerEvents = '';
+        btn.style.opacity = '1';
+      }
+    });
+  } else {
+    // All opens done — close modal and update free spin button
+    setTimeout(function() {
+      gfLocksComplete(leftFreeSpin);
+    }, 1500);
+  }
+}
+
+/**
+ * Lock bonus complete — close modal, update SPIN button, send round over.
+ */
+function gfLocksComplete(leftFreeSpin) {
+  var modal = document.getElementById('gfLocksModal');
+  if (modal) modal.remove();
+
+  // Update SPIN button to show free spin count
+  if (leftFreeSpin && leftFreeSpin > 0) {
+    var spinBtn = document.getElementById('slotSpinBtn');
+    if (spinBtn) {
+      var span = spinBtn.querySelector('span');
+      if (span) span.textContent = leftFreeSpin + ' FREE';
+    }
+  }
+
+  // Clear bonus pending and send round over
+  _playBonusPending = false;
+  slotRoundOver();
+
+  playLog('🔓 [LOCKS] complete, free spins: ' + leftFreeSpin);
 }

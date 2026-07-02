@@ -223,6 +223,12 @@ async function playSelectMachine(machineId, enabled, machineType) {
       } else {
         if (typeof bingoSevenHandleBonusSpinResponse === 'function') bingoSevenHandleBonusSpinResponse(resp);
       }
+    } else if (resp.cmd === 'bonus_spin.open_lock') {
+      // Lock open response (e.g. GoldenFortune FreeSpinFeature)
+      playLog('<<< [OPEN LOCK] response: ' + JSON.stringify(resp));
+      if (typeof gfHandleOpenLockResponse === 'function') {
+        gfHandleOpenLockResponse(resp);
+      }
     } else {
       playLog('<<< [WS] unknown cmd: ' + JSON.stringify(resp));
     }
