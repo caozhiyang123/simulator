@@ -195,10 +195,6 @@ function pixizinhoUpdateJackpot(jpData) {
 function pixizinhoHookBetChange() {
   var origChangeBet = window.slotChangeBet;
   window.slotChangeBet = function(dir) {
-    // Block bet change if current bet has unconsumed free spins
-    if (_pixState.freeSpinsLeft > 0) {
-      return; // cannot switch bet while free spins remain
-    }
     origChangeBet(dir);
     pixizinhoRecalcJackpot();
     pixizinhoUpdateFreeSpinFromBet();

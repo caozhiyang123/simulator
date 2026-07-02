@@ -107,6 +107,10 @@ MachineRegistry.register('GoldenFortune', {
     if (resp.locks && resp.locks.length > 0) {
       _playBonusPending = true;
     }
+    // If boxes triggered (BonusFeature), set bonus pending
+    if (resp.boxes && resp.boxes.length > 0) {
+      _playBonusPending = true;
+    }
 
     // Update free spin count from response
     if (resp.left_free_spin_amount !== undefined) {
@@ -123,6 +127,10 @@ MachineRegistry.register('GoldenFortune', {
       // Show lock selection modal if triggered
       if (resp.locks && resp.locks.length > 0) {
         gfShowLocksModal(resp.locks);
+      }
+      // Show box bonus modal if triggered
+      if (resp.boxes && resp.boxes.length > 0) {
+        gfShowBoxesModal(resp.boxes);
       }
       // Update SPIN button for free spin
       gfUpdateSpinBtnFreeSpin();
@@ -326,13 +334,11 @@ function gfHookBetChange() {
   var origBet = window.slotChangeBet;
   var origLines = window.slotChangeLines;
   window.slotChangeBet = function(dir) {
-    if (_gfFreeSpinsLeft > 0) return; // block bet change during free spin
     origBet(dir);
     gfUpdateFreeSpinFromBet();
   };
   if (origLines) {
     window.slotChangeLines = function(dir) {
-      if (_gfFreeSpinsLeft > 0) return; // block line change during free spin
       origLines(dir);
       gfUpdateFreeSpinFromBet();
     };
@@ -549,4 +555,176 @@ function gfLocksComplete(leftFreeSpin) {
   slotRoundOver();
 
   playLog('🔓 [LOCKS] complete, free spins: ' + leftFreeSpin);
+}
+
+
+// ===========================================================================
+// GoldenFortune Box Bonus Feature
+// ===========================================================================
+var _gfBoxes = {
+  boxes: [],            // original box values (sorted desc for right panel)
+  openedPositions: [],  // opened box positions (left grid)
+  eliminatedBoxes: [],  // eliminated values from right panel
+  currentPrize: 0,      // current average prize (from server)
+  canContinue: true
+};
+
+/**
+ * Show the box bonus modal.
+ */
+function gfShowBoxesModal(boxes) {
+  _gfBoxes.boxes = boxes.slice().sort(function(a, b) { return b - a; }); // desc for right panel
+  _gfBoxes.openedPositions = [];
+  _gfBoxes.eliminatedBoxes = [];
+  _gfBoxes.currentPrize = 0;
+  _gfBoxes.canContinue = true;
+
+  var old = document.getElementById('gfBoxModal');
+  if (old) old.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'gfBoxModal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+  var html = '<div style="width:700px;max-width:95vw;height:500px;max-height:90vh;background:#1a1a2e;border-radius:12px;border:2px solid #f5d742;display:flex;overflow:hidden;">';
+
+  // Left side (80%) — 5x5 box grid
+  html += '<div style="flex:4;padding:16px;display:flex;flex-direction:column;">';
+  html += '<div style="color:#f5d742;font-size:16px;font-weight:700;text-align:center;margin-bottom:12px;">🎁 Open Boxes</div>';
+  html += '<div id="gfBoxGrid" style="flex:1;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr);gap:6px;">';
+  for (var i = 0; i < 25; i++) {
+    html += '<div class="gf-box-item" data-idx="' + i + '" onclick="gfClickBox(' + i + ')" style="background:linear-gradient(135deg,#c8960c,#f5d742);border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;border:2px solid #daa520;transition:all 0.15s;">🎁</div>';
+  }
+  html += '</div>';
+  // Accept/Continue buttons
+  html += '<div id="gfBoxActions" style="display:flex;gap:12px;justify-content:center;margin-top:12px;">';
+  html += '<div id="gfBoxAcceptBtn" onclick="gfBoxAccept()" style="padding:8px 20px;background:#27ae60;border-radius:6px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;display:none;">ACCEPT</div>';
+  html += '</div>';
+  html += '<div id="gfBoxPrizeDisplay" style="color:#4fc3f7;font-size:13px;font-weight:700;text-align:center;margin-top:8px;">Click a box to open</div>';
+  html += '</div>';
+
+  // Divider
+  html += '<div style="width:2px;background:#444;"></div>';
+
+  // Right side (20%) — box values list
+  html += '<div style="flex:1;padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;">';
+  html += '<div style="color:#aaa;font-size:10px;font-weight:600;text-align:center;margin-bottom:6px;">VALUES</div>';
+  for (var i = 0; i < _gfBoxes.boxes.length; i++) {
+    html += '<div class="gf-box-value" data-val="' + _gfBoxes.boxes[i] + '" style="padding:4px 6px;background:#2a2a4e;border-radius:3px;color:#fff;font-size:10px;font-weight:600;text-align:center;">' + _gfBoxes.boxes[i] + '</div>';
+  }
+  html += '</div>';
+
+  html += '</div>';
+  modal.innerHTML = html;
+  document.body.appendChild(modal);
+
+  playLog('🎁 [BOX BONUS] showing: ' + boxes.length + ' values');
+}
+
+/**
+ * Player clicks a box to open it.
+ */
+function gfClickBox(idx) {
+  if (!_gfBoxes.canContinue) return;
+  if (_gfBoxes.openedPositions.indexOf(idx) >= 0) return;
+
+  // Disable all boxes while waiting
+  _gfBoxes.canContinue = false;
+  document.querySelectorAll('.gf-box-item').forEach(function(el) {
+    el.style.pointerEvents = 'none'; el.style.opacity = '0.6';
+  });
+
+  var prizeDisplay = document.getElementById('gfBoxPrizeDisplay');
+  if (prizeDisplay) prizeDisplay.textContent = 'Opening box...';
+
+  // Send open_box request
+  var st = _slotState;
+  var cmd = {
+    cmd: 'bonus_spin.open_box',
+    session_token: st.sessionToken,
+    game_id: st.machineId,
+    currency: st.currency,
+    opt_id: st.loginResp.opt_id || '',
+    username: st.loginResp.username || '',
+    position: idx,
+    feature_id: 5,
+    bonus_unique_id: '',
+    is_bonus: false,
+    payload_data: "[{'key':'value'}]"
+  };
+  playLog('>>> [OPEN BOX] send: ' + JSON.stringify(cmd));
+  _playWs.send(JSON.stringify(cmd));
+}
+
+/**
+ * Handle bonus_spin.open_box response.
+ */
+function gfHandleOpenBoxResponse(resp) {
+  var position = resp.position;
+  var currentBox = resp.current_box;
+  var currentPrize = resp.current_prize || 0;
+  var continueOpen = resp.continue_open_next_box;
+  var balance = resp.balance;
+
+  _gfBoxes.openedPositions.push(position);
+  _gfBoxes.currentPrize = currentPrize;
+  _gfBoxes.eliminatedBoxes.push(currentBox);
+
+  // Update balance
+  if (balance !== undefined) slotUpdateBalance(balance, false);
+
+  // Mark opened box
+  var boxEl = document.querySelector('.gf-box-item[data-idx="' + position + '"]');
+  if (boxEl) {
+    boxEl.style.background = '#333';
+    boxEl.style.borderColor = '#555';
+    boxEl.style.cursor = 'default';
+    boxEl.innerHTML = '<span style="font-size:12px;color:#888;">' + currentBox + '</span>';
+  }
+
+  // Grey out eliminated value on right panel
+  var valEls = document.querySelectorAll('.gf-box-value');
+  for (var i = 0; i < valEls.length; i++) {
+    if (parseFloat(valEls[i].getAttribute('data-val')) === currentBox && valEls[i].style.opacity !== '0.3') {
+      valEls[i].style.opacity = '0.3';
+      valEls[i].style.textDecoration = 'line-through';
+      valEls[i].style.color = '#666';
+      break;
+    }
+  }
+
+  // Update prize display
+  var prizeDisplay = document.getElementById('gfBoxPrizeDisplay');
+  if (prizeDisplay) prizeDisplay.textContent = 'Current Prize: ' + currentPrize.toFixed(2);
+
+  if (continueOpen) {
+    _gfBoxes.canContinue = true;
+    // Re-enable unopened boxes
+    document.querySelectorAll('.gf-box-item').forEach(function(el) {
+      if (_gfBoxes.openedPositions.indexOf(parseInt(el.getAttribute('data-idx'))) < 0) {
+        el.style.pointerEvents = ''; el.style.opacity = '1';
+      }
+    });
+    // Show accept button
+    var acceptBtn = document.getElementById('gfBoxAcceptBtn');
+    if (acceptBtn) acceptBtn.style.display = '';
+  } else {
+    // No more opens allowed — auto accept
+    setTimeout(function() { gfBoxAccept(); }, 1500);
+  }
+}
+
+/**
+ * Player accepts the current prize — close modal, send round over.
+ */
+function gfBoxAccept() {
+  var prize = _gfBoxes.currentPrize;
+  var modal = document.getElementById('gfBoxModal');
+  if (modal) modal.remove();
+
+  playLog('🎁 [BOX BONUS] accepted prize: ' + prize);
+
+  // Clear bonus pending and send round over
+  _playBonusPending = false;
+  slotRoundOver();
 }

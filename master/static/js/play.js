@@ -229,6 +229,12 @@ async function playSelectMachine(machineId, enabled, machineType) {
       if (typeof gfHandleOpenLockResponse === 'function') {
         gfHandleOpenLockResponse(resp);
       }
+    } else if (resp.cmd === 'bonus_spin.open_box') {
+      // Box open response (e.g. GoldenFortune BonusFeature)
+      playLog('<<< [OPEN BOX] response: ' + JSON.stringify(resp));
+      if (typeof gfHandleOpenBoxResponse === 'function') {
+        gfHandleOpenBoxResponse(resp);
+      }
     } else {
       playLog('<<< [WS] unknown cmd: ' + JSON.stringify(resp));
     }
