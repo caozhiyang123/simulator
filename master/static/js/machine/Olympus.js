@@ -32,9 +32,17 @@ MachineRegistry.register('Olympus', {
     }
     // Default slot handling
     slotHandleSpinResponse(resp);
-    // Update SPIN button after reels stop
+    // Update SPIN button and energy feature after reels stop
     setTimeout(function() {
       olympusUpdateSpinBtn();
+      // Energy feature: icon replacement animation
+      if (resp.triggered === true && resp.replaced_positions && resp.replaced_positions.length > 0) {
+        olympusEnergyReplaceAnimation(resp.from_icon, resp.to_icon, resp.replaced_positions);
+      }
+      // Update energy progress display
+      if (resp.current_amount !== undefined) {
+        olympusUpdateEnergyProgress(resp.current_amount);
+      }
     }, 3500);
   }
 });
@@ -145,4 +153,77 @@ function olympusSendFreeSpin() {
   };
   playLog('>>> [OLYMPUS FREE SPIN] send: ' + JSON.stringify(cmd));
   _playWs.send(JSON.stringify(cmd));
+}
+
+
+// ===========================================================================
+// Olympus Energy Feature — icon replacement animation
+// ===========================================================================
+
+/**
+ * Animate icon replacement on specified positions.
+ * Shows from_icon fading out and to_icon appearing with a flash effect.
+ */
+function olympusEnergyReplaceAnimation(fromIcon, toIcon, positions) {
+  var st = _slotState;
+  var colCount = st.colCount || 5;
+  var rowCount = st.rowCount || 3;
+  var mn = st.machineName || 'Olympus';
+  var container = document.getElementById('slotReelsContainer');
+  if (!container) return;
+
+  var cellHeight = 80;
+
+  positions.forEach(function(pos, idx) {
+    setTimeout(function() {
+      var col = pos % colCount;
+      var row = Math.floor(pos / colCount);
+      var wrapper = container.querySelector('.slot-reel-wrapper[data-col="' + col + '"]');
+      if (!wrapper) return;
+
+      // Create overlay for the animation
+      var cellH = wrapper.offsetHeight / rowCount;
+      var overlay = document.createElement('div');
+      overlay.style.cssText = 'position:absolute;top:' + (row * cellH) + 'px;left:0;width:100%;height:' + cellH + 'px;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;';
+      wrapper.style.position = 'relative';
+      wrapper.appendChild(overlay);
+
+      // Flash effect + from_icon fading out
+      overlay.innerHTML = '<img src="/static/machine/' + mn + '/icon/i' + fromIcon + '.png" style="width:100%;height:100%;object-fit:fill;position:absolute;animation:olympusIconFadeOut 0.6s forwards;" onerror="this.style.opacity=0">' +
+        '<div style="position:absolute;width:100%;height:100%;background:rgba(255,255,100,0.6);animation:olympusFlash 0.4s ease-out;"></div>' +
+        '<img src="/static/machine/' + mn + '/icon/i' + toIcon + '.png" style="width:100%;height:100%;object-fit:fill;position:absolute;opacity:0;animation:olympusIconFadeIn 0.6s 0.3s forwards;" onerror="this.style.opacity=0">';
+
+      // Also update the actual reel strip icon after animation
+      setTimeout(function() {
+        overlay.remove();
+        // Update the strip cell to show the new icon
+        var strip = wrapper.querySelector('.slot-reel-strip');
+        if (strip) {
+          var resultPos = 14; // must match slot.js resultPosition
+          var cellIdx = resultPos + row;
+          var allCells = strip.children;
+          if (cellIdx < allCells.length) {
+            var img = allCells[cellIdx].querySelector('img');
+            if (img) { img.style.opacity = '1'; img.src = '/static/machine/' + mn + '/icon/i' + toIcon + '.png'; }
+          }
+        }
+      }, 900);
+    }, idx * 150); // stagger each position by 150ms
+  });
+}
+
+/**
+ * Update energy progress display.
+ */
+function olympusUpdateEnergyProgress(amount) {
+  var el = document.getElementById('olympusEnergyDisplay');
+  if (!el) {
+    var slotSkin = document.getElementById('slotSkin');
+    if (!slotSkin) return;
+    el = document.createElement('div');
+    el.id = 'olympusEnergyDisplay';
+    el.style.cssText = 'position:absolute;top:12%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);border:1px solid #9b59b6;border-radius:12px;padding:3px 10px;color:#9b59b6;font-size:10px;font-weight:700;z-index:5;';
+    slotSkin.appendChild(el);
+  }
+  el.textContent = '⚡ Energy: ' + amount;
 }
