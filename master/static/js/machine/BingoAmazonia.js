@@ -49,49 +49,45 @@ MachineRegistry.register('BingoAmazonia', {
       w.style.borderRadius = '0';
     });
 
-    // BET controls — bottom left
-    var allDivs = document.querySelectorAll('#slotSkin > div');
-    allDivs.forEach(function(div) {
-      var s = div.getAttribute('style') || '';
-      if (s.indexOf('top:80.5%') >= 0 && s.indexOf('left:7%') >= 0) {
-        div.style.top = '55%';
-        div.style.left = '19%';
+    // Reposition controls bar — same horizontal line, equal spacing
+    // Balance at 14%, Reels at 24%, gap = 10%. Reels bottom = 46%. Controls at 56%.
+    var controlsBar = document.getElementById('slotControlsBar');
+    if (controlsBar) {
+      controlsBar.style.top = '56%';
+      // Wrap BET and LINE groups into a vertical column (left-aligned, LINE below BET)
+      var children = controlsBar.children;
+      if (children.length >= 2) {
+        var betGroup = children[0];
+        var lineGroup = children[1];
+        var wrapper = document.createElement('div');
+        wrapper.style.cssText = 'display:flex;flex-direction:column;gap:4px;align-items:flex-start;';
+        controlsBar.insertBefore(wrapper, betGroup);
+        wrapper.appendChild(betGroup);
+        wrapper.appendChild(lineGroup);
       }
-      if (s.indexOf('top:80.5%') >= 0 && s.indexOf('left:38%') >= 0) {
-        div.style.top = '60%';
-        div.style.left = '19%';
-      }
-    });
-
-    // SPIN button — 3D box with top, front, right faces
-    var spinBtn = document.getElementById('slotSpinBtn');
-    if (spinBtn) {
-      spinBtn.className = 'ba-spin-btn';
-      spinBtn.style.top = '57%';
-      spinBtn.style.right = '19%';
-      spinBtn.style.width = '50px';
-      spinBtn.style.height = '30px';
-      spinBtn.style.display = 'flex';
-      spinBtn.style.alignItems = 'center';
-      spinBtn.style.justifyContent = 'center';
-      spinBtn.style.position = 'absolute';
-      spinBtn.innerHTML = '<div class="ba-face-top"></div><div class="ba-face-front"><span style="font-size:12px;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.6);letter-spacing:1px;">SPIN</span></div><div class="ba-face-right"></div>';
     }
 
     // Override BET and LINE +/- buttons to 3D box style
-    var btns = document.querySelectorAll('#slotSkin .slot-btn-3d');
+    var btns = document.querySelectorAll('#slotControlsBar .slot-btn-3d');
     btns.forEach(function(btn) {
       var text = btn.textContent;
       btn.className = 'ba-btn-silver';
       btn.innerHTML = '<div class="ba-face-top"></div><div class="ba-face-front"><span style="color:#fff;font-size:14px;font-weight:800;">' + text + '</span></div><div class="ba-face-right"></div>';
     });
 
-    // COLLECT button
+    // SPIN button — 3D box
+    var spinBtn = document.getElementById('slotSpinBtn');
+    if (spinBtn) {
+      spinBtn.className = 'ba-spin-btn';
+      spinBtn.style.width = '50px';
+      spinBtn.style.height = '30px';
+      spinBtn.innerHTML = '<div class="ba-face-top"></div><div class="ba-face-front"><span style="font-size:12px;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.6);letter-spacing:1px;">SPIN</span></div><div class="ba-face-right"></div>';
+    }
+
+    // COLLECT button — 3D box
     var collectBtn = document.getElementById('slotCollectBtn');
     if (collectBtn) {
-      collectBtn.style.top = '57%';
-      collectBtn.style.right = '29%';
-      var collectText = collectBtn.textContent;
+      var collectText = collectBtn.textContent || 'COLLECT';
       collectBtn.className = 'ba-btn-silver';
       collectBtn.innerHTML = '<div class="ba-face-top"></div><div class="ba-face-front"><span style="color:#fff;font-size:9px;font-weight:800;">' + collectText + '</span></div><div class="ba-face-right"></div>';
     }
