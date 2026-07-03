@@ -44,6 +44,14 @@ MachineRegistry.register('Olympus', {
         olympusUpdateEnergyProgress(resp.current_amount);
       }
     }, 3500);
+  },
+
+  onRoundOver: function(resp) {
+    slotHandleRoundOverResponse(resp);
+    // Update energy from round over if present
+    if (resp.current_amount !== undefined) {
+      olympusUpdateEnergyProgress(resp.current_amount);
+    }
   }
 });
 
@@ -107,11 +115,13 @@ function olympusHookBetChange() {
   window.slotChangeBet = function(dir) {
     origBet(dir);
     olympusUpdateFreeSpinFromBet();
+    olympusUpdateEnergyProgress(0); // reset energy on bet change
   };
   if (origLines) {
     window.slotChangeLines = function(dir) {
       origLines(dir);
       olympusUpdateFreeSpinFromBet();
+      olympusUpdateEnergyProgress(0); // reset energy on line change
     };
   }
 }
@@ -213,17 +223,44 @@ function olympusEnergyReplaceAnimation(fromIcon, toIcon, positions) {
 }
 
 /**
- * Update energy progress display.
+ * Update energy as a circular progress ring around the SPIN button.
+ * Max energy = trigger_count from config (default 3).
  */
 function olympusUpdateEnergyProgress(amount) {
-  var el = document.getElementById('olympusEnergyDisplay');
-  if (!el) {
-    var slotSkin = document.getElementById('slotSkin');
-    if (!slotSkin) return;
-    el = document.createElement('div');
-    el.id = 'olympusEnergyDisplay';
-    el.style.cssText = 'position:absolute;top:12%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);border:1px solid #9b59b6;border-radius:12px;padding:3px 10px;color:#9b59b6;font-size:10px;font-weight:700;z-index:5;';
-    slotSkin.appendChild(el);
+  var maxEnergy = 3;
+  var pct = Math.min(1, amount / maxEnergy);
+
+  var spinBtn = document.getElementById('slotSpinBtn');
+  if (!spinBtn) return;
+
+  // Ensure SPIN button has relative positioning for the ring overlay
+  spinBtn.style.position = 'relative';
+
+  var ring = document.getElementById('olympusEnergyRing');
+  if (!ring) {
+    // Create SVG ring overlay around the SPIN button
+    ring = document.createElement('div');
+    ring.id = 'olympusEnergyRing';
+    ring.style.cssText = 'position:absolute;top:-8px;left:-8px;width:calc(100% + 16px);height:calc(100% + 16px);pointer-events:none;z-index:-1;';
+    ring.innerHTML = '<svg width="100%" height="100%" viewBox="0 0 100 100" style="transform:rotate(-90deg);">' +
+      '<circle cx="50" cy="50" r="46" fill="none" stroke="#333" stroke-width="8"/>' +
+      '<circle id="olympusEnergyArc" cx="50" cy="50" r="46" fill="none" stroke="url(#olympusEnergyGrad)" stroke-width="10" stroke-linecap="round" stroke-dasharray="289.03" stroke-dashoffset="289.03" style="transition:stroke-dashoffset 0.8s ease;"/>' +
+      '<defs><linearGradient id="olympusEnergyGrad"><stop offset="0%" stop-color="#9b59b6"/><stop offset="100%" stop-color="#e74cf7"/></linearGradient></defs>' +
+      '</svg>';
+    spinBtn.appendChild(ring);
   }
-  el.textContent = '⚡ Energy: ' + amount;
+
+  // Update arc: dashoffset = circumference * (1 - pct)
+  var circumference = 2 * Math.PI * 46; // ~289.03
+  var offset = circumference * (1 - pct);
+  var arc = document.getElementById('olympusEnergyArc');
+  if (arc) {
+    arc.setAttribute('stroke-dashoffset', offset);
+    // Glow when full
+    if (pct >= 1) {
+      arc.style.filter = 'drop-shadow(0 0 4px #e74cf7)';
+    } else {
+      arc.style.filter = '';
+    }
+  }
 }
