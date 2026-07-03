@@ -93,6 +93,13 @@ MachineRegistry.register('GoldenFortune', {
       btn.className = 'gf-btn-retro';
     });
 
+    // Lamp progress: store max steps from lamp_prize_multi
+    if (resp.lamp_prize_multi) {
+      _gfLampMax = resp.lamp_prize_multi.length;
+    }
+    // Initialize lamp progress from lamp_position_by_bet (BEFORE free spin updates)
+    gfUpdateLampFromBet(resp.lamp_position_by_bet || []);
+
     // Free spin by bet: store data, auto-switch, hook bet change
     if (resp.left_free_spin_by_bet) {
       _gfFreeSpinByBet = resp.left_free_spin_by_bet;
@@ -134,6 +141,10 @@ MachineRegistry.register('GoldenFortune', {
       }
       // Update SPIN button for free spin
       gfUpdateSpinBtnFreeSpin();
+      // Update lamp progress from spin response
+      if (resp.current_lamp_position !== undefined) {
+        gfUpdateLampProgress(resp.current_lamp_position);
+      }
     }, 3500);
   }
 });
@@ -322,12 +333,13 @@ function gfUpdateSpinBtnFreeSpin() {
   if (!spinBtn) return;
   if (_gfFreeSpinsLeft > 0) {
     spinBtn.innerHTML = '<span style="font-size:14px;font-weight:900;color:#fff;text-shadow:0 -1px 0 #333,0 1px 0 #000,1px 0 0 #000,-1px 0 0 #000;letter-spacing:1px;z-index:1;">' + _gfFreeSpinsLeft + ' FREE</span>';
-    // Override onclick to send free_spin
     spinBtn.onclick = function() { gfSendFreeSpin(); };
   } else {
     spinBtn.innerHTML = '<span style="font-size:14px;font-weight:900;color:#fff;text-shadow:0 -1px 0 #333,0 1px 0 #000,1px 0 0 #000,-1px 0 0 #000;letter-spacing:2px;z-index:1;">SPIN</span>';
     spinBtn.onclick = function() { slotSpin(); };
   }
+  // Re-apply lamp ring (innerHTML destroyed it)
+  gfUpdateLampProgress(_gfLampCurrent);
 }
 
 function gfHookBetChange() {
@@ -336,11 +348,13 @@ function gfHookBetChange() {
   window.slotChangeBet = function(dir) {
     origBet(dir);
     gfUpdateFreeSpinFromBet();
+    gfUpdateLampFromBet(_gfLampByBet);
   };
   if (origLines) {
     window.slotChangeLines = function(dir) {
       origLines(dir);
       gfUpdateFreeSpinFromBet();
+      gfUpdateLampFromBet(_gfLampByBet);
     };
   }
 }
@@ -727,4 +741,69 @@ function gfBoxAccept() {
   // Clear bonus pending and send round over
   _playBonusPending = false;
   slotRoundOver();
+}
+
+
+// ===========================================================================
+// GoldenFortune Lamp Progress (circular ring around SPIN button)
+// ===========================================================================
+var _gfLampMax = 6; // total steps (from lamp_prize_multi length)
+var _gfLampCurrent = 0;
+var _gfLampByBet = []; // [{bet, lines, position}]
+
+/**
+ * Initialize lamp progress from login data lamp_position_by_bet.
+ */
+function gfUpdateLampFromBet(lampData) {
+  if (lampData && lampData.length > 0) _gfLampByBet = lampData;
+  // Find current bet position
+  var st = _slotState;
+  var bet = (st.betList && st.betList[st.betIndex]) || 0.01;
+  _gfLampCurrent = 0;
+  for (var i = 0; i < _gfLampByBet.length; i++) {
+    var e = _gfLampByBet[i];
+    if (Math.abs(e.bet - bet) < 0.0001) {
+      _gfLampCurrent = e.position || 0;
+      break;
+    }
+  }
+  gfUpdateLampProgress(_gfLampCurrent);
+}
+
+/**
+ * Update the lamp circular progress ring around SPIN button.
+ */
+function gfUpdateLampProgress(amount) {
+  _gfLampCurrent = amount;
+  var pct = Math.min(1, amount / _gfLampMax);
+
+  var spinBtn = document.getElementById('slotSpinBtn');
+  if (!spinBtn) return;
+  spinBtn.style.position = 'relative';
+
+  var ring = document.getElementById('gfLampRing');
+  if (!ring) {
+    ring = document.createElement('div');
+    ring.id = 'gfLampRing';
+    ring.style.cssText = 'position:absolute;top:-4px;left:-4px;width:calc(100% + 8px);height:calc(100% + 8px);pointer-events:none;z-index:0;border-radius:8px;overflow:hidden;';
+    ring.innerHTML = '<svg id="gfLampSvg" width="100%" height="100%" viewBox="0 0 100 56" fill="none" style="position:absolute;top:0;left:0;">' +
+      '<rect x="2" y="2" width="96" height="52" rx="6" fill="none" stroke="#333" stroke-width="8"/>' +
+      '<rect id="gfLampArc" x="2" y="2" width="96" height="52" rx="6" fill="none" stroke="url(#gfLampGrad)" stroke-width="10" stroke-linecap="round" stroke-dasharray="288" stroke-dashoffset="288" style="transition:stroke-dashoffset 0.8s ease;"/>' +
+      '<defs><linearGradient id="gfLampGrad"><stop offset="0%" stop-color="#27ae60"/><stop offset="100%" stop-color="#2ecc71"/></linearGradient></defs>' +
+      '</svg>';
+    spinBtn.appendChild(ring);
+  }
+
+  var circumference = 288; // approximate rect perimeter (96+52)*2 with rounded corners
+  var offset = circumference * (1 - pct);
+  var arc = document.getElementById('gfLampArc');
+  if (arc) {
+    arc.setAttribute('stroke-dashoffset', offset);
+    // Always glow when there's any progress
+    if (pct > 0) {
+      arc.style.filter = 'drop-shadow(0 0 6px #f5d742)';
+    } else {
+      arc.style.filter = '';
+    }
+  }
 }
