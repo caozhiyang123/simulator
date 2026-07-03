@@ -39,7 +39,7 @@ function slotRenderGame(resp, machineConfig, machineName) {
     st.chooseQuantity = !!_playCurrentMachine.machineEntry.choose_quantity;
   }
   // Jackpot
-  var jackpotPool=0, jackpotBaseUnit=1, jackpotRates=[];
+  var jackpotPool=0, jackpotBaseUnit=1, jackpotRates=[], jackpotMinBet=0;
   try {
     var features = resp.features || [];
     if (features.length > 0) {
@@ -48,6 +48,7 @@ function slotRenderGame(resp, machineConfig, machineName) {
         var jp = feat.jackpot[0];
         jackpotRates = jp.jackpot_prize_rate_list || [];
         jackpotBaseUnit = jp.jackpot_base_unit_to_currency || 1;
+        jackpotMinBet = jp.jackpot_min_bet || 0;
         var poolItem = JSON.parse(jp.jackpot_pool_item || '{}');
         jackpotPool = parseFloat(poolItem.jackpotPool) || 0;
       }
@@ -56,6 +57,7 @@ function slotRenderGame(resp, machineConfig, machineName) {
   window._playJackpotPool = jackpotPool;
   window._playJackpotBaseUnit = jackpotBaseUnit;
   window._playJackpotRates = jackpotRates;
+  window._playJackpotMinBet = jackpotMinBet;
   window._playDisplayPrecision = st.displayPrecision;
   slotRandomizeReels();
   slotRenderUI();
@@ -215,8 +217,18 @@ function slotUpdateJackpot() {
   var jp = slotCalcJackpot();
   var el = document.getElementById('slotJackpotDisplay');
   if (!el) return;
-  if (jp <= 0) { el.innerHTML = '<span style="color:#888;">\uD83D\uDD12 JP: 0.00</span>'; }
-  else { el.innerHTML = '\uD83C\uDFC6 JP: ' + jp.toFixed(_slotState.displayPrecision); el.style.color = '#f39c12'; }
+  // Lock jackpot if current bet < jackpot_min_bet
+  var st = _slotState;
+  var currentBet = (st.betList && st.betList[st.betIndex]) || 0;
+  var minBet = window._playJackpotMinBet || 0;
+  if (minBet > 0 && currentBet < minBet - 0.0001) {
+    el.innerHTML = '<span style="color:#888;">\uD83D\uDD12 JP: ' + jp.toFixed(st.displayPrecision) + '</span>';
+  } else if (jp <= 0) {
+    el.innerHTML = '<span style="color:#888;">\uD83D\uDD12 JP: 0.00</span>';
+  } else {
+    el.innerHTML = '\uD83C\uDFC6 JP: ' + jp.toFixed(st.displayPrecision);
+    el.style.color = '#f39c12';
+  }
 }
 
 function slotToggleLine(lineIdx) {
@@ -440,8 +452,12 @@ function slotHandleSpinResponse(resp) {
     if (resp.total_won > 0) {
       slotShowWinAnimation(resp.total_won);
       slotShowWinningLines(resp);
-      // Start balance animation immediately (coins are flying)
       if (resp.balance !== undefined) slotUpdateBalance(resp.balance);
+    }
+    // Check for jackpot win in features
+    var jpWin = slotParseJackpotWin(resp.features);
+    if (jpWin > 0) {
+      showJackpotCelebration(jpWin);
     }
     slotRoundOver();
   });
@@ -636,6 +652,59 @@ function slotShowWinAnimation(amount) {
     var el = document.getElementById('slotWinDisplay');
     if (el) el.innerHTML = '';
   }, 5000);
+}
+
+/**
+ * Parse jackpot_win from features array.
+ * Returns the jackpot win amount, or 0 if no jackpot hit.
+ */
+function slotParseJackpotWin(features) {
+  if (!features || !features.length) return 0;
+  try {
+    for (var i = 0; i < features.length; i++) {
+      var feat = JSON.parse(features[i]);
+      if (feat.jackpot && feat.jackpot.length > 0) {
+        var jpWin = feat.jackpot[0].jackpot_win || 0;
+        if (jpWin > 0) return jpWin;
+      }
+    }
+  } catch(e) {}
+  return 0;
+}
+
+/**
+ * Show a big jackpot celebration animation (used by both slot and bingo).
+ */
+function showJackpotCelebration(amount) {
+  playLog('🏆 [JACKPOT] WIN: ' + amount);
+
+  var old = document.getElementById('jackpotCelebration');
+  if (old) old.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = 'jackpotCelebration';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;';
+
+  overlay.innerHTML =
+    '<div style="position:absolute;width:100%;height:100%;overflow:hidden;pointer-events:none;" id="jpParticles"></div>' +
+    '<div style="color:#f5d742;font-size:28px;font-weight:900;text-shadow:0 0 20px #f5d742,0 0 40px #f5a623;animation:jpPulse 0.5s ease-in-out infinite alternate;z-index:1;">🏆 JACKPOT! 🏆</div>' +
+    '<div style="color:#fff;font-size:48px;font-weight:900;margin-top:16px;text-shadow:0 0 30px #f5d742,0 4px 8px rgba(0,0,0,0.8);z-index:1;animation:jpScale 1s ease-out;">' + amount.toFixed(2) + '</div>' +
+    '<div onclick="document.getElementById(\'jackpotCelebration\').remove()" style="margin-top:24px;padding:10px 24px;background:#f5d742;color:#333;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;z-index:1;">COLLECT</div>';
+
+  document.body.appendChild(overlay);
+
+  // Spawn particles
+  var particleContainer = document.getElementById('jpParticles');
+  for (var i = 0; i < 40; i++) {
+    var p = document.createElement('div');
+    var x = Math.random() * 100;
+    var delay = Math.random() * 2;
+    var size = 4 + Math.random() * 8;
+    var colors = ['#f5d742','#f5a623','#fff','#e74c3c','#27ae60','#3498db'];
+    var color = colors[Math.floor(Math.random() * colors.length)];
+    p.style.cssText = 'position:absolute;left:' + x + '%;top:-10px;width:' + size + 'px;height:' + size + 'px;background:' + color + ';border-radius:50%;animation:jpFall ' + (2 + Math.random() * 3) + 's linear ' + delay + 's infinite;';
+    particleContainer.appendChild(p);
+  }
 }
 
 function slotCollectRound() {

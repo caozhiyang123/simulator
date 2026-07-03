@@ -96,6 +96,7 @@ MachineRegistry.register('GoldenFortune', {
     // Lamp progress: store max steps from lamp_prize_multi
     if (resp.lamp_prize_multi) {
       _gfLampMax = resp.lamp_prize_multi.length;
+      _gfLampMulti = resp.lamp_prize_multi;
     }
     // Initialize lamp progress from lamp_position_by_bet (BEFORE free spin updates)
     gfUpdateLampFromBet(resp.lamp_position_by_bet || []);
@@ -110,6 +111,9 @@ MachineRegistry.register('GoldenFortune', {
   },
 
   onSpinResponse: function(resp) {
+    // Save lamp position BEFORE this spin (for multiplier display)
+    _gfLampBeforeSpin = _gfLampCurrent;
+
     // If locks triggered, set bonus pending to defer round over
     if (resp.locks && resp.locks.length > 0) {
       _playBonusPending = true;
@@ -144,6 +148,10 @@ MachineRegistry.register('GoldenFortune', {
       // Update lamp progress from spin response
       if (resp.current_lamp_position !== undefined) {
         gfUpdateLampProgress(resp.current_lamp_position);
+      }
+      // Show multiplier effect if win > 0 and lamp multiplier > 1 (using pre-spin position)
+      if (resp.total_won > 0) {
+        gfShowMultiplierEffect(_gfLampBeforeSpin);
       }
     }, 3500);
   }
@@ -749,7 +757,9 @@ function gfBoxAccept() {
 // ===========================================================================
 var _gfLampMax = 6; // total steps (from lamp_prize_multi length)
 var _gfLampCurrent = 0;
-var _gfLampByBet = []; // [{bet, lines, position}]
+var _gfLampBeforeSpin = 0; // lamp position BEFORE spin (for multiplier calculation)
+var _gfLampByBet = []; // [{bet, position}]
+var _gfLampMulti = [1,1,1,1,2,3]; // multiplier per position
 
 /**
  * Initialize lamp progress from login data lamp_position_by_bet.
@@ -801,9 +811,42 @@ function gfUpdateLampProgress(amount) {
     arc.setAttribute('stroke-dashoffset', offset);
     // Always glow when there's any progress
     if (pct > 0) {
-      arc.style.filter = 'drop-shadow(0 0 6px #f5d742)';
+      arc.style.filter = 'drop-shadow(0 0 6px #2ecc71)';
     } else {
       arc.style.filter = '';
     }
   }
+}
+
+
+/**
+ * Show multiplier effect (X2, X3) when win > 0 and lamp position has multiplier > 1.
+ * lamp_prize_multi is 0-indexed: position 5 -> index 4 -> multi[4] = 2.
+ */
+function gfShowMultiplierEffect(position) {
+  if (position === undefined || position <= 0) return;
+  // position is 1-based progress, multi array is 0-indexed
+  var idx = position - 1;
+  if (idx < 0 || idx >= _gfLampMulti.length) return;
+  var multi = _gfLampMulti[idx];
+  if (multi <= 1) return;
+
+  var slotSkin = document.getElementById('slotSkin');
+  if (!slotSkin) return;
+
+  // Create floating X multiplier effect
+  var effect = document.createElement('div');
+  effect.style.cssText = 'position:absolute;top:40%;left:50%;transform:translate(-50%,-50%) scale(0.5);z-index:200;pointer-events:none;color:#2ecc71;font-size:48px;font-weight:900;text-shadow:0 0 16px #2ecc71,0 0 32px #27ae60,0 2px 4px rgba(0,0,0,0.8);';
+  effect.textContent = 'X' + multi;
+  slotSkin.appendChild(effect);
+
+  // Animate: scale up, hold, fade out
+  effect.animate([
+    { transform: 'translate(-50%,-50%) scale(0.5)', opacity: 0 },
+    { transform: 'translate(-50%,-50%) scale(1.3)', opacity: 1, offset: 0.2 },
+    { transform: 'translate(-50%,-50%) scale(1)', opacity: 1, offset: 0.6 },
+    { transform: 'translate(-50%,-50%) scale(1.2)', opacity: 0 }
+  ], { duration: 2000, easing: 'ease-out', fill: 'forwards' }).onfinish = function() {
+    effect.remove();
+  };
 }
