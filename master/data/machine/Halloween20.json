@@ -1,0 +1,948 @@
+{
+	"id": 46,
+	"rtp_range": "94%-96%",
+	"enabled_features": [],
+	"math_model": [
+		{
+			"name": "Halloween20",
+			"row_count": 3,
+			"column_count": 5,
+			"icon_amount": 10,
+			"max_lines": 20,
+			"pattern_match_type": "highest_win",
+			"class_name": "com.gamesmart.halloween.lottoBingo.core.Halloween",
+			"features": {
+				"lists": [
+					{
+						"reference": "com.gamesmart.halloween.lottoBingo.feature.PumpkinJarFeature",
+						"config": {
+							"feature_id": 2,
+							"trigger_codes": [
+								"i3i3i3i3i3",
+								"i3i3i3i3i-3",
+								"i-3i3i3i3i3",
+								"i3i3i3i-3i-3",
+								"i-3i-3i3i3i3"
+							],
+							"bonus_multi": [
+								3,
+								2,
+								2,
+								1,
+								1
+							],
+							"bonus_caldeirao": [
+								0,
+								50,
+								75,
+								100,
+								150
+							],
+							"bonus_caldeirao_weight": [
+								0.2,
+								0.2,
+								0.2,
+								0.2,
+								0.2
+							],
+							"bonus_abobora": [
+								1000,
+								200,
+								150,
+								250,
+								500
+							],
+							"bonus_abobora_weight": [
+								0.2,
+								0.2,
+								0.2,
+								0.2,
+								0.2
+							]
+						}
+					},
+					{
+						"reference": "com.gamesmart.halloween.lottoBingo.feature.StrawberryFeature",
+						"config": {
+							"feature_id": 3,
+							"trigger_codes": [
+								"i5i5i5i5i-5",
+								"i-5i-5i5i5i5",
+								"i5i5i5i-5i-5",
+								"i-5i5i5i5i-5"
+							],
+							"bonus_multi": [
+								2,
+								1,
+								1,
+								1
+							],
+							"bonus_strawberry": [
+								100,
+								50,
+								20,
+								10,
+								5,
+								2,
+								0,
+								2,
+								5,
+								10,
+								20,
+								50
+							],
+							"bucket": {
+								"win_weight": 0.0,
+								"not_win_weight": 0.001,
+								"nature_weight": 0.999
+							}
+						}
+					},
+					{
+						"reference": "com.gamesmart.halloween.lottoBingo.feature.SynchronizedMachineStatusFeature",
+						"config": {
+							"feature_id": 4
+						}
+					}
+				]
+			},
+			"icon": [
+				10,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7,
+				8,
+				9
+			],
+			"lines": [
+				[
+					5,
+					6,
+					7,
+					8,
+					9
+				],
+				[
+					0,
+					1,
+					2,
+					3,
+					4
+				],
+				[
+					10,
+					11,
+					12,
+					13,
+					14
+				],
+				[
+					0,
+					6,
+					12,
+					8,
+					4
+				],
+				[
+					10,
+					6,
+					2,
+					8,
+					14
+				],
+				[
+					0,
+					1,
+					7,
+					13,
+					14
+				],
+				[
+					10,
+					11,
+					7,
+					3,
+					4
+				],
+				[
+					5,
+					11,
+					12,
+					13,
+					9
+				],
+				[
+					5,
+					1,
+					2,
+					3,
+					9
+				],
+				[
+					5,
+					1,
+					7,
+					13,
+					9
+				],
+				[
+					5,
+					11,
+					7,
+					3,
+					9
+				],
+				[
+					10,
+					6,
+					2,
+					3,
+					4
+				],
+				[
+					0,
+					6,
+					12,
+					13,
+					14
+				],
+				[
+					0,
+					1,
+					2,
+					8,
+					14
+				],
+				[
+					10,
+					11,
+					12,
+					8,
+					4
+				],
+				[
+					0,
+					1,
+					2,
+					3,
+					9
+				],
+				[
+					10,
+					11,
+					12,
+					13,
+					9
+				],
+				[
+					5,
+					1,
+					2,
+					3,
+					4
+				],
+				[
+					5,
+					11,
+					12,
+					13,
+					14
+				],
+				[
+					10,
+					6,
+					7,
+					8,
+					4
+				]
+			],
+			"line_direction": [
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0
+			],
+			"pattern": [
+				{
+					"id": 29,
+					"name": "5PUMPIKIN",
+					"alias": "P00",
+					"format": "i10i10i10i10i10",
+					"value": 10000,
+					"type": 0
+				},
+				{
+					"id": 28,
+					"name": "4PUMPIKIN",
+					"alias": "P01",
+					"format": "i10i10i10i10i-10",
+					"value": 2000,
+					"type": 0
+				},
+				{
+					"id": 27,
+					"name": "3PUMPIKIN",
+					"alias": "P02",
+					"format": "i10i10i10i-10i-10",
+					"value": 200,
+					"type": 0
+				},
+				{
+					"id": 26,
+					"name": "5MAGIC",
+					"alias": "P03",
+					"format": "i1i1i1i1i1",
+					"value": 2000,
+					"type": 0
+				},
+				{
+					"id": 25,
+					"name": "4MAGIC",
+					"alias": "P04",
+					"format": "i1i1i1i1i-1",
+					"value": 500,
+					"type": 0
+				},
+				{
+					"id": 24,
+					"name": "3MAGIC",
+					"alias": "P05",
+					"format": "i1i1i1i-1i-1",
+					"value": 250,
+					"type": 0
+				},
+				{
+					"id": 24,
+					"name": "3MAGIC",
+					"alias": "P06",
+					"format": "i-1i-1i1i1i1",
+					"value": 250,
+					"type": 0
+				},
+				{
+					"id": 23,
+					"name": "5DEMON",
+					"alias": "P07",
+					"format": "i2i2i2i2i2",
+					"value": 2000,
+					"type": 0
+				},
+				{
+					"id": 22,
+					"name": "4DEMON",
+					"alias": "P08",
+					"format": "i2i2i2i2i-2",
+					"value": 1000,
+					"type": 0
+				},
+				{
+					"id": 22,
+					"name": "4DEMON",
+					"alias": "P09",
+					"format": "i2i2i2i-2i2",
+					"value": 1000,
+					"type": 0
+				},
+				{
+					"id": 22,
+					"name": "4DEMON",
+					"alias": "P10",
+					"format": "i2i2i-2i2i2",
+					"value": 1000,
+					"type": 0
+				},
+				{
+					"id": 22,
+					"name": "4DEMON",
+					"alias": "P11",
+					"format": "i2i-2i2i2i2",
+					"value": 1000,
+					"type": 0
+				},
+				{
+					"id": 22,
+					"name": "4DEMON",
+					"alias": "P12",
+					"format": "i-2i2i2i2i2",
+					"value": 1000,
+					"type": 0
+				},
+				{
+					"id": 21,
+					"name": "3DEMON",
+					"alias": "P13",
+					"format": "i2i2i2i-2i-2",
+					"value": 500,
+					"type": 0
+				},
+				{
+					"id": 21,
+					"name": "3DEMON",
+					"alias": "P14",
+					"format": "i-2i2i2i2i-2",
+					"value": 500,
+					"type": 0
+				},
+				{
+					"id": 21,
+					"name": "3DEMON",
+					"alias": "P15",
+					"format": "i-2i-2i2i2i2",
+					"value": 500,
+					"type": 0
+				},
+				{
+					"id": 20,
+					"name": "3DEMON",
+					"alias": "P16",
+					"format": "i2i2i-2i2i-2",
+					"value": 200,
+					"type": 0
+				},
+				{
+					"id": 20,
+					"name": "3DEMON",
+					"alias": "P17",
+					"format": "i2i-2i2i2i-2",
+					"value": 200,
+					"type": 0
+				},
+				{
+					"id": 20,
+					"name": "3DEMON",
+					"alias": "P18",
+					"format": "i2i2i-2i-2i2",
+					"value": 200,
+					"type": 0
+				},
+				{
+					"id": 20,
+					"name": "3DEMON",
+					"alias": "P19",
+					"format": "i2i-2i2i-2i2",
+					"value": 200,
+					"type": 0
+				},
+				{
+					"id": 20,
+					"name": "3DEMON",
+					"alias": "P20",
+					"format": "i-2i2i2i-2i2",
+					"value": 200,
+					"type": 0
+				},
+				{
+					"id": 20,
+					"name": "3DEMON",
+					"alias": "P21",
+					"format": "i2i-2i-2i2i2",
+					"value": 200,
+					"type": 0
+				},
+				{
+					"id": 20,
+					"name": "3DEMON",
+					"alias": "P22",
+					"format": "i-2i2i-2i2i2",
+					"value": 200,
+					"type": 0
+				},
+				{
+					"id": 19,
+					"name": "5CASK",
+					"alias": "P23",
+					"format": "i3i3i3i3i3",
+					"value": 0,
+					"type": 0
+				},
+				{
+					"id": 18,
+					"name": "4CASK",
+					"alias": "P24",
+					"format": "i3i3i3i3i-3",
+					"value": 0,
+					"type": 0
+				},
+				{
+					"id": 18,
+					"name": "4CASK",
+					"alias": "P25",
+					"format": "i-3i3i3i3i3",
+					"value": 0,
+					"type": 0
+				},
+				{
+					"id": 17,
+					"name": "3CASK",
+					"alias": "P26",
+					"format": "i3i3i3i-3i-3",
+					"value": 0,
+					"type": 0
+				},
+				{
+					"id": 17,
+					"name": "3CASK",
+					"alias": "P27",
+					"format": "i-3i-3i3i3i3",
+					"value": 0,
+					"type": 0
+				},
+				{
+					"id": 16,
+					"name": "5GREENGHOST",
+					"alias": "P28",
+					"format": "i4i4i4i4i4",
+					"value": 30,
+					"type": 0
+				},
+				{
+					"id": 15,
+					"name": "4GREENGHOST",
+					"alias": "P29",
+					"format": "i4i4i4i4i-4",
+					"value": 7,
+					"type": 0
+				},
+				{
+					"id": 14,
+					"name": "3GREENGHOST",
+					"alias": "P31",
+					"format": "i4i4i4i-4i-4",
+					"value": 5,
+					"type": 0
+				},
+				{
+					"id": 14,
+					"name": "3GREENGHOST",
+					"alias": "P32",
+					"format": "i-4i-4i4i4i4",
+					"value": 5,
+					"type": 0
+				},
+				{
+					"id": 13,
+					"name": "3GREENGHOST",
+					"alias": "P33",
+					"format": "i-4i4i4i4i-4",
+					"value": 2,
+					"type": 0
+				},
+				{
+					"id": 12,
+					"name": "5WITCH",
+					"alias": "P34",
+					"format": "i5i5i5i5i5",
+					"value": 2000,
+					"type": 0
+				},
+				{
+					"id": 11,
+					"name": "4WITCH",
+					"alias": "P35",
+					"format": "i5i5i5i5i-5",
+					"value": 0,
+					"type": 0
+				},
+				{
+					"id": 10,
+					"name": "3WITCH",
+					"alias": "P36",
+					"format": "i5i5i5i-5i-5",
+					"value": 0,
+					"type": 0
+				},
+				{
+					"id": 10,
+					"name": "3WITCH",
+					"alias": "P37",
+					"format": "i-5i-5i5i5i5",
+					"value": 0,
+					"type": 0
+				},
+				{
+					"id": 10,
+					"name": "3WITCH",
+					"alias": "P38",
+					"format": "i-5i5i5i5i-5",
+					"value": 0,
+					"type": 0
+				},
+				{
+					"id": 9,
+					"name": "5MONSTER",
+					"alias": "P39",
+					"format": "i6i6i6i6i6",
+					"value": 30,
+					"type": 0
+				},
+				{
+					"id": 8,
+					"name": "4MONSTER",
+					"alias": "P40",
+					"format": "i6i6i6i6i-6",
+					"value": 2,
+					"type": 0
+				},
+				{
+					"id": 7,
+					"name": "5VAMPIRE",
+					"alias": "P41",
+					"format": "i7i7i7i7i7",
+					"value": 75,
+					"type": 0
+				},
+				{
+					"id": 6,
+					"name": "4VAMPIRE",
+					"alias": "P42",
+					"format": "i7i7i7i7i-7",
+					"value": 30,
+					"type": 0
+				},
+				{
+					"id": 5,
+					"name": "3VAMPIRE",
+					"alias": "P43",
+					"format": "i7i7i7i-7i-7",
+					"value": 5,
+					"type": 0
+				},
+				{
+					"id": 5,
+					"name": "3VAMPIRE",
+					"alias": "P44",
+					"format": "i-7i-7i7i7i7",
+					"value": 5,
+					"type": 0
+				},
+				{
+					"id": 4,
+					"name": "3VAMPIRE",
+					"alias": "P45",
+					"format": "i-7i7i7i7i-7",
+					"value": 2,
+					"type": 0
+				},
+				{
+					"id": 4,
+					"name": "5GHOST",
+					"alias": "P66",
+					"format": "i8i8i8i8i8",
+					"value": 150,
+					"type": 0
+				},
+				{
+					"id": 4,
+					"name": "4GHOST",
+					"alias": "P46",
+					"format": "i8i8i8i8i-8",
+					"value": 100,
+					"type": 0
+				},
+				{
+					"id": 4,
+					"name": "3GHOST",
+					"alias": "P47",
+					"format": "i8i8i8i-8i-8",
+					"value": 7,
+					"type": 0
+				},
+				{
+					"id": 4,
+					"name": "3GHOST",
+					"alias": "P48",
+					"format": "i-8i-8i8i8i8",
+					"value": 7,
+					"type": 0
+				},
+				{
+					"id": 4,
+					"name": "3GHOST",
+					"alias": "P49",
+					"format": "i-8i8i8i8i-8",
+					"value": 7,
+					"type": 0
+				},
+				{
+					"id": 3,
+					"name": "5GREENMONSTER",
+					"alias": "P50",
+					"format": "i9i9i9i9i9",
+					"value": 200,
+					"type": 0
+				},
+				{
+					"id": 2,
+					"name": "4GREENMONSTER",
+					"alias": "P51",
+					"format": "i9i9i9i9i-9",
+					"value": 50,
+					"type": 0
+				},
+				{
+					"id": 2,
+					"name": "4GREENMONSTER",
+					"alias": "P52",
+					"format": "i9i9i9i-9i9",
+					"value": 50,
+					"type": 0
+				},
+				{
+					"id": 2,
+					"name": "4GREENMONSTER",
+					"alias": "P53",
+					"format": "i9i9i-9i9i9",
+					"value": 50,
+					"type": 0
+				},
+				{
+					"id": 2,
+					"name": "4GREENMONSTER",
+					"alias": "P54",
+					"format": "i9i-9i9i9i9",
+					"value": 50,
+					"type": 0
+				},
+				{
+					"id": 2,
+					"name": "4GREENMONSTER",
+					"alias": "P55",
+					"format": "i-9i9i9i9i9",
+					"value": 50,
+					"type": 0
+				},
+				{
+					"id": 1,
+					"name": "3GREENMONSTER",
+					"alias": "P56",
+					"format": "i-9i-9i9i9i9",
+					"value": 10,
+					"type": 0
+				},
+				{
+					"id": 1,
+					"name": "3GREENMONSTER",
+					"alias": "P57",
+					"format": "i-9i9i-9i9i9",
+					"value": 10,
+					"type": 0
+				},
+				{
+					"id": 1,
+					"name": "3GREENMONSTER",
+					"alias": "P58",
+					"format": "i-9i9i9i-9i9",
+					"value": 10,
+					"type": 0
+				},
+				{
+					"id": 1,
+					"name": "3GREENMONSTER",
+					"alias": "P59",
+					"format": "i-9i9i9i9i-9",
+					"value": 10,
+					"type": 0
+				},
+				{
+					"id": 1,
+					"name": "3GREENMONSTER",
+					"alias": "P60",
+					"format": "i9i-9i-9i9i9",
+					"value": 10,
+					"type": 0
+				},
+				{
+					"id": 1,
+					"name": "3GREENMONSTER",
+					"alias": "P61",
+					"format": "i9i-9i9i-9i9",
+					"value": 10,
+					"type": 0
+				},
+				{
+					"id": 1,
+					"name": "3GREENMONSTER",
+					"alias": "P62",
+					"format": "i9i-9i9i9i-9",
+					"value": 10,
+					"type": 0
+				},
+				{
+					"id": 1,
+					"name": "3GREENMONSTER",
+					"alias": "P63",
+					"format": "i9i9i-9i-9i9",
+					"value": 10,
+					"type": 0
+				},
+				{
+					"id": 1,
+					"name": "3GREENMONSTER",
+					"alias": "P64",
+					"format": "i9i9i-9i9i-9",
+					"value": 10,
+					"type": 0
+				},
+				{
+					"id": 1,
+					"name": "3GREENMONSTER",
+					"alias": "P65",
+					"format": "i9i9i9i-9i-9",
+					"value": 10,
+					"type": 0
+				}
+			],
+			"math_model": [
+				{
+					"id": 1,
+					"event": "default",
+					"pattern": [],
+					"actual_reel_icons": [
+						[
+							1,
+							2,
+							3,
+							4,
+							5,
+							6,
+							7,
+							8,
+							9,
+							10
+						],
+						[
+							1,
+							2,
+							3,
+							4,
+							5,
+							6,
+							7,
+							8,
+							9,
+							10
+						],
+						[
+							1,
+							2,
+							3,
+							4,
+							5,
+							6,
+							7,
+							8,
+							9,
+							10
+						],
+						[
+							1,
+							2,
+							3,
+							4,
+							5,
+							6,
+							7,
+							8,
+							9,
+							10
+						],
+						[
+							1,
+							2,
+							3,
+							4,
+							5,
+							6,
+							7,
+							8,
+							9,
+							10
+						]
+					],
+					"actual_reel_weight": [
+						[
+							0.19,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122
+						],
+						[
+							0.19,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122
+						],
+						[
+							0.19,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122
+						],
+						[
+							0.19,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122
+						],
+						[
+							0.19,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122,
+							0.0122
+						]
+					]
+				}
+			]
+		}
+	]
+}
