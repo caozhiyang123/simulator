@@ -155,6 +155,15 @@
         "enabled": true,
         "type": "slot",
         "choose_quantity": true
+      },
+      {
+        "name": "LuckyTiger",
+        "config_file": "LuckyTiger.json",
+        "machine_id": 194,
+        "connection_url": "ws://localhost:9090/halloween?authorization=efYfLM2wBN6p2qfqtpicy/sXRc/UWgI+Pb316N8jWy4=&reconnect=false",
+        "enabled": true,
+        "type": "slot",
+        "choose_quantity": true
       }
     ]
   }

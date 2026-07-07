@@ -1,0 +1,171 @@
+{
+  "id": 194,
+  "rtp_range": "94%-96%",
+  "enabled_features": [
+  ],
+  "math_model": [{
+	  "name": "LuckyTiger",
+	  "row_count": 3,
+	  "column_count": 3,
+	  "icon_amount": 7,
+	  "max_lines": 5,
+	  "pattern_match_type": "highest_win",
+	  "class_name":"com.gamesmart.halloween.lottoBingo.core.LuckyTigerMachine",
+	  "features": {
+		"lists": [{
+					"reference": "com.gamesmart.halloween.lottoBingo.feature.SynchronizedMachineStatusFeature",
+					"config": {
+					  "feature_id": 2
+					}
+				  },{
+				  "reference": "com.gamesmart.halloween.lottoBingo.feature.NearLossFeature",
+				  "config": {
+					"feature_id":3,
+					"pattern":[
+					  {"name": "2Tiger", "alias": "P25", "format": "i1i1i-1", "near_win":250, "type":1},
+					  {"name": "2Yuanbao", "alias": "P26", "format": "i2i2i-2", "near_win":100, "type":1},
+					  {"name": "2Yuanbao", "alias": "P27", "format": "i1i2i-2", "near_win":100, "type":1},
+					  {"name": "2Yuanbao", "alias": "P28", "format": "i2i1i-2", "near_win":100, "type":1},
+					  {"name": "2Jade", "alias": "P29", "format": "i3i3i-3", "near_win":25, "type":1},
+					  {"name": "2Jade", "alias": "P30", "format": "i1i3i-3", "near_win":25, "type":1},
+					  {"name": "2Jade", "alias": "P31", "format": "i3i1i-3", "near_win":25, "type":1},
+					  {"name": "2FortuneBag", "alias": "P32", "format": "i4i4i-4", "near_win":10, "type":1},
+					  {"name": "2FortuneBag", "alias": "P33", "format": "i1i4i-4", "near_win":10, "type":1},
+					  {"name": "2FortuneBag", "alias": "P34", "format": "i4i1i-4", "near_win":10, "type":1},
+					  {"name": "2RedEnvelope", "alias": "P35", "format": "i5i5i-5", "near_win":8, "type":1},
+					  {"name": "2RedEnvelope", "alias": "P36", "format": "i1i5i-5", "near_win":8, "type":1},
+					  {"name": "2RedEnvelope", "alias": "P37", "format": "i5i1i-5", "near_win":8, "type":1},
+					  {"name": "2FireCracker", "alias": "P38", "format": "i6i6i-6", "near_win":5, "type":1},
+					  {"name": "2FireCracker", "alias": "P39", "format": "i1i6i-6", "near_win":5, "type":1},
+					  {"name": "2FireCracker", "alias": "P40", "format": "i6i1i-6", "near_win":5, "type":1},
+					  {"name": "2Orange", "alias": "P41", "format": "i7i7i-7", "near_win":3, "type":1},
+					  {"name": "2Orange", "alias": "P42", "format": "i1i7i-7", "near_win":3, "type":1},
+					  {"name": "2Orange", "alias": "P43", "format": "i7i1i-7", "near_win":3, "type":1}
+					],
+					"min_near_loss_win":20,
+					"payout":1
+				  }
+				},{
+				  "reference": "com.gamesmart.halloween.lottoBingo.feature.X10MultiplierFeature",
+				  "config": {
+					"feature_id":4,  
+					"hit_lines":[1,2,3],
+					"payout":10
+				  }
+				},{
+				  "reference": "com.gamesmart.halloween.lottoBingo.feature.FortuneTigerFeature",
+				  "config": {
+					"feature_id":5,  
+					"bonus_trigger_weight": [
+					  {"icon": 7,"weight": 0.0080},
+					  {"icon": 6,"weight": 0.0035},
+					  {"icon": 5,"weight": 0.0012},
+					  {"icon": 4,"weight": 0.0006},
+					  {"icon": 3,"weight": 0.0002},
+					  {"icon": 2,"weight": 0.0}
+					],
+					"bonus_reel_icon_weights": [
+					  {
+						  "icon":7,
+						  "reels":[[{"icon":7,"weight":40},{"icon":1,"weight":4},{"icon":0,"weight":56}],
+								[{"icon":7,"weight":44},{"icon":1,"weight":6},{"icon":0,"weight":50}],
+								[{"icon":7,"weight":50},{"icon":1,"weight":8},{"icon":0,"weight":42}]]
+					  },{
+						  "icon":6,
+						  "reels":[[{"icon":6,"weight":40},{"icon":1,"weight":4},{"icon":0,"weight":56}],
+								[{"icon":6,"weight":44},{"icon":1,"weight":6},{"icon":0,"weight":50}],
+								[{"icon":6,"weight":50},{"icon":1,"weight":8},{"icon":0,"weight":42}]]
+					  },{
+						  "icon":5,
+						  "reels":[[{"icon":5,"weight":40},{"icon":1,"weight":4},{"icon":0,"weight":56}],
+								[{"icon":5,"weight":44},{"icon":1,"weight":6},{"icon":0,"weight":50}],
+								[{"icon":5,"weight":50},{"icon":1,"weight":8},{"icon":0,"weight":42}]]
+					  },{
+						  "icon":4,
+						  "reels":[[{"icon":4,"weight":40},{"icon":1,"weight":4},{"icon":0,"weight":56}],
+								[{"icon":4,"weight":44},{"icon":1,"weight":6},{"icon":0,"weight":50}],
+								[{"icon":4,"weight":50},{"icon":1,"weight":8},{"icon":0,"weight":42}]]
+					  },{
+						  "icon":3,
+						  "reels":[[{"icon":3,"weight":40},{"icon":1,"weight":4},{"icon":0,"weight":56}],
+								[{"icon":3,"weight":44},{"icon":1,"weight":6},{"icon":0,"weight":50}],
+								[{"icon":3,"weight":50},{"icon":1,"weight":8},{"icon":0,"weight":42}]]
+					  },{
+						  "icon":2,
+						  "reels":[[{"icon":2,"weight":40},{"icon":1,"weight":4},{"icon":0,"weight":56}],
+								[{"icon":2,"weight":44},{"icon":1,"weight":6},{"icon":0,"weight":50}],
+								[{"icon":2,"weight":50},{"icon":1,"weight":8},{"icon":0,"weight":42}]]
+					  }
+					],
+					"payout":10
+				  }
+				}]
+	  },
+	  "icon":[1,2,3,4,5,6,7],
+	  "lines":[[3,4,5],
+			   [0,1,2],
+			   [6,7,8],
+			   [0,4,8],
+			   [6,4,2]],
+	  "line_direction":[1,1,1,1,1],
+	  "pattern": [
+		{"id":7, "name": "3Tiger", "alias": "P00", "format": "i1i1i1", "value": 250, "type":1},
+        {"id":6, "name": "3Yuanbao", "alias": "P01", "format": "i2i2i2", "value": 100, "type":1},
+        {"id":6, "name": "3Yuanbao", "alias": "P02", "format": "i1i2i2", "value": 100, "type":1},
+        {"id":6, "name": "3Yuanbao", "alias": "P03", "format": "i2i1i2", "value": 100, "type":1},
+        {"id":6, "name": "3Yuanbao", "alias": "P04", "format": "i2i2i1", "value": 100, "type":1},
+        {"id":6, "name": "3Yuanbao", "alias": "P05", "format": "i1i1i2", "value": 100, "type":1},
+        {"id":6, "name": "3Yuanbao", "alias": "P06", "format": "i1i2i1", "value": 100, "type":1},
+        {"id":6, "name": "3Yuanbao", "alias": "P07", "format": "i2i1i1", "value": 100, "type":1},
+        {"id":5, "name": "3Jade", "alias": "P08", "format": "i3i3i3", "value": 25, "type":1},
+        {"id":5, "name": "3Jade", "alias": "P09", "format": "i1i3i3", "value": 25, "type":1},
+        {"id":5, "name": "3Jade", "alias": "P10", "format": "i3i1i3", "value": 25, "type":1},
+        {"id":5, "name": "3Jade", "alias": "P11", "format": "i3i3i1", "value": 25, "type":1},
+        {"id":5, "name": "3Jade", "alias": "P12", "format": "i1i1i3", "value": 25, "type":1},
+        {"id":5, "name": "3Jade", "alias": "P13", "format": "i1i3i1", "value": 25, "type":1},
+        {"id":5, "name": "3Jade", "alias": "P14", "format": "i3i1i1", "value": 25, "type":1},
+        {"id":4, "name": "3FortuneBag", "alias": "P15", "format": "i4i4i4", "value": 10, "type":1},
+        {"id":4, "name": "3FortuneBag", "alias": "P16", "format": "i1i4i4", "value": 10, "type":1},
+        {"id":4, "name": "3FortuneBag", "alias": "P17", "format": "i4i1i4", "value": 10, "type":1},
+        {"id":4, "name": "3FortuneBag", "alias": "P18", "format": "i4i4i1", "value": 10, "type":1},
+        {"id":4, "name": "3FortuneBag", "alias": "P19", "format": "i1i1i4", "value": 10, "type":1},
+        {"id":4, "name": "3FortuneBag", "alias": "P20", "format": "i1i4i1", "value": 10, "type":1},
+        {"id":4, "name": "3FortuneBag", "alias": "P21", "format": "i4i1i1", "value": 10, "type":1},
+        {"id":3, "name": "3RedEnvelope", "alias": "P22", "format": "i5i5i5", "value": 8, "type":1},
+        {"id":3, "name": "3RedEnvelope", "alias": "P23", "format": "i1i5i5", "value": 8, "type":1},
+        {"id":3, "name": "3RedEnvelope", "alias": "P24", "format": "i5i1i5", "value": 8, "type":1},
+        {"id":3, "name": "3RedEnvelope", "alias": "P25", "format": "i5i5i1", "value": 8, "type":1},
+        {"id":3, "name": "3RedEnvelope", "alias": "P26", "format": "i1i1i5", "value": 8, "type":1},
+        {"id":3, "name": "3RedEnvelope", "alias": "P27", "format": "i1i5i1", "value": 8, "type":1},
+        {"id":3, "name": "3RedEnvelope", "alias": "P28", "format": "i5i1i1", "value": 8, "type":1},
+        {"id":2, "name": "3FireCracker", "alias": "P29", "format": "i6i6i6", "value": 5, "type":1},
+        {"id":2, "name": "3FireCracker", "alias": "P30", "format": "i1i6i6", "value": 5, "type":1},
+        {"id":2, "name": "3FireCracker", "alias": "P31", "format": "i6i1i6", "value": 5, "type":1},
+        {"id":2, "name": "3FireCracker", "alias": "P32", "format": "i6i6i1", "value": 5, "type":1},
+        {"id":2, "name": "3FireCracker", "alias": "P33", "format": "i1i1i6", "value": 5, "type":1},
+        {"id":2, "name": "3FireCracker", "alias": "P34", "format": "i1i6i1", "value": 5, "type":1},
+        {"id":2, "name": "3FireCracker", "alias": "P35", "format": "i6i1i1", "value": 5, "type":1},
+        {"id":1, "name": "3Orange", "alias": "P36", "format": "i7i7i7", "value": 3, "type":1},
+        {"id":1, "name": "3Orange", "alias": "P37", "format": "i1i7i7", "value": 3, "type":1},
+        {"id":1, "name": "3Orange", "alias": "P38", "format": "i7i1i7", "value": 3, "type":1},
+        {"id":1, "name": "3Orange", "alias": "P39", "format": "i7i7i1", "value": 3, "type":1},
+        {"id":1, "name": "3Orange", "alias": "P40", "format": "i1i1i7", "value": 3, "type":1},
+        {"id":1, "name": "3Orange", "alias": "P41", "format": "i1i7i1", "value": 3, "type":1},
+        {"id":1, "name": "3Orange", "alias": "P42", "format": "i7i1i1", "value": 3, "type":1}
+	  ],
+	  "math_model": [
+        {
+          "id": 1,
+          "event": "default",
+		  "pattern": [],
+		  "actual_reel_icons":[[1,2,3,4,5,6,7],
+							   [1,2,3,4,5,6,7],
+							   [1,2,3,4,5,6,7]
+							  ],
+		  "actual_reel_weight":[[0.14,0.14,0.14,0.14,0.14,0.14,0.14],
+								[0.14,0.14,0.14,0.14,0.14,0.14,0.14],
+								[0.14,0.14,0.14,0.14,0.14,0.14,0.14]
+								]
+	}]
+  }]
+}
