@@ -110,6 +110,9 @@ function halloween25PlaceVerticalLineNumbers() {
 // Halloween25 Wheel Bonus — auto-spinning wheel
 // ===========================================================================
 function halloween25ShowWheelBonus(segments, prize, multi) {
+  // Send bonus_spin request (position 0 for auto-play wheel)
+  halloweenSendBonusSpin(0, 5);
+
   var old = document.getElementById('hw25WheelModal');
   if (old) old.remove();
 
@@ -237,6 +240,9 @@ function halloween25ShowDiceBonus(resp) {
 }
 
 function halloween25PickDice(idx, base, prize) {
+  // Send bonus_spin request
+  halloweenSendBonusSpin(idx, 6);
+
   // Disable all dice
   document.querySelectorAll('.hw25-dice').forEach(function(d) {
     d.style.pointerEvents = 'none';

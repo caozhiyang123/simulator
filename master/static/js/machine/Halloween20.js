@@ -101,6 +101,9 @@ function halloweenPickJar(idx) {
   var step = _hwBonus.step;
   var result = step === 1 ? _hwBonus.caldeiraoResult : _hwBonus.aboboraResult;
 
+  // Send bonus_spin request
+  halloweenSendBonusSpin(idx, 2);
+
   // Disable all jars
   document.querySelectorAll('.hw-jar').forEach(function(jar) {
     jar.style.pointerEvents = 'none';
@@ -210,6 +213,9 @@ function halloweenPickBerry(idx) {
   var el = document.querySelector('.hw-berry[data-idx="' + idx + '"]');
   if (!el || el.getAttribute('data-opened') === '1') return;
 
+  // Send bonus_spin request
+  halloweenSendBonusSpin(idx, 3);
+
   el.setAttribute('data-opened', '1');
   el.style.cursor = 'default';
   el.style.pointerEvents = 'none';
@@ -277,4 +283,25 @@ function halloweenStrawberryComplete() {
     slotRoundOver();
     playLog('🍓 [STRAWBERRY] complete, prize: ' + _hwStrawberry.prize);
   }, 2500);
+}
+
+
+// ===========================================================================
+// Shared: Send bonus_spin request for Halloween features
+// ===========================================================================
+function halloweenSendBonusSpin(position, featureId) {
+  if (!_playWs || _playWs.readyState !== WebSocket.OPEN) return;
+  var st = _slotState;
+  var cmd = {
+    cmd: 'bonus_spin',
+    session_token: st.sessionToken,
+    game_id: st.machineId,
+    currency: st.currency,
+    opt_id: st.loginResp.opt_id || '',
+    username: st.loginResp.username || '',
+    position: position,
+    feature_id: featureId
+  };
+  playLog('>>> [HW BONUS SPIN] send: ' + JSON.stringify(cmd));
+  _playWs.send(JSON.stringify(cmd));
 }
