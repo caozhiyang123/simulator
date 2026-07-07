@@ -7,13 +7,15 @@ MachineRegistry.register('Halloween20', {
   type: 'slot',
 
   onSpinResponse: function(resp) {
+    // Reset bonus counter
+    _hwBonusPendingCount = 0;
     // If pumpkin jar bonus triggered, defer round over
     if (resp.pumpkin_jar_bonus_caldeirao && resp.pumpkin_jar_bonus_caldeirao.length > 0) {
-      _playBonusPending = true;
+      halloweenBonusPendingIncrement();
     }
     // If strawberry bonus triggered, defer round over
     if (resp.strawberry_bonus && resp.strawberry_bonus.length > 0) {
-      _playBonusPending = true;
+      halloweenBonusPendingIncrement();
     }
 
     // Default slot handling
@@ -159,8 +161,7 @@ function halloweenBonusComplete() {
   setTimeout(function() {
     var m = document.getElementById('hwBonusModal');
     if (m) m.remove();
-    _playBonusPending = false;
-    slotRoundOver();
+    halloweenBonusComplete();
     playLog('🎃 [PUMPKIN JAR] complete, prize: ' + _hwBonus.totalPrize);
   }, 2500);
 }
@@ -279,8 +280,7 @@ function halloweenStrawberryComplete() {
   setTimeout(function() {
     var m = document.getElementById('hwStrawberryModal');
     if (m) m.remove();
-    _playBonusPending = false;
-    slotRoundOver();
+    halloweenBonusComplete();
     playLog('🍓 [STRAWBERRY] complete, prize: ' + _hwStrawberry.prize);
   }, 2500);
 }
@@ -289,6 +289,22 @@ function halloweenStrawberryComplete() {
 // ===========================================================================
 // Shared: Send bonus_spin request for Halloween features
 // ===========================================================================
+var _hwBonusPendingCount = 0; // track how many bonuses are still pending
+
+function halloweenBonusPendingIncrement() {
+  _hwBonusPendingCount++;
+  _playBonusPending = true;
+}
+
+function halloweenBonusComplete() {
+  _hwBonusPendingCount--;
+  if (_hwBonusPendingCount <= 0) {
+    _hwBonusPendingCount = 0;
+    _playBonusPending = false;
+    slotRoundOver();
+  }
+}
+
 function halloweenSendBonusSpin(position, featureId) {
   if (!_playWs || _playWs.readyState !== WebSocket.OPEN) return;
   var st = _slotState;

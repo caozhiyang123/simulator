@@ -11,17 +11,18 @@ MachineRegistry.register('HalloweenSafari', {
   },
 
   onSpinResponse: function(resp) {
+    _hwBonusPendingCount = 0;
     if (resp.pumpkin_jar_bonus_caldeirao && resp.pumpkin_jar_bonus_caldeirao.length > 0) {
-      _playBonusPending = true;
+      halloweenBonusPendingIncrement();
     }
     if (resp.strawberry_bonus && resp.strawberry_bonus.length > 0) {
-      _playBonusPending = true;
+      halloweenBonusPendingIncrement();
     }
     if (resp.wheel_bonus && resp.wheel_bonus.length > 0) {
-      _playBonusPending = true;
+      halloweenBonusPendingIncrement();
     }
     if (resp.dice_bonus && resp.dice_bonus.length > 0) {
-      _playBonusPending = true;
+      halloweenBonusPendingIncrement();
     }
 
     slotHandleSpinResponse(resp);

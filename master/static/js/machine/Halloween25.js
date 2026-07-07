@@ -11,21 +11,23 @@ MachineRegistry.register('Halloween25', {
   },
 
   onSpinResponse: function(resp) {
+    // Reset bonus counter
+    _hwBonusPendingCount = 0;
     // If pumpkin jar bonus triggered, defer round over
     if (resp.pumpkin_jar_bonus_caldeirao && resp.pumpkin_jar_bonus_caldeirao.length > 0) {
-      _playBonusPending = true;
+      halloweenBonusPendingIncrement();
     }
     // If strawberry bonus triggered, defer round over
     if (resp.strawberry_bonus && resp.strawberry_bonus.length > 0) {
-      _playBonusPending = true;
+      halloweenBonusPendingIncrement();
     }
     // If wheel bonus triggered, defer round over
     if (resp.wheel_bonus && resp.wheel_bonus.length > 0) {
-      _playBonusPending = true;
+      halloweenBonusPendingIncrement();
     }
     // If dice bonus triggered, defer round over
     if (resp.dice_bonus && resp.dice_bonus.length > 0) {
-      _playBonusPending = true;
+      halloweenBonusPendingIncrement();
     }
 
     // Default slot handling
@@ -283,8 +285,7 @@ function halloween25PickDice(idx, base, prize) {
       setTimeout(function() {
         var m = document.getElementById('hw25DiceModal');
         if (m) m.remove();
-        _playBonusPending = false;
-        slotRoundOver();
+        halloweenBonusComplete();
         playLog('🎲 [DICE BONUS] complete, base: ' + base + ', prize: ' + prize);
       }, 2000);
     }
