@@ -85,7 +85,7 @@ async function playLoadMachines() {
   machines.forEach(function(m) {
     var opacity = m.enabled ? '1' : '0.5';
     var typeLabel = m.type === 'slot' ? '🎰' : '🎱';
-    html += '<div style="text-align:center;cursor:pointer;opacity:' + opacity + ';" onclick="playSelectMachine(' + m.machine_id + ',' + m.enabled + ',\'' + (m.type||'bingo') + '\')">';
+    html += '<div class="play-machine-card" data-type="' + (m.type||'bingo') + '" style="text-align:center;cursor:pointer;opacity:' + opacity + ';" onclick="playSelectMachine(' + m.machine_id + ',' + m.enabled + ',\'' + (m.type||'bingo') + '\')">';
     html += '<div style="width:120px;height:120px;margin:0 auto;background:#2a2a4e;border:2px solid #444;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#fff;transition:all 0.2s;" onmouseover="this.style.borderColor=\'#4a90d9\';this.style.transform=\'scale(1.05)\'" onmouseout="this.style.borderColor=\'#444\';this.style.transform=\'scale(1)\'">';
     html += '<span style="font-size:24px;">' + typeLabel + '</span>';
     html += '<span>' + m.name + '</span>';
@@ -1622,8 +1622,35 @@ function playBackToLobby() {
   _playCurrentMachine = null;
   _playSpinState = 'idle';
   _playCardIdx = [];
-  // Show auth bar again
+  // Show auth bar and tab bar again
   var authBar = document.getElementById('playAuthBar');
   if (authBar) authBar.style.display = '';
+  var tabBar = document.getElementById('playTabBar');
+  if (tabBar) tabBar.style.display = '';
   playLoadMachines();
+}
+
+/**
+ * Filter machine list by tab (general/bingo/slot).
+ */
+function playFilterTab(tab) {
+  // Update tab styles
+  document.querySelectorAll('.play-tab').forEach(function(t) {
+    if (t.getAttribute('data-tab') === tab) {
+      t.style.background = '#4a90d9';
+      t.style.color = '#fff';
+    } else {
+      t.style.background = '#333';
+      t.style.color = '#aaa';
+    }
+  });
+  // Filter machine cards
+  document.querySelectorAll('.play-machine-card').forEach(function(card) {
+    var type = card.getAttribute('data-type');
+    if (tab === 'general' || type === tab) {
+      card.style.display = '';
+    } else {
+      card.style.display = 'none';
+    }
+  });
 }
