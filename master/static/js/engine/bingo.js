@@ -123,7 +123,18 @@ function bingoSpinToolChoosePattern() {
     grid.style.cursor = 'pointer';
     grid.onclick = function() {
       var groupIdx = parseInt(grid.getAttribute('data-group'));
-      if (isNaN(groupIdx)) return;
+      if (isNaN(groupIdx)) {
+        // Check if this is a letter pattern (has data-pat-id)
+        var directPatId = parseInt(grid.getAttribute('data-pat-id'));
+        if (!isNaN(directPatId)) {
+          _bingoSpinTool.targetPatternIds = [directPatId];
+          _bingoSpinTool.mode = null;
+          document.querySelectorAll('.play-pat-grid').forEach(function(g) { g.style.outline = ''; });
+          grid.style.outline = '2px solid #f5d742';
+          bingoSpinToolUpdateStatus();
+        }
+        return;
+      }
       // Get pattern ID from the group
       var patterns = _bingoSpinTool.patterns;
       var pGroups = [], pSeen = {};
