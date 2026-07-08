@@ -22,6 +22,11 @@ MachineRegistry.register('LuckyDiamond', {
     if (resp.classic_slot_jackpot) {
       luckyDiamondParseJackpot(resp.classic_slot_jackpot);
       luckyDiamondUpdateJackpotDisplay();
+      // Check for jackpot win
+      var jpWin = luckyDiamondCheckJackpotWin(resp.classic_slot_jackpot);
+      if (jpWin > 0) {
+        setTimeout(function() { showJackpotCelebration(jpWin); }, 3600);
+      }
     }
   },
 
@@ -154,4 +159,19 @@ function luckyDiamondUpdateJackpotDisplay() {
       el.textContent = val.toFixed(2);
     }
   });
+}
+
+/**
+ * Check if classic_slot_jackpot response contains a jackpot_win > 0.
+ */
+function luckyDiamondCheckJackpotWin(data) {
+  if (!data || !data.length) return 0;
+  try {
+    var parsed = JSON.parse(data[0]);
+    if (parsed.jackpot && parsed.jackpot[0]) {
+      var win = parsed.jackpot[0].jackpot_win || 0;
+      if (win > 0) return win;
+    }
+  } catch(e) {}
+  return 0;
 }

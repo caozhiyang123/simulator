@@ -102,9 +102,10 @@ function mcRenderProgressBar() {
       '<span id="mcTriggerRate" style="color:#4fc3f7;font-size:9px;">Rate: ' + _mcState.triggerRate + '%</span>' +
       '<span id="mcCurrentVal" style="color:#aaa;font-size:9px;margin-left:auto;">' + _mcState.current.toFixed(2) + ' / ' + _mcState.currentMax + '</span>' +
     '</div>' +
-    '<div style="width:100%;height:12px;background:#222;border-radius:6px;overflow:hidden;position:relative;">' +
+    '<div style="width:100%;height:12px;background:#222;border-radius:6px;position:relative;">' +
       '<div id="mcTargetLine" style="position:absolute;left:' + (_mcState.currentTarget / _mcState.currentMax * 100) + '%;top:0;width:2px;height:100%;background:#fff;opacity:0.6;z-index:2;"></div>' +
       '<div id="mcBarFill" style="height:100%;border-radius:6px;transition:width 0.2s,background 0.2s;"></div>' +
+      '<img id="mcBarIcon" src="/static/machine/ManilaBingo/icon/bar.png" style="position:absolute;top:50%;left:0;transform:translate(-50%,-50%);width:24px;height:24px;object-fit:contain;z-index:3;transition:left 0.2s;" onerror="this.style.display=\'none\'">' +
     '</div>';
 
   gameArea.insertBefore(bar, gameArea.firstChild);
@@ -118,15 +119,18 @@ function mcUpdateProgressDisplay() {
   var pct = Math.min(100, (_mcState.current / _mcState.currentMax) * 100);
   var fill = document.getElementById('mcBarFill');
   var valEl = document.getElementById('mcCurrentVal');
+  var icon = document.getElementById('mcBarIcon');
 
   if (fill) {
     fill.style.width = pct + '%';
-    // Below target = red, above target = green
     if (_mcState.current >= _mcState.currentTarget) {
       fill.style.background = 'linear-gradient(90deg, #27ae60, #2ecc71)';
     } else {
       fill.style.background = 'linear-gradient(90deg, #e74c3c, #c0392b)';
     }
+  }
+  if (icon) {
+    icon.style.left = pct + '%';
   }
   if (valEl) {
     valEl.textContent = _mcState.current.toFixed(2) + ' / ' + _mcState.currentMax;
