@@ -184,6 +184,8 @@ async function playSelectMachine(machineId, enabled, machineType) {
       document.getElementById('playGameArea').style.display = '';
       document.getElementById('playBackBtn').style.display = '';
       document.getElementById('playAuthBar').style.display = 'none';
+      var tabBar = document.getElementById('playTabBar');
+      if (tabBar) tabBar.style.display = 'none';
 
       // Route through engine layer
       var engine = (machineType === 'slot') ? SlotEngine : BingoEngine;
@@ -1626,7 +1628,7 @@ function playBackToLobby() {
   var authBar = document.getElementById('playAuthBar');
   if (authBar) authBar.style.display = '';
   var tabBar = document.getElementById('playTabBar');
-  if (tabBar) tabBar.style.display = '';
+  if (tabBar) tabBar.style.display = 'flex';
   playLoadMachines();
 }
 
