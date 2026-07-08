@@ -173,6 +173,24 @@
         "enabled": true,
         "type": "bingo",
         "choose_quantity": true
+      },
+      {
+        "name": "ShowBingo",
+        "config_file": "ShowBingo.json",
+        "machine_id": 81,
+        "connection_url": "ws://localhost:9090/showBingo?authorization=efYfLM2wBN6p2qfqtpicy/sXRc/UWgI+Pb316N8jWy4=&reconnect=false",
+        "enabled": true,
+        "type": "bingo",
+        "choose_quantity": true
+      },
+      {
+        "name": "ManilaBingo",
+        "config_file": "ManilaBingo.json",
+        "machine_id": 83,
+        "connection_url": "ws://localhost:9090/showBingo?authorization=efYfLM2wBN6p2qfqtpicy/sXRc/UWgI+Pb316N8jWy4=&reconnect=false",
+        "enabled": true,
+        "type": "bingo",
+        "choose_quantity": true
       }
     ]
   }
