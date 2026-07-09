@@ -1630,20 +1630,28 @@ function playBackToLobby() {
   var tabBar = document.getElementById('playTabBar');
   if (tabBar) tabBar.style.display = 'flex';
   playLoadMachines();
+  // Re-apply current tab filter after machines reload
+  setTimeout(function() {
+    var activeTab = document.querySelector('.play-tab.active');
+    var tab = activeTab ? activeTab.getAttribute('data-tab') : 'general';
+    playFilterTab(tab);
+  }, 100);
 }
 
 /**
  * Filter machine list by tab (general/bingo/slot).
  */
 function playFilterTab(tab) {
-  // Update tab styles
+  // Update tab styles and active class
   document.querySelectorAll('.play-tab').forEach(function(t) {
     if (t.getAttribute('data-tab') === tab) {
       t.style.background = '#4a90d9';
       t.style.color = '#fff';
+      t.classList.add('active');
     } else {
       t.style.background = '#333';
       t.style.color = '#aaa';
+      t.classList.remove('active');
     }
   });
   // Filter machine cards

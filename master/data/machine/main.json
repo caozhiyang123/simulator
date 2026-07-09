@@ -43,7 +43,7 @@
         "name": "HotBingo",
         "config_file": "HotBingo.json",
         "machine_id": 54,
-        "connection_url": "ws://dev.wss.gamesmartasia.com/wildBall?authorization=efYfLM2wBN6p2qfqtpicy/sXRc/UWgI+Pb316N8jWy4=&reconnect=false",
+        "connection_url": "ws://localhost:9090/wildBall?authorization=efYfLM2wBN6p2qfqtpicy/sXRc/UWgI+Pb316N8jWy4=&reconnect=false",
         "enabled": true,
         "type": "bingo",
         "choose_quantity": true
