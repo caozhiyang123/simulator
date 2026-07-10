@@ -199,7 +199,29 @@ def auth_login():
                 _cleanup_old_builds(username)
             except Exception:
                 pass
-            return jsonify({"status": "ok", "username": username, "role": u["role"]})
+            # Get user menus based on role
+            role = u.get("role", "worker")
+            roles = _load_roles()
+            authorities = _load_authorities()
+            authority_str = ""
+            for r in roles:
+                if r["role"] == role:
+                    authority_str = r["authority"]
+                    break
+            # Support multiple authorities (comma-separated), compute union
+            authority_names = [a.strip() for a in authority_str.split(",") if a.strip()]
+            menus_set = set()
+            for auth_name in authority_names:
+                for a in authorities:
+                    if a["authority"] == auth_name:
+                        menus_set.update(a.get("menus", []))
+                        break
+            all_menus_order = ["Home", "Workers", "Config", "History", "MD5", "SHA1", "Plugin", "CICD", "Play", "IAM", "Family"]
+            menus = [m for m in all_menus_order if m in menus_set]
+            for m in menus_set:
+                if m not in menus:
+                    menus.append(m)
+            return jsonify({"status": "ok", "username": username, "role": role, "menus": menus})
     return jsonify({"error": "Invalid username or password"}), 401
 
 
@@ -3217,6 +3239,249 @@ def play_disconnect():
             pass
         del _ws_connections[session_token]
     return jsonify({"status": "ok"})
+
+
+# ---------------------------------------------------------------------------
+# IAM Routes
+# ---------------------------------------------------------------------------
+ROLE_PATH = os.path.join(_base_dir, "role.json")
+AUTHORITY_PATH = os.path.join(_base_dir, "authority.json")
+
+
+def _load_roles():
+    if not os.path.isfile(ROLE_PATH):
+        return []
+    with open(ROLE_PATH, "r", encoding="utf-8") as f:
+        return json_module.load(f)
+
+
+def _load_authorities():
+    if not os.path.isfile(AUTHORITY_PATH):
+        return []
+    with open(AUTHORITY_PATH, "r", encoding="utf-8") as f:
+        return json_module.load(f)
+
+
+@app.route("/iam/users", methods=["GET"])
+def iam_users():
+    """Get all users (without password hash)."""
+    users = _load_users()
+    return jsonify({"users": [{"username": u["username"], "role": u["role"]} for u in users]})
+
+
+@app.route("/iam/users/update", methods=["POST"])
+def iam_users_update():
+    """Update a user's password and/or role.
+
+    Request body: {"username": str, "password"?: str, "role"?: str}
+    """
+    data = request.get_json(force=True)
+    target_username = data.get("username", "")
+    new_password = data.get("password", "")
+    new_role = data.get("role", "")
+
+    if not target_username:
+        return jsonify({"error": "username is required"}), 400
+
+    # Prevent changing admin's role
+    if target_username == "admin" and new_role and new_role != "admin":
+        return jsonify({"error": "Cannot change admin's role"}), 403
+
+    users = _load_users()
+    found = False
+    for u in users:
+        if u["username"] == target_username:
+            if new_password:
+                u["password"] = _md5(new_password)
+            if new_role:
+                u["role"] = new_role
+            found = True
+            break
+
+    if not found:
+        return jsonify({"error": "User not found"}), 404
+
+    _save_users(users)
+
+    # If the user's role changed and they are currently logged in, update their session role
+    if new_role and session.get('username') == target_username:
+        session['role'] = new_role
+
+    return jsonify({"status": "ok"})
+
+
+@app.route("/iam/users/delete", methods=["POST"])
+def iam_users_delete():
+    """Delete a user.
+
+    Request body: {"username": str}
+    """
+    data = request.get_json(force=True)
+    target_username = data.get("username", "")
+
+    if not target_username:
+        return jsonify({"error": "username is required"}), 400
+
+    # Prevent deleting admin
+    if target_username == "admin":
+        return jsonify({"error": "Cannot delete admin user"}), 403
+
+    users = _load_users()
+    new_users = [u for u in users if u["username"] != target_username]
+    if len(new_users) == len(users):
+        return jsonify({"error": "User not found"}), 404
+
+    _save_users(new_users)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/iam/roles", methods=["GET"])
+def iam_roles():
+    """Get all roles."""
+    roles = _load_roles()
+    return jsonify({"roles": roles})
+
+
+@app.route("/iam/roles/update", methods=["POST"])
+def iam_roles_update():
+    """Update a role's authorities (supports multiple authorities).
+
+    Request body: {"role": str, "authorities": [str, ...]}
+    """
+    data = request.get_json(force=True)
+    role_name = data.get("role", "")
+    new_authorities = data.get("authorities", [])
+
+    if not role_name:
+        return jsonify({"error": "role is required"}), 400
+    if not new_authorities:
+        return jsonify({"error": "authorities must be a non-empty array"}), 400
+
+    roles = _load_roles()
+    found = False
+    for r in roles:
+        if r["role"] == role_name:
+            # Store as comma-separated string for backward compat, or as the first authority
+            # Actually store as a list joined by comma
+            r["authority"] = ",".join(new_authorities)
+            found = True
+            break
+
+    if not found:
+        return jsonify({"error": "Role not found"}), 404
+
+    with open(ROLE_PATH, "w", encoding="utf-8") as f:
+        json_module.dump(roles, f, ensure_ascii=False, indent=2)
+
+    return jsonify({"status": "ok"})
+
+
+@app.route("/iam/authorities", methods=["GET"])
+def iam_authorities():
+    """Get all authorities."""
+    authorities = _load_authorities()
+    return jsonify({"authorities": authorities})
+
+
+@app.route("/iam/authorities/update", methods=["POST"])
+def iam_authorities_update():
+    """Update an authority's menus.
+
+    Request body: {"authority": str, "menus": [str, ...]}
+    """
+    data = request.get_json(force=True)
+    authority_name = data.get("authority", "")
+    new_menus = data.get("menus", [])
+
+    if not authority_name:
+        return jsonify({"error": "authority is required"}), 400
+
+    authorities = _load_authorities()
+    found = False
+    for a in authorities:
+        if a["authority"] == authority_name:
+            a["menus"] = new_menus
+            found = True
+            break
+
+    if not found:
+        return jsonify({"error": "Authority not found"}), 404
+
+    with open(AUTHORITY_PATH, "w", encoding="utf-8") as f:
+        json_module.dump(authorities, f, ensure_ascii=False, indent=2)
+
+    return jsonify({"status": "ok"})
+
+
+@app.route("/iam/authorities/create", methods=["POST"])
+def iam_authorities_create():
+    """Create a new authority.
+
+    Request body: {"authority": str, "menus": [str, ...]}
+    """
+    data = request.get_json(force=True)
+    authority_name = data.get("authority", "")
+    menus = data.get("menus", [])
+
+    if not authority_name:
+        return jsonify({"error": "authority name is required"}), 400
+
+    authorities = _load_authorities()
+    # Check duplicate
+    for a in authorities:
+        if a["authority"] == authority_name:
+            return jsonify({"error": "Authority already exists"}), 409
+
+    authorities.append({"authority": authority_name, "menus": menus})
+
+    with open(AUTHORITY_PATH, "w", encoding="utf-8") as f:
+        json_module.dump(authorities, f, ensure_ascii=False, indent=2)
+
+    return jsonify({"status": "ok"})
+
+
+@app.route("/iam/menus", methods=["GET"])
+def iam_menus():
+    """Get the menu list for the current logged-in user based on their role.
+
+    Supports multiple authorities per role (comma-separated). Computes the
+    union of all menus from all assigned authorities.
+    """
+    username = session.get('username')
+    role = session.get('role')
+    if not username or not role:
+        return jsonify({"error": "not logged in"}), 401
+
+    roles = _load_roles()
+    authorities = _load_authorities()
+
+    # Find authority(ies) for this role
+    authority_str = ""
+    for r in roles:
+        if r["role"] == role:
+            authority_str = r["authority"]
+            break
+
+    # Support multiple authorities (comma-separated)
+    authority_names = [a.strip() for a in authority_str.split(",") if a.strip()]
+
+    # Compute union of menus from all authorities
+    menus_set = set()
+    for auth_name in authority_names:
+        for a in authorities:
+            if a["authority"] == auth_name:
+                menus_set.update(a.get("menus", []))
+                break
+
+    # Maintain a stable order based on the full menu list
+    all_menus_order = ["Home", "Workers", "Config", "History", "MD5", "SHA1", "Plugin", "CICD", "Play", "IAM", "Family"]
+    menus = [m for m in all_menus_order if m in menus_set]
+    # Add any custom menus not in the predefined order
+    for m in menus_set:
+        if m not in menus:
+            menus.append(m)
+
+    return jsonify({"menus": menus, "role": role, "authority": authority_str})
 
 
 # ---------------------------------------------------------------------------

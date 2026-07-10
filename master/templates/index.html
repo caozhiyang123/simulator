@@ -55,6 +55,7 @@
     </div>
     <button class="sidebar-btn" onclick="switchPage('cicd')" id="navCicd">🚀<span>CICD</span></button>
     <button class="sidebar-btn" onclick="switchPage('play')" id="navPlay">🎮<span>Play</span></button>
+    <button class="sidebar-btn" onclick="switchPage('iam')" id="navIam">🔐<span>IAM</span></button>
     <button class="sidebar-btn" onclick="switchPage('family')" id="navFamily">👨‍👩‍👧‍👦<span>Family</span></button>
   </div>
 
@@ -986,6 +987,8 @@
       </div>
     </div><!-- end pagePlay -->
 
+    {% include 'iam.html' %}
+
     <!-- FAMILY PAGE -->
     <div class="page-panel" id="pageFamily">
       <div class="card">
@@ -1089,6 +1092,7 @@
 <script src="/static/js/machine/Olympus.js?v=1"></script>
 <script src="/static/js/pattern.js?v=2"></script>
 <script src="/static/js/plugins.js?v=2"></script>
+<script src="/static/js/iam.js?v=1"></script>
 <script>
 // ---------------------------------------------------------------------------
 // Background & Mask
@@ -1123,6 +1127,8 @@ async function loadUserInfo() {
     if (r.ok) {
       var data = await r.json();
       document.getElementById('userInfo').textContent = '👤 ' + data.username + ' (' + data.role + ')';
+      // Load user menus for authority-based filtering
+      loadUserMenus();
     } else if (r.status === 401) {
       window.location.href = '/login';
     }
@@ -3111,6 +3117,7 @@ function switchPage(page) {
   if (page === 'cicdsettings') cicdLoadSettingsPage();
   if (page === 'patterncalc') pcalcLoadMachines();
   if (page === 'play') playLoadMachines();
+  if (page === 'iam') iamInit();
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,33 @@
+    <!-- IAM PAGE -->
+    <div class="page-panel" id="pageIam">
+      <div class="card" style="max-width:900px;">
+        <h2>🔐 IAM - Identity & Access Management</h2>
+        <!-- Sub-tabs -->
+        <div style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid #eee;">
+          <button class="iam-tab active" onclick="iamSwitchTab('users')" id="iamTabUsers" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:#999;border-bottom:2px solid transparent;margin-bottom:-2px;">👤 Users</button>
+          <button class="iam-tab" onclick="iamSwitchTab('roles')" id="iamTabRoles" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:#999;border-bottom:2px solid transparent;margin-bottom:-2px;">🎭 Roles</button>
+          <button class="iam-tab" onclick="iamSwitchTab('authorities')" id="iamTabAuthorities" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:#999;border-bottom:2px solid transparent;margin-bottom:-2px;">🛡️ Authorities</button>
+        </div>
+        <!-- Users Panel -->
+        <div id="iamPanelUsers" class="iam-panel">
+          <div style="display:flex;gap:16px;">
+            <div style="flex:1;border:1px solid #eee;border-radius:6px;padding:12px;">
+              <h4 style="margin:0 0 8px 0;font-size:13px;color:#666;">User List</h4>
+              <div id="iamUserList" style="max-height:400px;overflow-y:auto;"></div>
+            </div>
+            <div style="flex:1;border:1px solid #eee;border-radius:6px;padding:12px;">
+              <h4 style="margin:0 0 8px 0;font-size:13px;color:#666;">Edit User</h4>
+              <div id="iamUserEdit" style="color:#999;font-size:12px;">Select a user to edit</div>
+            </div>
+          </div>
+        </div>
+        <!-- Roles Panel -->
+        <div id="iamPanelRoles" class="iam-panel" style="display:none;">
+          <div id="iamRoleList"></div>
+        </div>
+        <!-- Authorities Panel -->
+        <div id="iamPanelAuthorities" class="iam-panel" style="display:none;">
+          <div id="iamAuthorityList"></div>
+        </div>
+      </div>
+    </div><!-- end pageIam -->

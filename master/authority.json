@@ -1,0 +1,40 @@
+[
+  {
+    "authority": "administrator_privileges",
+    "menus": [
+      "Home",
+      "Workers",
+      "Config",
+      "History",
+      "MD5",
+      "SHA1",
+      "Plugin",
+      "CICD",
+      "Play",
+      "IAM",
+      "Family"
+    ]
+  },
+  {
+    "authority": "worker_privileges",
+    "menus": [
+      "Home",
+      "Workers",
+      "Config",
+      "History",
+      "MD5",
+      "SHA1",
+      "Plugin",
+      "CICD",
+      "Play",
+      "Family"
+    ]
+  },
+  {
+    "authority": "guest_privileges",
+    "menus": [
+      "Play",
+      "Family"
+    ]
+  }
+]

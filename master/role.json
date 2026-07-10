@@ -1,0 +1,14 @@
+[
+  {
+    "role": "admin",
+    "authority": "administrator_privileges"
+  },
+  {
+    "role": "worker",
+    "authority": "worker_privileges"
+  },
+  {
+    "role": "guest",
+    "authority": "guest_privileges"
+  }
+]
