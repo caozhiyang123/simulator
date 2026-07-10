@@ -188,6 +188,7 @@ function iamSelectRole(idx) {
 function iamRenderRoleEdit() {
   if (!_iamSelectedRole) return;
   var role = _iamSelectedRole;
+  var isAdmin = role.role === 'admin';
   var currentAuths = role.authority.split(',').map(function(a){return a.trim();}).filter(Boolean);
   var html = '';
   html += '<div style="margin-bottom:8px;font-size:13px;font-weight:600;">' + role.role + '</div>';
@@ -195,10 +196,15 @@ function iamRenderRoleEdit() {
   html += '<label style="font-size:12px;color:#666;display:block;margin-bottom:6px;">Assigned Authorities (check to assign)</label>';
   _iamAuthorities.forEach(function(auth) {
     var checked = currentAuths.indexOf(auth.authority) >= 0 ? 'checked' : '';
-    html += '<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;cursor:pointer;">';
-    html += '<input type="checkbox" class="iam-role-auth-cb" value="' + auth.authority + '" ' + checked + '>';
+    // admin role: administrator_privileges is mandatory (locked)
+    var locked = isAdmin && auth.authority === 'administrator_privileges';
+    var disabledAttr = locked ? 'disabled checked' : checked;
+    var lockStyle = locked ? 'opacity:0.7;cursor:not-allowed;' : 'cursor:pointer;';
+    html += '<label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;' + lockStyle + '">';
+    html += '<input type="checkbox" class="iam-role-auth-cb" value="' + auth.authority + '" ' + disabledAttr + '>';
     html += '<span>' + auth.authority + '</span>';
-    html += '<span style="color:#aaa;font-size:11px;margin-left:4px;">(' + (auth.menus||[]).length + ' menus)</span>';
+    if (locked) html += '<span style="color:#e74c3c;font-size:10px;margin-left:4px;">(required)</span>';
+    else html += '<span style="color:#aaa;font-size:11px;margin-left:4px;">(' + (auth.menus||[]).length + ' menus)</span>';
     html += '</label>';
   });
   html += '</div>';
@@ -219,7 +225,9 @@ function iamRenderRoleEdit() {
 
 function iamUpdateRoleEffectiveMenus() {
   var checked = [];
-  document.querySelectorAll('.iam-role-auth-cb:checked').forEach(function(cb) { checked.push(cb.value); });
+  document.querySelectorAll('.iam-role-auth-cb').forEach(function(cb) {
+    if (cb.checked) checked.push(cb.value);
+  });
   // Compute union of menus
   var menusSet = {};
   checked.forEach(function(authName) {
@@ -245,6 +253,10 @@ async function iamSaveRole() {
   if (!_iamSelectedRole) return;
   var checked = [];
   document.querySelectorAll('.iam-role-auth-cb:checked').forEach(function(cb) { checked.push(cb.value); });
+  // For admin role, ensure administrator_privileges is always included (even if disabled checkbox not in querySelectorAll)
+  if (_iamSelectedRole.role === 'admin' && checked.indexOf('administrator_privileges') < 0) {
+    checked.unshift('administrator_privileges');
+  }
   if (checked.length === 0) { alert('Please select at least one authority'); return; }
   try {
     var r = await fetch('/iam/roles/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ role: _iamSelectedRole.role, authorities: checked }) });
@@ -315,17 +327,39 @@ function iamRenderAuthorityEdit() {
   if (!_iamSelectedAuthority) return;
   var auth = _iamSelectedAuthority;
   var allMenus = ['Home','Workers','Config','History','MD5','SHA1','Plugin','CICD','Play','IAM','Family'];
+  var isAdminAuth = auth.authority === 'administrator_privileges';
   var html = '';
   html += '<div style="margin-bottom:8px;font-size:13px;font-weight:600;">' + auth.authority + '</div>';
   html += '<div style="margin-bottom:12px;">';
   html += '<label style="font-size:12px;color:#666;display:block;margin-bottom:6px;">Allowed Menus (check to grant access)</label>';
   allMenus.forEach(function(menu) {
     var checked = (auth.menus || []).indexOf(menu) >= 0 ? 'checked' : '';
-    html += '<label style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px;cursor:pointer;">';
-    html += '<input type="checkbox" class="iam-auth-menu-cb" value="' + menu + '" ' + checked + '>';
+    // For administrator_privileges, default menus are locked (always checked, non-editable)
+    var locked = isAdminAuth;
+    var disabledAttr = locked ? 'disabled checked' : checked;
+    var lockStyle = locked ? 'opacity:0.7;cursor:not-allowed;' : 'cursor:pointer;';
+    html += '<label style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px;' + lockStyle + '">';
+    html += '<input type="checkbox" class="iam-auth-menu-cb" value="' + menu + '" ' + disabledAttr + '>';
     html += '<span>' + menu + '</span>';
+    if (locked) html += '<span style="color:#e74c3c;font-size:10px;margin-left:4px;">(required)</span>';
     html += '</label>';
   });
+  // For administrator_privileges, show extra custom menus that can be added
+  if (isAdminAuth) {
+    var extraMenus = (auth.menus || []).filter(function(m) { return allMenus.indexOf(m) < 0; });
+    extraMenus.forEach(function(menu) {
+      html += '<label style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px;cursor:pointer;">';
+      html += '<input type="checkbox" class="iam-auth-menu-cb" value="' + menu + '" checked>';
+      html += '<span>' + menu + '</span>';
+      html += '</label>';
+    });
+    html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #f0f0f0;">';
+    html += '<div style="font-size:11px;color:#888;margin-bottom:4px;">Add custom menu module:</div>';
+    html += '<div style="display:flex;gap:4px;">';
+    html += '<input type="text" id="iamAuthNewMenu" placeholder="e.g. Reports" style="flex:1;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;">';
+    html += '<button onclick="iamAddCustomMenu()" style="background:#27ae60;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11px;">Add</button>';
+    html += '</div></div>';
+  }
   html += '</div>';
   html += '<button onclick="iamSaveAuthority()" style="background:#4a90d9;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;font-size:13px;">Save</button>';
   html += '<span id="iamAuthSaveMsg" style="margin-left:10px;font-size:12px;"></span>';
@@ -336,6 +370,11 @@ async function iamSaveAuthority() {
   if (!_iamSelectedAuthority) return;
   var checked = [];
   document.querySelectorAll('.iam-auth-menu-cb:checked').forEach(function(cb) { checked.push(cb.value); });
+  // For administrator_privileges, ensure all default menus are included (disabled checkboxes won't be in :checked for some browsers)
+  if (_iamSelectedAuthority.authority === 'administrator_privileges') {
+    var defaultMenus = ['Home','Workers','Config','History','MD5','SHA1','Plugin','CICD','Play','IAM','Family'];
+    defaultMenus.forEach(function(m) { if (checked.indexOf(m) < 0) checked.push(m); });
+  }
   try {
     var r = await fetch('/iam/authorities/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ authority: _iamSelectedAuthority.authority, menus: checked }) });
     var data = await r.json();
@@ -350,6 +389,21 @@ async function iamSaveAuthority() {
     }
     setTimeout(function() { msgEl.textContent = ''; }, 3000);
   } catch(e) { console.error('Failed to save authority', e); }
+}
+
+function iamAddCustomMenu() {
+  var input = document.getElementById('iamAuthNewMenu');
+  var name = input ? input.value.trim() : '';
+  if (!name) return;
+  // Add a new checkbox dynamically
+  var container = input.closest('div').parentElement.parentElement;
+  var label = document.createElement('label');
+  label.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px;cursor:pointer;';
+  label.innerHTML = '<input type="checkbox" class="iam-auth-menu-cb" value="' + name + '" checked><span>' + name + '</span>';
+  // Insert before the custom menu section
+  var customSection = input.closest('div').parentElement;
+  customSection.parentElement.insertBefore(label, customSection);
+  input.value = '';
 }
 
 function iamShowCreateAuthority() {
@@ -421,6 +475,15 @@ async function loadUserMenus() {
     _userAllowedMenus = data.menus || [];
     applyMenuFiltering();
   } catch(e) { console.error('Failed to load user menus', e); }
+}
+
+function iamRemoveLoadingOverlay() {
+  var overlay = document.getElementById('iamLoadingOverlay');
+  if (overlay) {
+    overlay.style.transition = 'opacity 0.3s';
+    overlay.style.opacity = '0';
+    setTimeout(function() { overlay.remove(); }, 300);
+  }
 }
 
 function applyMenuFiltering() {

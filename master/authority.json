@@ -36,5 +36,11 @@
       "Play",
       "Family"
     ]
+  },
+  {
+    "authority": "players",
+    "menus": [
+      "Play"
+    ]
   }
 ]
