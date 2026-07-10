@@ -14,22 +14,26 @@ MachineRegistry.register('Pixizinho', {
 
   afterRender: function(resp, config) {
     pixizinhoRenderJackpotPanel(resp, config);
+    // Parse respin_by_bet (per-bet state with sticky, golden_prize, etc.)
+    if (resp.respin_by_bet) {
+      pixizinhoParseRespinByBet(resp.respin_by_bet);
+    }
     // Store free spin by bet data
     if (resp.left_free_spin_by_bet) {
       _pixState.freeSpinByBet = resp.left_free_spin_by_bet;
     }
     // Auto-switch to bet that has free spins
     pixizinhoAutoSwitchToFreeSpinBet();
-    // Apply sticky goldens from login
-    if (resp.sticky_goldens && resp.sticky_goldens.length > 0) {
-      _pixState.stickyPositions = resp.sticky_goldens;
-      setTimeout(function() { pixizinhoApplyStickyGoldens(); }, 100);
-    }
+    // Apply sticky/state for current bet from respin_by_bet
+    pixizinhoApplyRespinState();
     // Determine free spins for current bet/line
     pixizinhoUpdateFreeSpinFromBet();
     // Show free spin UI if applicable
     if (_pixState.freeSpinsLeft > 0) {
-      _pixState.totalFreeSpinPrize = resp.total_free_spin_prize || 0;
+      // Only use top-level total_free_spin_prize if respin_by_bet didn't set it
+      if (!resp.respin_by_bet && resp.total_free_spin_prize !== undefined) {
+        _pixState.totalFreeSpinPrize = resp.total_free_spin_prize;
+      }
       pixizinhoShowFreeSpinUI();
     }
     // Hook bet change to update jackpot and free spin count
@@ -45,8 +49,24 @@ MachineRegistry.register('Pixizinho', {
 
     if (resp.pixizinho_jackpot) pixizinhoUpdateJackpot(resp.pixizinho_jackpot);
 
-    // Store sticky positions before spin handling
-    if (resp.sticky_goldens && resp.sticky_goldens.length > 0) {
+    // Update respin_by_bet state from spin response
+    if (resp.respin_by_bet) {
+      pixizinhoParseRespinByBet(resp.respin_by_bet);
+      // Apply current bet's state from updated respin data
+      var st = _slotState;
+      var bet = (st.betList && st.betList[st.betIndex]) || 0.01;
+      var entry = null;
+      for (var i = 0; i < _pixState.respinByBet.length; i++) {
+        if (Math.abs(_pixState.respinByBet[i].bet - bet) < 0.0001) { entry = _pixState.respinByBet[i]; break; }
+      }
+      if (entry) {
+        _pixState.stickyPositions = entry.sticky_goldens || [];
+        _pixState.totalFreeSpinPrize = entry.total_free_spin_prize || 0;
+      }
+    }
+
+    // Store sticky positions before spin handling (fallback if not in respin_by_bet)
+    if (!resp.respin_by_bet && resp.sticky_goldens && resp.sticky_goldens.length > 0) {
       _pixState.stickyPositions = resp.sticky_goldens;
     }
     // Clear sticky if no free spins left
@@ -60,7 +80,25 @@ MachineRegistry.register('Pixizinho', {
     // Update free spin state
     if (resp.left_free_spin_amount !== undefined) {
       _pixState.freeSpinsLeft = resp.left_free_spin_amount;
-      _pixState.totalFreeSpinPrize = resp.total_free_spin_prize || 0;
+      // Only use top-level total_free_spin_prize if respin_by_bet didn't set it
+      if (!resp.respin_by_bet && resp.total_free_spin_prize !== undefined) {
+        _pixState.totalFreeSpinPrize = resp.total_free_spin_prize;
+      }
+      // Also update freeSpinByBet so switching bet and back preserves the value
+      var st = _slotState;
+      var bet = (st.betList && st.betList[st.betIndex]) || 0.01;
+      var lines = st.activeLines || 1;
+      var found = false;
+      for (var i = 0; i < _pixState.freeSpinByBet.length; i++) {
+        if (Math.abs(_pixState.freeSpinByBet[i].bet - bet) < 0.0001 && _pixState.freeSpinByBet[i].lines === lines) {
+          _pixState.freeSpinByBet[i].free_spin = resp.left_free_spin_amount;
+          found = true;
+          break;
+        }
+      }
+      if (!found && resp.left_free_spin_amount > 0) {
+        _pixState.freeSpinByBet.push({ bet: bet, lines: lines, free_spin: resp.left_free_spin_amount });
+      }
     }
 
     // After reels stop: golden animation + sticky + free spin continuation
@@ -89,8 +127,72 @@ var _pixState = {
   freeSpinsLeft: 0,
   totalFreeSpinPrize: 0,
   stickyPositions: [],          // indices that are sticky (golden icons locked)
-  freeSpinByBet: []             // [{bet, lines, free_spin}] from login
+  freeSpinByBet: [],            // [{bet, lines, free_spin}] from login
+  respinByBet: []               // [{bet, sticky_goldens, golden_prize, total_free_spin_prize, left_free_spin_amount}]
 };
+
+// ---------------------------------------------------------------------------
+// Respin By Bet — per-bet state (sticky, golden_prize, etc.)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse respin_by_bet JSON string from login.
+ */
+function pixizinhoParseRespinByBet(data) {
+  try {
+    var parsed = typeof data === 'string' ? JSON.parse(data) : data;
+    if (Array.isArray(parsed)) {
+      // Merge: update existing entries, add new ones, keep entries not in response
+      for (var i = 0; i < parsed.length; i++) {
+        var newEntry = parsed[i];
+        var found = false;
+        for (var j = 0; j < _pixState.respinByBet.length; j++) {
+          if (Math.abs(_pixState.respinByBet[j].bet - newEntry.bet) < 0.0001) {
+            _pixState.respinByBet[j] = newEntry; // update existing
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          _pixState.respinByBet.push(newEntry); // add new
+        }
+      }
+    }
+  } catch(e) {
+    playLog('⚠ [PIX] respin_by_bet parse error: ' + e.message);
+  }
+}
+
+/**
+ * Apply respin state for the current bet (sticky goldens, total_free_spin_prize).
+ */
+function pixizinhoApplyRespinState() {
+  var st = _slotState;
+  var bet = (st.betList && st.betList[st.betIndex]) || 0.01;
+
+  // Always clear existing sticky overlays first
+  document.querySelectorAll('.pix-sticky').forEach(function(el) { el.remove(); });
+
+  // Find respin entry for current bet
+  var entry = null;
+  for (var i = 0; i < _pixState.respinByBet.length; i++) {
+    if (Math.abs(_pixState.respinByBet[i].bet - bet) < 0.0001) {
+      entry = _pixState.respinByBet[i];
+      break;
+    }
+  }
+
+  if (entry) {
+    _pixState.stickyPositions = entry.sticky_goldens || [];
+    _pixState.totalFreeSpinPrize = entry.total_free_spin_prize || 0;
+    if (_pixState.stickyPositions.length > 0) {
+      setTimeout(function() { pixizinhoApplyStickyGoldens(); }, 100);
+    }
+  } else {
+    _pixState.stickyPositions = [];
+    _pixState.totalFreeSpinPrize = 0;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Jackpot Panel (left of reels, same height as reel container, centered)
@@ -197,6 +299,7 @@ function pixizinhoHookBetChange() {
   window.slotChangeBet = function(dir) {
     origChangeBet(dir);
     pixizinhoRecalcJackpot();
+    pixizinhoApplyRespinState();
     pixizinhoUpdateFreeSpinFromBet();
   };
 }
