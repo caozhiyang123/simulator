@@ -1,0 +1,123 @@
+{
+    "id": 94,
+    "rtp_range": "90%",
+    "enabled_features": [],
+    "math_model": [
+        {
+            "name": "SuperBonus",
+            "ball_count": 60,
+            "base_ball_count": 33,
+            "eb_ball_count": 15,
+            "card_width": 5,
+            "card_height": 3,
+            "numPerCard": 15,
+            "miniCardNum": 1,
+            "maxCardNum": 90,
+            "cardSize": 100,
+            "max_cards": 4,
+            "pattern_match_type": "overlap_win",
+            "class_name": "com.gamesmart.superbonus.videobingo.core.VideoBingoMachine",
+            "features": {
+                "lists": [
+                    {
+                        "reference": "com.gamesmart.superbonus.videobingo.feature.FreeSpinFeature",
+                        "config": {
+                            "feature_id": 2,
+                            "buff_id": 2,
+                            "trigger_code": [
+                                "111110000011111",
+                                "111111111100000",
+                                "000001111111111"
+                            ],
+                            "free_spin": 2,
+                            "multi": 1
+                        }
+                    },
+                    {
+                        "reference": "com.gamesmart.superbonus.videobingo.feature.SynchronizedMachineStatusFeature",
+                        "config": {
+                            "feature_id": 4
+                        }
+                    }
+                ]
+            },
+            "pattern": [
+            {"id": 10, "name": "bingo", "alias": "P00", "format": "111111111111111", "value": 1500, "r": 0, "weight": 0.000000000000000, "type": 1, "is_eb": true},
+            {"id": 9, "name": "4sides", "alias": "P01", "format": "111111000111111", "value": 250, "r": 0, "weight": 0.000000000000000, "type": 2, "is_eb": true},
+            {"id": 8, "name": "3sides", "alias": "P02", "format": "100011000111111", "value": 120, "r": 0, "weight": 0.000000000000000, "type": 2, "is_eb": true},
+            {"id": 7, "name": "2line", "alias": "P03", "format": "000001111111111", "value": 100, "r": 0, "weight": 0.000000000000000, "type": 2, "is_eb": true},
+            {"id": 7, "name": "2line", "alias": "P04", "format": "111110000011111", "value": 100, "r": 0, "weight": 0.000000000000000, "type": 2, "is_eb": true},
+            {"id": 7, "name": "2line", "alias": "P05", "format": "111111111100000", "value": 100, "r": 0, "weight": 0.000000000000000, "type": 2, "is_eb": true},
+            {"id": 6, "name": "o", "alias": "P06", "format": "011100101001110", "value": 50, "r": 0, "weight": 0.000000000000000, "type": 2, "is_eb": true},
+            {"id": 5, "name": "+", "alias": "P07", "format": "001001111100100", "value": 10, "r": 0, "weight": 0.000000000000000, "type": 2, "is_eb": true},
+            {"id": 4, "name": "T", "alias": "P08", "format": "111110010000100", "value": 8, "r": 0, "weight": 0.000000000000000, "type": 2, "is_eb": false},
+            {"id": 3, "name": "+", "alias": "P09", "format": "001000111000100", "value": 4, "r": 0, "weight": 0.000000000000000, "type": 2, "is_eb": false},
+            {"id": 2, "name": "1line", "alias": "P10", "format": "111110000000000", "value": 3, "r": 0, "weight": 0.000000000000000, "type": 2, "is_eb": false},
+            {"id": 2, "name": "1line", "alias": "P11", "format": "000001111100000", "value": 3, "r": 0, "weight": 0.000000000000000, "type": 2, "is_eb": false},
+            {"id": 2, "name": "1line", "alias": "P12", "format": "000000000011111", "value": 3, "r": 0, "weight": 0.000000000000000, "type": 2, "is_eb": false},
+            {"id": 1, "name": "4corner", "alias": "P13", "format": "100010000010001", "value": 1, "r": 0, "weight": 0.000000000000000, "type": 2, "is_eb": false}
+        ],
+            "math_model": [
+                {
+                    "id": 1,
+                    "event": "default",
+                    "eb_settings": {
+                        "collect_all_ebs": true,
+                        "house_edge": 1,
+                        "eb_target": 0.915,
+                        "bucket": {
+                            "win_weight": 0.0,
+                            "not_win_weight": 0.2,
+                            "nature_weight": 0.8
+                        }
+                    },
+                    "pattern": [
+                {"id": -1, "format": "111111111111111", "value": 1500.0, "weight": 0.000019497053205},
+                {"id": -1, "format": "111111101111111", "value": 300.0, "weight": 0.000006755690771},
+                {"id": -1, "format": "111111010111111", "value": 258.0, "weight": 0.000015875873313},
+                {"id": -1, "format": "111111000111111", "value": 250.0, "weight": 0.000036287710429},
+                {"id": -1, "format": "101011111111111", "value": 230.0, "weight": 0.000015875873313},
+                {"id": -1, "format": "100011111111111", "value": 220.0, "weight": 0.000036287710429},
+                {"id": -1, "format": "111111111101110", "value": 168.0, "weight": 0.000015875873313},
+                {"id": -1, "format": "111110111011111", "value": 162.0, "weight": 0.000015875873313},
+                {"id": -1, "format": "011101111111111", "value": 160.0, "weight": 0.000015875873313},
+                {"id": -1, "format": "111110101011111", "value": 150.0, "weight": 0.000036287710429},
+                {"id": -1, "format": "100011000111111", "value": 120.0, "weight": 0.000373365400045},
+                {"id": -1, "format": "111111111110101", "value": 119.0, "weight": 0.000015875873313},
+                {"id": -1, "format": "111111111100100", "value": 118.0, "weight": 0.000080822627774},
+                {"id": -1, "format": "001001111111111", "value": 110.0, "weight": 0.000080822627774},
+                {"id": -1, "format": "111110010011111", "value": 108.0, "weight": 0.000080822627774},
+                {"id": -1, "format": "111111111110001", "value": 101.0, "weight": 0.000036287710429},
+                {"id": -1, "format": "111111111100000", "value": 100.0, "weight": 0.000175701364727},
+                {"id": -1, "format": "000001111111111", "value": 100.0, "weight": 0.000175701364727},
+                {"id": -1, "format": "111110000011111", "value": 100.0, "weight": 0.000175701364727},
+                {"id": -1, "format": "111110111001110", "value": 62.0, "weight": 0.000080822627774},
+                {"id": -1, "format": "011101111101110", "value": 60.0, "weight": 0.000080822627774},
+                {"id": -1, "format": "011100111011111", "value": 57.0, "weight": 0.000080822627774},
+                {"id": -1, "format": "011100111001110", "value": 54.0, "weight": 0.000373365400045},
+                {"id": -1, "format": "111110101001110", "value": 53.0, "weight": 0.000175701364727},
+                {"id": -1, "format": "011100101011111", "value": 53.0, "weight": 0.000175701364727},
+                {"id": -1, "format": "011100101001110", "value": 50.0, "weight": 0.002803269113107},
+                {"id": -1, "format": "111110111010101", "value": 13.0, "weight": 0.000080822627774},
+                {"id": -1, "format": "111110111000100", "value": 12.0, "weight": 0.000373365400045},
+                {"id": -1, "format": "101011111110101", "value": 11.0, "weight": 0.000080822627774},
+                {"id": -1, "format": "001001111100100", "value": 10.0, "weight": 0.005714356269025},
+                {"id": -1, "format": "111110010010101", "value": 9.0, "weight": 0.000373365400045},
+                {"id": -1, "format": "111110010000100", "value": 8.0, "weight": 0.005714356269025},
+                {"id": -1, "format": "101010111011111", "value": 8.0, "weight": 0.000080822627774},
+                {"id": -1, "format": "001000111011111", "value": 7.0, "weight": 0.000373365400045},
+                {"id": -1, "format": "101010111010101", "value": 5.0, "weight": 0.000373365400045},
+                {"id": -1, "format": "111110000010001", "value": 4.0, "weight": 0.005714356269025},
+                {"id": -1, "format": "100010000011111", "value": 4.0, "weight": 0.005714356269025},
+                {"id": -1, "format": "001000111000100", "value": 4.0, "weight": 0.022449256771171},
+                {"id": -1, "format": "100011111110001", "value": 4.0, "weight": 0.000373365400045},
+                {"id": -1, "format": "000000000011111", "value": 3.0, "weight": 0.022449256771171},
+                {"id": -1, "format": "111110000000000", "value": 3.0, "weight": 0.022449256771171},
+                {"id": -1, "format": "000001111100000", "value": 3.0, "weight": 0.022449256771171},
+                {"id": -1, "format": "100010000010001", "value": 1.0, "weight": 0.043350288937433}
+            ]
+                }
+            ]
+        }
+    ]
+}
