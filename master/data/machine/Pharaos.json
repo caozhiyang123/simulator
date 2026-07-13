@@ -1,0 +1,237 @@
+{
+    "id": 42,
+    "rtp_range": "92.98%-94.05%",
+    "enabled_features": [],
+    "math_model": [
+        {
+            "name": "Pharaos",
+            "ball_count": 60,
+            "base_ball_count": 33,
+            "eb_ball_count": 9,
+            "card_width": 5,
+            "card_height": 3,
+            "numPerCard": 15,
+            "miniCardNum": 1,
+            "maxCardNum": 90,
+            "cardSize": 100,
+            "max_cards": 4,
+            "pattern_match_type": "highest_win",
+            "class_name": "com.gamesmart.videobingo.core.PharaohMachine",
+            "features": {
+                "lists": [
+                    {
+                        "reference": "com.gamesmart.videobingo.feature.FreeEBFeature",
+                        "config": {
+                            "feature_id": 2,
+                            "trigger_rate": 0.14,
+                            "min_index": 2,
+                            "max_index": 8
+                        }
+                    },
+                    {
+                        "reference": "com.gamesmart.videobingo.feature.SynchronizedMachineStatusFeature",
+                        "config": {
+                            "feature_id": 4
+                        }
+                    }
+                ]
+            },
+            "pattern": [
+                {
+                    "id": 4,
+                    "name": "bingo",
+                    "alias": "P00",
+                    "format": "111111111111111",
+                    "value": 1000,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 3,
+                    "name": "3_sides",
+                    "alias": "P01",
+                    "format": "111101100111111",
+                    "value": 200,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 2,
+                    "name": "2_sides",
+                    "alias": "P02",
+                    "format": "111101100110001",
+                    "value": 70,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 2,
+                    "name": "2_sides",
+                    "alias": "P03",
+                    "format": "110100100011111",
+                    "value": 70,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 2,
+                    "name": "2_sides",
+                    "alias": "P04",
+                    "format": "101001000111111",
+                    "value": 70,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 1,
+                    "name": "1_side",
+                    "alias": "P05",
+                    "format": "110100100010000",
+                    "value": 3,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 1,
+                    "name": "1_side",
+                    "alias": "P06",
+                    "format": "101001000100001",
+                    "value": 3,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 1,
+                    "name": "1_side",
+                    "alias": "P07",
+                    "format": "000000000011111",
+                    "value": 3,
+                    "r": 0,
+                    "weight": 0.000000000000000,
+                    "type": 1,
+                    "is_eb": false
+                }
+            ],
+            "math_model": [
+                {
+                    "id": 1,
+                    "event": "default",
+                    "eb_settings": {
+                        "collect_all_ebs": true,
+                        "house_edge": 1,
+                        "eb_target": 0.922,
+                        "bucket": {
+                            "win_weight": 0.0,
+                            "not_win_weight": 0.0,
+                            "nature_weight": 1.0
+                        }
+                    },
+                    "pattern": [
+                        {
+                            "id": -1,
+                            "name": "bingo",
+                            "alias": "P00",
+                            "format": "111111111111111",
+                            "value": 1000.0,
+                            "r": 0,
+                            "weight": 0.000019497053205,
+                            "type": 1,
+                            "is_eb": true
+                        },
+                        {
+                            "id": -1,
+                            "name": "3_sides",
+                            "alias": "P01",
+                            "format": "111101100111111",
+                            "value": 200.0,
+                            "r": 0,
+                            "weight": 0.000124698535502,
+                            "type": 1,
+                            "is_eb": true
+                        },
+                        {
+                            "id": -1,
+                            "name": "2_sides",
+                            "alias": "P02",
+                            "format": "111101100110001",
+                            "value": 70.0,
+                            "r": 0,
+                            "weight": 0.001283027174818,
+                            "type": 1,
+                            "is_eb": true
+                        },
+                        {
+                            "id": -1,
+                            "name": "2_sides",
+                            "alias": "P03",
+                            "format": "110100100011111",
+                            "value": 70.0,
+                            "r": 0,
+                            "weight": 0.001283027174818,
+                            "type": 1,
+                            "is_eb": true
+                        },
+                        {
+                            "id": -1,
+                            "name": "2_sides",
+                            "alias": "P04",
+                            "format": "101001000111111",
+                            "value": 70.0,
+                            "r": 0,
+                            "weight": 0.001283027174818,
+                            "type": 1,
+                            "is_eb": true
+                        },
+                        {
+                            "id": -1,
+                            "name": "1_side",
+                            "alias": "P05",
+                            "format": "110100100010000",
+                            "value": 3.0,
+                            "r": 0,
+                            "weight": 0.067347503664699,
+                            "type": 1,
+                            "is_eb": false
+                        },
+                        {
+                            "id": -1,
+                            "name": "1_side",
+                            "alias": "P06",
+                            "format": "101001000100001",
+                            "value": 3.0,
+                            "r": 0,
+                            "weight": 0.067347503664699,
+                            "type": 1,
+                            "is_eb": false
+                        },
+                        {
+                            "id": -1,
+                            "name": "1_side",
+                            "alias": "P07",
+                            "format": "000000000011111",
+                            "value": 3.0,
+                            "r": 0,
+                            "weight": 0.067347503664699,
+                            "type": 1,
+                            "is_eb": false
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
