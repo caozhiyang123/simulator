@@ -133,7 +133,7 @@ def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name
 import hashlib
 import json as json_module
 
-USERS_PATH = os.path.join(_base_dir, "users.json")
+USERS_PATH = os.path.join(_base_dir, "iam", "users.json")
 
 # Active sessions: {username: session_token} - only one active session per user
 _active_sessions: dict[str, str] = {}
@@ -3244,8 +3244,9 @@ def play_disconnect():
 # ---------------------------------------------------------------------------
 # IAM Routes
 # ---------------------------------------------------------------------------
-ROLE_PATH = os.path.join(_base_dir, "role.json")
-AUTHORITY_PATH = os.path.join(_base_dir, "authority.json")
+ROLE_PATH = os.path.join(_base_dir, "iam", "role.json")
+AUTHORITY_PATH = os.path.join(_base_dir, "iam", "authority.json")
+RESOURCES_PATH = os.path.join(_base_dir, "iam", "resources.json")
 
 
 def _load_roles():
@@ -3260,6 +3261,18 @@ def _load_authorities():
         return []
     with open(AUTHORITY_PATH, "r", encoding="utf-8") as f:
         return json_module.load(f)
+
+
+def _load_resources():
+    if not os.path.isfile(RESOURCES_PATH):
+        return ["Home", "Workers", "Config", "History", "MD5", "SHA1", "Plugin", "CICD", "Play", "IAM", "Family"]
+    with open(RESOURCES_PATH, "r", encoding="utf-8") as f:
+        return json_module.load(f)
+
+
+def _save_resources(resources):
+    with open(RESOURCES_PATH, "w", encoding="utf-8") as f:
+        json_module.dump(resources, f, ensure_ascii=False, indent=2)
 
 
 @app.route("/iam/users", methods=["GET"])
@@ -3335,6 +3348,36 @@ def iam_users_delete():
     return jsonify({"status": "ok"})
 
 
+@app.route("/iam/users/create", methods=["POST"])
+def iam_users_create():
+    """Create a new user.
+
+    Request body: {"username": str, "password": str, "role": str}
+    """
+    data = request.get_json(force=True)
+    username = data.get("username", "").strip()
+    password = data.get("password", "").strip()
+    role = data.get("role", "worker").strip()
+
+    if not username:
+        return jsonify({"error": "username is required"}), 400
+    if not password:
+        return jsonify({"error": "password is required"}), 400
+
+    users = _load_users()
+    for u in users:
+        if u["username"] == username:
+            return jsonify({"error": "Username already exists"}), 409
+
+    users.append({
+        "username": username,
+        "password": _md5(password),
+        "role": role,
+    })
+    _save_users(users)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/iam/roles", methods=["GET"])
 def iam_roles():
     """Get all roles."""
@@ -3372,6 +3415,64 @@ def iam_roles_update():
 
     with open(ROLE_PATH, "w", encoding="utf-8") as f:
         json_module.dump(roles, f, ensure_ascii=False, indent=2)
+
+    return jsonify({"status": "ok"})
+
+
+@app.route("/iam/roles/create", methods=["POST"])
+def iam_roles_create():
+    """Create a new role.
+
+    Request body: {"role": str, "authority": str}
+    """
+    data = request.get_json(force=True)
+    role_name = data.get("role", "").strip()
+    authority = data.get("authority", "").strip()
+
+    if not role_name:
+        return jsonify({"error": "role name is required"}), 400
+
+    roles = _load_roles()
+    for r in roles:
+        if r["role"] == role_name:
+            return jsonify({"error": "Role already exists"}), 409
+
+    roles.append({"role": role_name, "authority": authority or ""})
+
+    with open(ROLE_PATH, "w", encoding="utf-8") as f:
+        json_module.dump(roles, f, ensure_ascii=False, indent=2)
+
+    return jsonify({"status": "ok"})
+
+
+@app.route("/iam/roles/delete", methods=["POST"])
+def iam_roles_delete():
+    """Delete a role.
+
+    Request body: {"role": str}
+    """
+    data = request.get_json(force=True)
+    role_name = data.get("role", "").strip()
+
+    if not role_name:
+        return jsonify({"error": "role name is required"}), 400
+
+    if role_name == "admin":
+        return jsonify({"error": "Cannot delete admin role"}), 403
+
+    # Check if any user references this role
+    users = _load_users()
+    referencing_users = [u["username"] for u in users if u.get("role") == role_name]
+    if referencing_users:
+        return jsonify({"error": f"Cannot delete: role '{role_name}' is referenced by user(s): {', '.join(referencing_users)}"}), 409
+
+    roles = _load_roles()
+    new_roles = [r for r in roles if r["role"] != role_name]
+    if len(new_roles) == len(roles):
+        return jsonify({"error": "Role not found"}), 404
+
+    with open(ROLE_PATH, "w", encoding="utf-8") as f:
+        json_module.dump(new_roles, f, ensure_ascii=False, indent=2)
 
     return jsonify({"status": "ok"})
 
@@ -3436,6 +3537,140 @@ def iam_authorities_create():
 
     with open(AUTHORITY_PATH, "w", encoding="utf-8") as f:
         json_module.dump(authorities, f, ensure_ascii=False, indent=2)
+
+    return jsonify({"status": "ok"})
+
+
+@app.route("/iam/authorities/delete", methods=["POST"])
+def iam_authorities_delete():
+    """Delete an authority.
+
+    Request body: {"authority": str}
+    """
+    data = request.get_json(force=True)
+    authority_name = data.get("authority", "").strip()
+
+    if not authority_name:
+        return jsonify({"error": "authority name is required"}), 400
+
+    if authority_name == "administrator_privileges":
+        return jsonify({"error": "Cannot delete administrator_privileges"}), 403
+
+    # Check if any role references this authority
+    roles = _load_roles()
+    referencing_roles = []
+    for r in roles:
+        auths = [a.strip() for a in r["authority"].split(",") if a.strip()]
+        if authority_name in auths:
+            referencing_roles.append(r["role"])
+    if referencing_roles:
+        return jsonify({"error": f"Cannot delete: authority '{authority_name}' is referenced by role(s): {', '.join(referencing_roles)}"}), 409
+
+    authorities = _load_authorities()
+    new_authorities = [a for a in authorities if a["authority"] != authority_name]
+    if len(new_authorities) == len(authorities):
+        return jsonify({"error": "Authority not found"}), 404
+
+    with open(AUTHORITY_PATH, "w", encoding="utf-8") as f:
+        json_module.dump(new_authorities, f, ensure_ascii=False, indent=2)
+
+    return jsonify({"status": "ok"})
+
+
+@app.route("/iam/resources", methods=["GET"])
+def iam_resources():
+    """Get all resources."""
+    resources = _load_resources()
+    return jsonify({"resources": resources})
+
+
+@app.route("/iam/resources/create", methods=["POST"])
+def iam_resources_create():
+    """Create a new resource.
+
+    Request body: {"resource": str}
+    """
+    data = request.get_json(force=True)
+    resource_name = data.get("resource", "").strip()
+
+    if not resource_name:
+        return jsonify({"error": "resource name is required"}), 400
+
+    resources = _load_resources()
+    if resource_name in resources:
+        return jsonify({"error": "Resource already exists"}), 409
+
+    resources.append(resource_name)
+    _save_resources(resources)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/iam/resources/delete", methods=["POST"])
+def iam_resources_delete():
+    """Delete a resource.
+
+    Request body: {"resource": str}
+    """
+    data = request.get_json(force=True)
+    resource_name = data.get("resource", "").strip()
+
+    if not resource_name:
+        return jsonify({"error": "resource name is required"}), 400
+
+    # Check if any authority references this resource
+    authorities = _load_authorities()
+    referencing_auths = [a["authority"] for a in authorities if resource_name in a.get("menus", [])]
+    if referencing_auths:
+        return jsonify({"error": f"Cannot delete: resource '{resource_name}' is referenced by authority(ies): {', '.join(referencing_auths)}"}), 409
+
+    resources = _load_resources()
+    if resource_name not in resources:
+        return jsonify({"error": "Resource not found"}), 404
+
+    resources.remove(resource_name)
+    _save_resources(resources)
+
+    return jsonify({"status": "ok"})
+
+
+@app.route("/iam/resources/rename", methods=["POST"])
+def iam_resources_rename():
+    """Rename a resource.
+
+    Request body: {"old_name": str, "new_name": str}
+    """
+    data = request.get_json(force=True)
+    old_name = data.get("old_name", "").strip()
+    new_name = data.get("new_name", "").strip()
+
+    if not old_name or not new_name:
+        return jsonify({"error": "old_name and new_name are required"}), 400
+
+    if old_name == new_name:
+        return jsonify({"status": "ok"})
+
+    resources = _load_resources()
+    if old_name not in resources:
+        return jsonify({"error": "Resource not found"}), 404
+    if new_name in resources:
+        return jsonify({"error": "Resource name already exists"}), 409
+
+    # Rename in resources list
+    idx = resources.index(old_name)
+    resources[idx] = new_name
+    _save_resources(resources)
+
+    # Rename in all authorities' menus
+    authorities = _load_authorities()
+    changed = False
+    for a in authorities:
+        if old_name in a.get("menus", []):
+            menu_idx = a["menus"].index(old_name)
+            a["menus"][menu_idx] = new_name
+            changed = True
+    if changed:
+        with open(AUTHORITY_PATH, "w", encoding="utf-8") as f:
+            json_module.dump(authorities, f, ensure_ascii=False, indent=2)
 
     return jsonify({"status": "ok"})
 

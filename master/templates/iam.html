@@ -7,6 +7,7 @@
           <button class="iam-tab active" onclick="iamSwitchTab('users')" id="iamTabUsers" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:#999;border-bottom:2px solid transparent;margin-bottom:-2px;">👤 Users</button>
           <button class="iam-tab" onclick="iamSwitchTab('roles')" id="iamTabRoles" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:#999;border-bottom:2px solid transparent;margin-bottom:-2px;">🎭 Roles</button>
           <button class="iam-tab" onclick="iamSwitchTab('authorities')" id="iamTabAuthorities" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:#999;border-bottom:2px solid transparent;margin-bottom:-2px;">🛡️ Authorities</button>
+          <button class="iam-tab" onclick="iamSwitchTab('resources')" id="iamTabResources" style="padding:8px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:#999;border-bottom:2px solid transparent;margin-bottom:-2px;">📦 Resources</button>
         </div>
         <!-- Users Panel -->
         <div id="iamPanelUsers" class="iam-panel">
@@ -28,6 +29,10 @@
         <!-- Authorities Panel -->
         <div id="iamPanelAuthorities" class="iam-panel" style="display:none;">
           <div id="iamAuthorityList"></div>
+        </div>
+        <!-- Resources Panel -->
+        <div id="iamPanelResources" class="iam-panel" style="display:none;">
+          <div id="iamResourceList"></div>
         </div>
       </div>
     </div><!-- end pageIam -->

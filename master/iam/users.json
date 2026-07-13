@@ -1,0 +1,27 @@
+[
+  {
+    "username": "admin",
+    "password": "21232f297a57a5a743894a0e4a801fc3",
+    "role": "admin"
+  },
+  {
+    "username": "Terry",
+    "password": "1116814755ec7e77eaa692262f749cec",
+    "role": "guest"
+  },
+  {
+    "username": "Test",
+    "password": "0cbc6611f5540bd0809a388dc95a615b",
+    "role": "guest"
+  },
+  {
+    "username": "Steve",
+    "password": "81b8a1b77068d06e1c8190825253066f",
+    "role": "worker"
+  },
+  {
+    "username": "Ellis",
+    "password": "58da3cd31090edfa3b22657b6faf132c",
+    "role": "worker"
+  }
+]
