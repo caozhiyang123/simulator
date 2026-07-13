@@ -1267,6 +1267,18 @@ function playHandleRoundOverResponse(roResp) {
   if (roResp.total_won !== undefined) {
     document.getElementById('playWinDisplay').textContent = 'WIN: ' + roResp.total_won.toFixed(2);
   }
+  // Display not-bought extra balls (greyed out with red X)
+  if (roResp.not_bought_ebs && roResp.not_bought_ebs.length > 0) {
+    var ballArea = document.getElementById('playBallArea');
+    if (ballArea) {
+      roResp.not_bought_ebs.forEach(function(ball) {
+        ballArea.innerHTML += '<div style="position:relative;width:28px;height:28px;border-radius:50%;background:#555;border:2px solid #777;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#999;opacity:0.6;">'
+          + ball
+          + '<span style="position:absolute;top:-2px;right:-2px;font-size:12px;color:#e74c3c;font-weight:900;line-height:1;">✕</span>'
+          + '</div>';
+      });
+    }
+  }
   _playSpinState = 'idle';
   playResetSpinBtn();
 }

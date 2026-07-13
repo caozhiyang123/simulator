@@ -1,6 +1,6 @@
 {
   "machine_settings": {
-    "currency": "diamond",
+    "currency": "coins",
     "authorization": "y7EI57P++ympTtziQ2NDhU8oFsWOLto1rabo8FJ+hKc=",
     "machines": [
       {
@@ -242,6 +242,15 @@
         "config_file": "Pharaos.json",
         "machine_id": 42,
         "connection_url": "ws://localhost:9090/bingo?authorization=y7EI57P++ympTtziQ2NDhU8oFsWOLto1rabo8FJ+hKc=&reconnect=false",
+        "enabled": true,
+        "type": "bingo",
+        "choose_quantity": true
+      },
+      {
+        "name": "FunBingo",
+        "config_file": "FunBingo.json",
+        "machine_id": 87,
+        "connection_url": "ws://localhost:9090/magicBall?authorization=y7EI57P++ympTtziQ2NDhU8oFsWOLto1rabo8FJ+hKc=&reconnect=false",
         "enabled": true,
         "type": "bingo",
         "choose_quantity": true
