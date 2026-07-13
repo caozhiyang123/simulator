@@ -243,7 +243,15 @@ async function playSelectMachine(machineId, enabled, machineType) {
   };
 
   _playWs.onerror = function(e) { playLog('<<< [WS ERROR] ' + (e.message || 'connection error')); playHideLoading(); };
-  _playWs.onclose = function(e) { playLog('<<< [WS CLOSE] code=' + e.code + ', reason=' + e.reason); _playWs = null; playHideLoading(); };
+  _playWs.onclose = function(e) {
+    playLog('<<< [WS CLOSE] code=' + e.code + ', reason=' + e.reason);
+    _playWs = null;
+    playHideLoading();
+    // If closed with code 1000 (normal close by server), the session was kicked
+    if (e.code === 1000 && _playCurrentMachine) {
+      playShowKickedModal();
+    }
+  };
 }
 
 function playRenderGame(resp, machineConfig) {
@@ -1636,6 +1644,24 @@ function playBackToLobby() {
     var tab = activeTab ? activeTab.getAttribute('data-tab') : 'general';
     playFilterTab(tab);
   }, 100);
+}
+
+function playShowKickedModal() {
+  var overlay = document.createElement('div');
+  overlay.id = 'playKickedModal';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:100000;display:flex;align-items:center;justify-content:center;';
+  var modal = document.createElement('div');
+  modal.style.cssText = 'background:#fff;border-radius:8px;padding:24px;max-width:380px;width:90%;box-shadow:0 4px 20px rgba(0,0,0,0.3);text-align:center;';
+  modal.innerHTML = '<div style="font-size:24px;margin-bottom:12px;">⚠️</div>' +
+    '<div style="font-size:15px;font-weight:600;color:#e74c3c;margin-bottom:8px;">Connection Closed</div>' +
+    '<div style="font-size:13px;color:#555;margin-bottom:20px;">Your session was disconnected because the same account logged in from another location.</div>' +
+    '<button id="playKickedOkBtn" style="background:#4a90d9;color:#fff;border:none;border-radius:4px;padding:10px 32px;cursor:pointer;font-size:14px;font-weight:500;">OK</button>';
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  document.getElementById('playKickedOkBtn').addEventListener('click', function() {
+    overlay.remove();
+    playBackToLobby();
+  });
 }
 
 /**
