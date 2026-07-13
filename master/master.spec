@@ -8,7 +8,7 @@ a = Analysis(
         ('templates', 'templates'),
         ('static', 'static'),
         ('config.json', '.'),
-        ('users.json', '.'),
+        ('iam', 'iam'),
         ('config.py', '.'),
         ('task_splitter.py', '.'),
         ('poller.py', '.'),
