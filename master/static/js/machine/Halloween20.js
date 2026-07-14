@@ -137,15 +137,15 @@ function halloweenPickJar(idx) {
       _hwBonus.step = 2;
       halloweenShowJarModal();
     } else {
-      // Bonus complete
-      halloweenBonusComplete();
+      // Bonus complete - show prize and close
+      halloweenPumpkinShowPrize();
     }
   }, 1800);
 }
 
-function halloweenBonusComplete() {
+function halloweenPumpkinShowPrize() {
   var modal = document.getElementById('hwBonusModal');
-  if (!modal) return;
+  if (!modal) { halloweenBonusComplete(); return; }
 
   // Show total prize overlay
   var overlay = document.createElement('div');
@@ -157,12 +157,12 @@ function halloweenBonusComplete() {
   modal.querySelector('div').style.position = 'relative';
   modal.querySelector('div').appendChild(overlay);
 
-  // Close after delay, send round over
+  // Close after delay, then trigger bonus complete (round over)
   setTimeout(function() {
     var m = document.getElementById('hwBonusModal');
     if (m) m.remove();
-    halloweenBonusComplete();
     playLog('🎃 [PUMPKIN JAR] complete, prize: ' + _hwBonus.totalPrize);
+    halloweenBonusComplete();
   }, 2500);
 }
 
