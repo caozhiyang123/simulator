@@ -1,0 +1,186 @@
+{
+    "id": 49,
+    "rtp_range": "94%",
+    "enabled_features": [],
+    "math_model": [
+        {
+            "name": "SilverBall",
+            "ball_count": 60,
+            "base_ball_count": 33,
+            "eb_ball_count": 9,
+            "card_width": 5,
+            "card_height": 3,
+            "numPerCard": 15,
+            "miniCardNum": 1,
+            "maxCardNum": 90,
+            "cardSize": 100,
+            "max_cards": 4,
+            "pattern_match_type": "highest_win",
+            "class_name": "com.gamesmart.videobingo.core.VideoBingoMachine",
+            "features": {
+                "lists": [
+                    {
+                        "reference": "com.gamesmart.videobingo.feature.SynchronizedMachineStatusFeature",
+                        "config": {
+                            "feature_id": 4
+                        }
+                    }
+                ]
+            },
+            "pattern": [
+                {
+                    "id": 3,
+                    "name": "bingo",
+                    "alias": "P00",
+                    "format": "111111111111111",
+                    "value": 1000,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 2,
+                    "name": "2line",
+                    "alias": "P01",
+                    "format": "111110000011111",
+                    "value": 100,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 2,
+                    "name": "2line",
+                    "alias": "P02",
+                    "format": "111111111100000",
+                    "value": 100,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 2,
+                    "name": "2line",
+                    "alias": "P03",
+                    "format": "000001111111111",
+                    "value": 100,
+                    "type": 1,
+                    "is_eb": true
+                },
+                {
+                    "id": 1,
+                    "name": "1line",
+                    "alias": "P04",
+                    "format": "111110000000000",
+                    "value": 4,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 1,
+                    "name": "1line",
+                    "alias": "P05",
+                    "format": "000001111100000",
+                    "value": 4,
+                    "type": 1,
+                    "is_eb": false
+                },
+                {
+                    "id": 1,
+                    "name": "1line",
+                    "alias": "P06",
+                    "format": "000000000011111",
+                    "value": 4,
+                    "type": 1,
+                    "is_eb": false
+                }
+            ],
+            "math_model": [
+                {
+                    "id": 1,
+                    "event": "default",
+                    "eb_settings": {
+                        "collect_all_ebs": true,
+                        "house_edge": 1,
+                        "eb_target": 0.94,
+                        "min_price": 1,
+                        "bucket": {
+                            "win_weight": 0.0,
+                            "not_win_weight": 0.0,
+                            "nature_weight": 1.0
+                        }
+                    },
+                    "pattern": [
+                        {
+                            "id": -1,
+                            "name": "bingo",
+                            "alias": "P00",
+                            "format": "111111111111111",
+                            "value": 1000.0,
+                            "weight": 0.000019497053205,
+                            "type": 1,
+                            "is_eb": true
+                        },
+                        {
+                            "id": -1,
+                            "name": "2line",
+                            "alias": "P01",
+                            "format": "111110000011111",
+                            "value": 100.0,
+                            "weight": 0.000552584464209,
+                            "type": 1,
+                            "is_eb": true
+                        },
+                        {
+                            "id": -1,
+                            "name": "2line",
+                            "alias": "P02",
+                            "format": "111111111100000",
+                            "value": 100.0,
+                            "weight": 0.000552584464209,
+                            "type": 1,
+                            "is_eb": true
+                        },
+                        {
+                            "id": -1,
+                            "name": "2line",
+                            "alias": "P03",
+                            "format": "000001111111111",
+                            "value": 100.0,
+                            "weight": 0.000552584464209,
+                            "type": 1,
+                            "is_eb": true
+                        },
+                        {
+                            "id": -1,
+                            "name": "1line",
+                            "alias": "P04",
+                            "format": "111110000000000",
+                            "value": 4.0,
+                            "weight": 0.062893967294305,
+                            "type": 1,
+                            "is_eb": false
+                        },
+                        {
+                            "id": -1,
+                            "name": "1line",
+                            "alias": "P05",
+                            "format": "000001111100000",
+                            "value": 4.0,
+                            "weight": 0.062893967294305,
+                            "type": 1,
+                            "is_eb": false
+                        },
+                        {
+                            "id": -1,
+                            "name": "1line",
+                            "alias": "P06",
+                            "format": "000000000011111",
+                            "value": 4.0,
+                            "weight": 0.062893967294305,
+                            "type": 1,
+                            "is_eb": false
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
