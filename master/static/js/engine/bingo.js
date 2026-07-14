@@ -19,6 +19,8 @@ var BingoEngine = {
     if (plugin.afterRender) plugin.afterRender(resp, machineConfig);
     // Render spin tool for admin/qa
     bingoSpinToolInit(resp, machineConfig);
+    // Render history panel
+    playHistoryPanelInit();
   },
 
   onSpinResponse: function(resp, machineName) {

@@ -203,6 +203,7 @@ function slotRenderUI() {
   document.getElementById('playBottomText').textContent = 'Connected | Balance: ' + balance.toLocaleString() + ' ' + st.displaySymbol;
   slotUpdateJackpot();
   slotSpinToolInit();
+  playHistoryPanelInit();
 }
 
 function slotCalcJackpot() {

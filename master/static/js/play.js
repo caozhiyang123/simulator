@@ -237,6 +237,10 @@ async function playSelectMachine(machineId, enabled, machineType) {
       if (typeof gfHandleOpenBoxResponse === 'function') {
         gfHandleOpenBoxResponse(resp);
       }
+    } else if (resp.cmd === 'get_round_history' || resp.round_history) {
+      // Round history response
+      playLog('<<< [HISTORY] response received');
+      playHistoryRender(resp);
     } else {
       playLog('<<< [WS] unknown cmd: ' + JSON.stringify(resp));
     }
@@ -1674,6 +1678,314 @@ function playShowKickedModal() {
     overlay.remove();
     playBackToLobby();
   });
+}
+
+// ---------------------------------------------------------------------------
+// Round History Panel (bingo + slot)
+// ---------------------------------------------------------------------------
+function playHistoryPanelInit() {
+  var old = document.getElementById('playHistoryPanel');
+  if (old) old.remove();
+
+  var gameArea = document.getElementById('playGameArea');
+  if (!gameArea) return;
+
+  var panel = document.createElement('div');
+  panel.id = 'playHistoryPanel';
+  panel.style.cssText = 'position:absolute;top:420px;left:0;z-index:200;';
+
+  panel.innerHTML = '<div id="playHistoryTab" onclick="playHistoryToggle()" style="background:#1a1a2e;border:1px solid #4a90d9;border-left:none;border-radius:0 8px 8px 0;padding:8px 6px;cursor:pointer;color:#4a90d9;font-size:10px;font-weight:700;writing-mode:vertical-rl;text-orientation:mixed;">📜 HISTORY</div>' +
+    '<div id="playHistoryContent" style="display:none;position:absolute;top:0;left:30px;background:#1a1a2e;border:1px solid #4a90d9;border-radius:0 8px 8px 0;padding:12px;width:240px;max-height:400px;overflow-y:auto;">' +
+    '<div style="color:#fff;font-size:11px;font-weight:700;margin-bottom:8px;">📜 Round History</div>' +
+    '<div id="playHistoryList" style="color:#888;font-size:10px;">Click to load history...</div>' +
+    '</div>';
+
+  gameArea.style.position = 'relative';
+  gameArea.appendChild(panel);
+}
+
+function playHistoryToggle() {
+  var content = document.getElementById('playHistoryContent');
+  if (!content) return;
+  if (content.style.display === 'none') {
+    content.style.display = '';
+    playHistoryLoad();
+  } else {
+    content.style.display = 'none';
+  }
+}
+
+function playHistoryLoad() {
+  if (!_playWs || _playWs.readyState !== WebSocket.OPEN) {
+    document.getElementById('playHistoryList').innerHTML = '<span style="color:#e74c3c;">Not connected</span>';
+    return;
+  }
+  document.getElementById('playHistoryList').innerHTML = '<span style="color:#aaa;">Loading...</span>';
+  var resp = _playCurrentMachine ? _playCurrentMachine.response : {};
+  var cmd = {
+    cmd: 'get_round_history',
+    session_token: _playSessionToken,
+    game_id: _playCurrentMachine ? _playCurrentMachine.machine_id : 0,
+    currency: _playCurrency,
+    opt_id: resp.opt_id || '',
+    username: resp.username || '',
+    payload_data: "[{'key':'value'}]"
+  };
+  playLog('>>> [HISTORY] send: ' + JSON.stringify(cmd));
+  _playWs.send(JSON.stringify(cmd));
+}
+
+function playHistoryRender(data) {
+  var el = document.getElementById('playHistoryList');
+  if (!el) return;
+  var rounds = data.round_history || data.rounds || data.history || (Array.isArray(data) ? data : []);
+  if (!rounds || rounds.length === 0) {
+    el.innerHTML = '<span style="color:#888;">No rounds played yet</span>';
+    return;
+  }
+  window._playHistoryRounds = rounds;
+  var html = '';
+  rounds.forEach(function(round, idx) {
+    var won = round.total_won || 0;
+    var bet = round.total_bet || round.bet || 0;
+    var time = round.time || '';
+    var isFree = round.is_free_round === true;
+    var wonColor = won > 0 ? '#27ae60' : '#888';
+    html += '<div onclick="playHistoryShowDetail(' + idx + ')" style="padding:6px 8px;margin-bottom:4px;background:#2a2a4e;border-radius:4px;font-size:10px;border-left:3px solid ' + (won > 0 ? '#27ae60' : '#555') + ';cursor:pointer;" onmouseover="this.style.background=\'#3a3a5e\'" onmouseout="this.style.background=\'#2a2a4e\'">';
+    html += '<div style="display:flex;justify-content:space-between;margin-bottom:3px;">';
+    html += '<span style="color:#aaa;">#' + (idx + 1) + (isFree ? ' 🎁' : '') + '</span>';
+    if (time) html += '<span style="color:#666;font-size:9px;">' + time + '</span>';
+    html += '</div>';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+    html += '<span style="color:#ccc;">Bet: ' + (typeof bet === 'number' ? bet.toFixed(2) : bet) + '</span>';
+    html += '<span style="color:' + wonColor + ';font-weight:600;">Won: ' + (typeof won === 'number' ? won.toFixed(2) : won) + '</span>';
+    html += '</div>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function playHistoryShowDetail(idx) {
+  var rounds = window._playHistoryRounds;
+  if (!rounds || idx < 0 || idx >= rounds.length) return;
+  var round = rounds[idx];
+
+  var isSlot = _playCurrentMachine && _playCurrentMachine.type === 'slot';
+  var isBingo = _playCurrentMachine && _playCurrentMachine.type === 'bingo';
+  var machineName = _playCurrentMachine ? _playCurrentMachine.name : '';
+  var colCount = 5, rowCount = 3;
+  if (isSlot && typeof _slotState !== 'undefined') {
+    colCount = _slotState.colCount || 5;
+    rowCount = _slotState.rowCount || 3;
+  }
+  var cardWidth = 5, cardHeight = 5, numPerCard = 25, maxCards = 4;
+  if (isBingo && _playCurrentMachine.config) {
+    var mm = (_playCurrentMachine.config.math_model && _playCurrentMachine.config.math_model[0]) || {};
+    cardWidth = mm.card_width || 5;
+    cardHeight = mm.card_height || 5;
+    numPerCard = mm.numPerCard || (cardWidth * cardHeight);
+    maxCards = mm.max_cards || 4;
+  }
+
+  var overlay = document.createElement('div');
+  overlay.id = 'playHistoryDetailModal';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:100000;display:flex;align-items:center;justify-content:center;';
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+  var html = '<div style="background:#1a1a2e;border-radius:12px;padding:20px;max-width:620px;width:92%;max-height:85vh;overflow-y:auto;border:1px solid #4a90d9;box-shadow:0 4px 20px rgba(0,0,0,0.5);">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+  html += '<span style="color:#fff;font-size:14px;font-weight:700;">📜 Round #' + (idx + 1) + ' Detail</span>';
+  html += '<span onclick="document.getElementById(\'playHistoryDetailModal\').remove()" style="color:#999;cursor:pointer;font-size:18px;line-height:1;">&times;</span>';
+  html += '</div>';
+
+  // Bingo visual: cards + balls + won_pattern
+  var bingoVisualKeys = ['card_numbers', 'ball_numbers', 'ball_eb_numbers', 'won_pattern'];
+  if (isBingo && round.card_numbers) {
+    html += playHistoryBingoVisual(round, cardWidth, cardHeight, numPerCard, maxCards);
+  }
+
+  // Render remaining fields
+  var keys = Object.keys(round);
+  keys.forEach(function(key) {
+    var val = round[key];
+    var valStr = (typeof val === 'object') ? JSON.stringify(val) : String(val);
+    var valColor = '#ccc';
+    if (key === 'total_won' && val > 0) valColor = '#27ae60';
+    if (key === 'won_pattern' && val) valColor = '#f39c12';
+    if (key === 'bonus' && val && val !== '[]') valColor = '#9b59b6';
+
+    // Skip bingo visual keys already rendered above
+    if (isBingo && round.card_numbers && bingoVisualKeys.indexOf(key) >= 0) return;
+
+    if (key === 'icons' && isSlot && typeof val === 'string' && val.length > 0) {
+      var iconIds = val.split(',').filter(function(s) { return s.trim() !== ''; });
+      html += '<div style="padding:5px 0;border-bottom:1px solid #2a2a4e;font-size:11px;">';
+      html += '<div style="color:#888;margin-bottom:4px;">' + key + '</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(' + colCount + ',40px);gap:3px;justify-content:center;background:#2a2a4e;border-radius:6px;padding:6px;">';
+      iconIds.forEach(function(iconId) {
+        html += '<div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:#1a1a2e;border-radius:4px;border:1px solid #444;">';
+        html += '<img src="/static/machine/' + machineName + '/icon/i' + iconId.trim() + '.png" style="width:32px;height:32px;object-fit:contain;" onerror="this.outerHTML=\'<span style=color:#fff;font-size:12px>i' + iconId.trim() + '</span>\'">';
+        html += '</div>';
+      });
+      html += '</div></div>';
+    } else if (key === 'won_pattern' && isSlot && typeof val === 'string' && val.length > 0) {
+      html += '<div style="padding:5px 0;border-bottom:1px solid #2a2a4e;font-size:11px;">';
+      html += '<div style="color:#888;margin-bottom:4px;">' + key + '</div>';
+      var segments = val.split(';').filter(function(s) { return s.trim() !== ''; });
+      segments.forEach(function(seg) {
+        seg = seg.trim().replace(/^\[/, '').replace(/\]$/, '');
+        var parts = seg.split(',');
+        var lineName = parts[0] || '';
+        var iconStr = parts.slice(1).join(',');
+        var icons = []; var regex = /i-?\d+/g; var m;
+        while ((m = regex.exec(iconStr)) !== null) { icons.push(m[0]); }
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;background:#2a2a4e;border-radius:4px;padding:4px 8px;">';
+        html += '<span style="color:#f39c12;font-weight:600;font-size:10px;min-width:24px;">' + lineName + '</span>';
+        html += '<div style="display:flex;gap:2px;align-items:center;">';
+        icons.forEach(function(ic) {
+          if (ic.indexOf('-') >= 0) { html += '<div style="width:24px;height:24px;border:1px dashed #666;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px;color:#666;">?</div>'; }
+          else { html += '<img src="/static/machine/' + machineName + '/icon/' + ic + '.png" style="width:24px;height:24px;object-fit:contain;border-radius:2px;background:#1a1a2e;" onerror="this.outerHTML=\'<span style=color:#aaa;font-size:8px>' + ic + '</span>\'">'; }
+        });
+        html += '</div></div>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div style="padding:5px 0;border-bottom:1px solid #2a2a4e;display:flex;gap:8px;font-size:11px;">';
+      html += '<span style="color:#888;min-width:120px;flex-shrink:0;">' + key + '</span>';
+      html += '<span style="color:' + valColor + ';word-break:break-all;">' + valStr + '</span>';
+      html += '</div>';
+    }
+  });
+
+  html += '<div style="margin-top:12px;text-align:center;">';
+  html += '<button onclick="document.getElementById(\'playHistoryDetailModal\').remove()" style="background:#4a90d9;color:#fff;border:none;border-radius:4px;padding:8px 24px;cursor:pointer;font-size:12px;">Close</button>';
+  html += '</div></div>';
+  overlay.innerHTML = html;
+  document.body.appendChild(overlay);
+}
+
+function playHistoryBingoVisual(round, cw, ch, npc, maxCards) {
+  var cardNums = round.card_numbers || [];
+  var balls = round.ball_numbers || [];
+  var ebBalls = round.ball_eb_numbers || [];
+  // Parse if string (server may return JSON strings)
+  if (typeof cardNums === 'string') { try { cardNums = JSON.parse(cardNums); } catch(e) { cardNums = []; } }
+  if (typeof balls === 'string') { try { balls = JSON.parse(balls); } catch(e) { balls = []; } }
+  if (typeof ebBalls === 'string') { try { ebBalls = JSON.parse(ebBalls); } catch(e) { ebBalls = []; } }
+  if (!Array.isArray(cardNums)) cardNums = [];
+  if (!Array.isArray(balls)) balls = [];
+  if (!Array.isArray(ebBalls)) ebBalls = [];
+  var allBalls = balls.concat(ebBalls);
+  var wonPat = round.won_pattern || '';
+  var totalCards = Math.min(Math.ceil(cardNums.length / npc), maxCards);
+  var patterns = [];
+  if (_playCurrentMachine && _playCurrentMachine.config) {
+    var mm = (_playCurrentMachine.config.math_model && _playCurrentMachine.config.math_model[0]) || {};
+    patterns = mm.pattern || [];
+  }
+
+  // Parse won_pattern: "C1P13,C2P13" -> [{card:0, patAlias:'P13'}, ...]
+  var wonEntries = [];
+  if (wonPat) {
+    wonPat.split(',').forEach(function(entry) {
+      entry = entry.trim();
+      var cm = entry.match(/C(\d+)(P\d+)/);
+      if (cm) wonEntries.push({ card: parseInt(cm[1]) - 1, alias: cm[2] });
+    });
+  }
+
+  // Find pattern format by alias
+  function getPatternFormat(alias) {
+    for (var i = 0; i < patterns.length; i++) {
+      if (patterns[i].alias === alias) return patterns[i];
+    }
+    return null;
+  }
+
+  var html = '<div style="padding:8px 0;border-bottom:1px solid #2a2a4e;margin-bottom:8px;">';
+  // Cards
+  html += '<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:8px;">';
+  for (var c = 0; c < totalCards; c++) {
+    // Find won pattern positions for this card
+    var wonPositions = {};
+    wonEntries.forEach(function(we) {
+      if (we.card === c) {
+        var pat = getPatternFormat(we.alias);
+        if (pat && pat.format) {
+          for (var i = 0; i < pat.format.length; i++) {
+            if (pat.format[i] === '1') wonPositions[i] = true;
+          }
+        }
+      }
+    });
+
+    html += '<div style="text-align:center;">';
+    html += '<div style="font-size:9px;color:#888;margin-bottom:2px;">Card ' + (c + 1) + '</div>';
+    html += '<table style="border-collapse:collapse;">';
+    for (var row = 0; row < ch; row++) {
+      html += '<tr>';
+      for (var col = 0; col < cw; col++) {
+        var idx = c * npc + row * cw + col;
+        var num = idx < cardNums.length ? cardNums[idx] : 0;
+        var isFree = (num === 0);
+        var isHit = !isFree && allBalls.indexOf(num) >= 0;
+        var isEbHit = !isFree && ebBalls.indexOf(num) >= 0;
+        var isWon = wonPositions[row * cw + col] === true;
+        var bg = isFree ? '#333' : (isEbHit ? '#5a1a1a' : (isHit ? '#222' : '#f0f0f0'));
+        var color = isFree ? '#fff' : (isHit ? '#fff' : '#333');
+        var border = isWon ? '2px solid #e74c3c' : '1px solid #444';
+        var textDeco = isWon && isHit ? 'line-through' : '';
+        html += '<td style="width:24px;height:24px;border:' + border + ';text-align:center;font-size:9px;font-weight:700;background:' + bg + ';color:' + color + ';text-decoration:' + textDeco + ';">';
+        html += isFree ? '★' : (num < 10 ? '0' + num : num);
+        html += '</td>';
+      }
+      html += '</tr>';
+    }
+    html += '</table></div>';
+  }
+  html += '</div>';
+
+  // Balls (base)
+  html += '<div style="margin-bottom:8px;"><div style="font-size:9px;color:#888;margin-bottom:4px;">Balls (' + balls.length + ')</div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:3px;">';
+  balls.forEach(function(b) {
+    html += '<div style="width:22px;height:22px;border-radius:50%;background:#4a90d9;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;">' + b + '</div>';
+  });
+  html += '</div></div>';
+
+  // EB Balls
+  if (ebBalls.length > 0) {
+    html += '<div style="margin-bottom:8px;"><div style="font-size:9px;color:#888;margin-bottom:4px;">Extra Balls (' + ebBalls.length + ')</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:3px;">';
+    ebBalls.forEach(function(b) {
+      html += '<div style="width:22px;height:22px;border-radius:50%;background:#e74c3c;border:2px solid #fff;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;">' + b + '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  // Won pattern display
+  if (wonEntries.length > 0) {
+    html += '<div><div style="font-size:9px;color:#888;margin-bottom:4px;">Won Pattern</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+    wonEntries.forEach(function(we) {
+      var pat = getPatternFormat(we.alias);
+      html += '<div style="text-align:center;">';
+      html += '<div style="font-size:8px;color:#f39c12;margin-bottom:2px;">C' + (we.card + 1) + ' ' + we.alias + '</div>';
+      if (pat && pat.format) {
+        html += '<div style="display:grid;grid-template-columns:repeat(' + cw + ',10px);gap:1px;">';
+        for (var i = 0; i < pat.format.length; i++) {
+          var on = pat.format[i] === '1';
+          html += '<div style="width:10px;height:10px;background:' + (on ? '#e74c3c' : '#2a2a4e') + ';border-radius:1px;"></div>';
+        }
+        html += '</div>';
+      }
+      if (pat) html += '<div style="font-size:7px;color:#aaa;margin-top:1px;">x' + pat.value + '</div>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+  html += '</div>';
+  return html;
 }
 
 /**
