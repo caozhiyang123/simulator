@@ -263,6 +263,15 @@
         "enabled": true,
         "type": "bingo",
         "choose_quantity": true
+      },
+      {
+        "name": "MatrizCopa2026Nova",
+        "config_file": "MatrizCopa2026Nova.json",
+        "machine_id": 2026,
+        "connection_url": "ws://localhost:9090/halloween?authorization=y7EI57P++ympTtziQ2NDhU8oFsWOLto1rabo8FJ+hKc=&reconnect=false",
+        "enabled": true,
+        "type": "slot",
+        "choose_quantity": true
       }
     ]
   }
