@@ -81,8 +81,10 @@ function matrizCopaRebuildLineNumbers(lineDir) {
 }
 
 /**
- * Show loading animation: background zooms from far to near,
- * then a golden ball rolls to the center.
+ * Show loading animation:
+ * 1. Background zooms from far to near
+ * 2. loading1.jpg slides from right to center with zoom effect
+ * 3. Golden ball rolls from left to center, growing from small to 2x size
  */
 function matrizCopaShowLoadingAnim(onComplete) {
   var gameArea = document.getElementById('playGameArea');
@@ -94,32 +96,53 @@ function matrizCopaShowLoadingAnim(onComplete) {
 
   overlay.innerHTML =
     '<img id="mcLoadBg" src="/static/machine/MatrizCopa2026Nova/item/loading.PNG" style="position:absolute;width:100%;height:100%;object-fit:cover;transform:scale(1.5);opacity:0;transition:transform 2s ease-out, opacity 0.5s ease-in;">' +
-    '<img id="mcLoadBall" src="/static/machine/MatrizCopa2026Nova/item/golden_ball.png" style="position:absolute;width:80px;height:80px;object-fit:contain;left:-100px;top:calc(50% - 40px);opacity:0;transition:none;">';
+    '<img id="mcLoadScene" src="/static/machine/MatrizCopa2026Nova/item/loading1.png" style="position:absolute;width:80%;max-width:500px;height:auto;object-fit:contain;right:-600px;top:50%;transform:translateY(-50%) scale(1.5);opacity:0;transition:right 1.2s ease-out, transform 1.2s ease-out, opacity 0.3s;">' +
+    '<img id="mcLoadBall" src="/static/machine/MatrizCopa2026Nova/item/golden_ball.png" style="position:absolute;width:40px;height:40px;object-fit:contain;left:-60px;top:calc(50% - 20px);opacity:0;transition:none;">' +
+    '<div id="mcLoadText" style="position:absolute;left:50%;bottom:-60px;transform:translateX(-50%);opacity:0;transition:bottom 1s ease-out, opacity 0.5s;font-size:42px;font-weight:900;font-style:italic;color:transparent;background:linear-gradient(180deg,#ffd700,#ff8c00,#ffd700);-webkit-background-clip:text;background-clip:text;text-shadow:0 0 10px rgba(255,215,0,0.5);letter-spacing:4px;font-family:Arial Black,sans-serif;">2026</div>';
 
   gameArea.style.position = 'relative';
   gameArea.appendChild(overlay);
 
-  // Phase 1: Background zoom in (far to near)
+  // Phase 1: Background zoom in (0s)
   setTimeout(function() {
     var bg = document.getElementById('mcLoadBg');
-    if (bg) {
-      bg.style.opacity = '1';
-      bg.style.transform = 'scale(1)';
-    }
+    if (bg) { bg.style.opacity = '1'; bg.style.transform = 'scale(1)'; }
   }, 50);
 
-  // Phase 2: Ball rolls in from left to center (after 1.5s)
+  // Phase 2: Scene image slides from right to center, zooms near (1.5s)
+  setTimeout(function() {
+    var scene = document.getElementById('mcLoadScene');
+    if (scene) {
+      scene.style.opacity = '1';
+      scene.style.right = '10%';
+      scene.style.transform = 'translateY(-50%) scale(0.5)';
+    }
+  }, 1500);
+
+  // Phase 3: Ball rolls in, growing from 40px to 80px (4s)
   setTimeout(function() {
     var ball = document.getElementById('mcLoadBall');
     if (ball) {
       ball.style.opacity = '1';
-      ball.style.transition = 'left 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 1.2s linear';
+      ball.style.transition = 'left 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 1.5s ease-out, width 1.5s ease-out, height 1.5s ease-out, top 1.5s ease-out';
       ball.style.left = 'calc(50% - 40px)';
+      ball.style.top = 'calc(50% - 40px)';
+      ball.style.width = '80px';
+      ball.style.height = '80px';
       ball.style.transform = 'rotate(720deg)';
     }
-  }, 1500);
+  }, 4000);
 
-  // Phase 3: Fade out and remove (after 3.2s)
+  // Phase 4: "2026" text rises from bottom to below the ball (5.2s)
+  setTimeout(function() {
+    var text = document.getElementById('mcLoadText');
+    if (text) {
+      text.style.opacity = '1';
+      text.style.bottom = 'calc(50% - 80px)';
+    }
+  }, 5200);
+
+  // Phase 5: Fade out and remove (7s)
   setTimeout(function() {
     var ov = document.getElementById('mcLoadingOverlay');
     if (ov) {
@@ -132,5 +155,5 @@ function matrizCopaShowLoadingAnim(onComplete) {
     } else {
       onComplete();
     }
-  }, 3200);
+  }, 7000);
 }
