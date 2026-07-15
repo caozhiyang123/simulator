@@ -108,9 +108,25 @@ function mcDemoSimulateSpin() {
   var st = _slotState;
   var config = _mcDemoConfig || (_playCurrentMachine && _playCurrentMachine.config);
   var mathModel = (config && config.math_model && config.math_model[0]) || {};
-  var icons = mcDemoGenerateIcons(mathModel);
   var bet = (st.betList[st.betIndex] || 0.01);
   var totalBet = bet * st.activeLines;
+
+  // Get tool overrides
+  var toolOverrides = (typeof slotSpinToolGetOverrides === 'function') ? slotSpinToolGetOverrides() : {};
+  var toolIcons = toolOverrides.icons || [];
+  var toolPatternIds = toolOverrides.targetPatternIds || [];
+
+  var icons;
+  if (toolIcons.length >= st.rowCount * st.colCount) {
+    // Tool provided exact icons — use them directly
+    icons = toolIcons.slice();
+  } else if (toolPatternIds.length > 0) {
+    // Tool wants to hit a specific pattern — generate icons that match it
+    icons = mcDemoGenerateIconsForPattern(mathModel, toolPatternIds[0], st.activeLines);
+  } else {
+    // Normal random
+    icons = mcDemoGenerateIcons(mathModel);
+  }
 
   // Calculate wins
   var winResult = mcDemoCalcWins(icons, mathModel, st.activeLines, bet);
@@ -128,6 +144,76 @@ function mcDemoSimulateSpin() {
   st.reelIcons = icons.slice();
   playLog('<<< [DEMO SPIN] response: ' + JSON.stringify(resp));
   slotHandleSpinResponse(resp);
+}
+
+/**
+ * Generate icons that guarantee hitting a specific pattern on a random active line.
+ * Fills the target line positions with icons matching the pattern format,
+ * and fills remaining positions randomly.
+ */
+function mcDemoGenerateIconsForPattern(mathModel, targetPatId, activeLines) {
+  var patterns = mathModel.pattern || [];
+  var lines = mathModel.lines || [];
+  var lineDir = mathModel.line_direction || [];
+  var reelIcons = mathModel.actual_reel_icons || [];
+  var rowCount = mathModel.row_count || 3;
+  var colCount = mathModel.column_count || 5;
+  var totalPositions = rowCount * colCount;
+  var allIcons = mathModel.icon || [1,2,3,4,5,6,7,8,9,10];
+  var wildIcon = 9;
+
+  // Find a matching pattern by id
+  var targetPat = null;
+  for (var i = 0; i < patterns.length; i++) {
+    if (patterns[i].id === targetPatId) { targetPat = patterns[i]; break; }
+  }
+  if (!targetPat) return mcDemoGenerateIcons(mathModel);
+
+  // Find eligible lines based on pattern type and line_direction
+  var eligibleLines = [];
+  for (var li = 0; li < activeLines && li < lines.length; li++) {
+    var dir = lineDir[li] || 1;
+    if (targetPat.type === 0 || targetPat.type === dir) {
+      eligibleLines.push(li);
+    }
+  }
+  if (eligibleLines.length === 0) return mcDemoGenerateIcons(mathModel);
+
+  // Pick a random eligible line
+  var chosenLineIdx = eligibleLines[Math.floor(Math.random() * eligibleLines.length)];
+  var chosenLine = lines[chosenLineIdx];
+
+  // Parse pattern format tokens
+  var regex = /i-?\d+/g;
+  var tokens = [];
+  var m;
+  while ((m = regex.exec(targetPat.format)) !== null) tokens.push(m[0]);
+
+  // Start with all random icons
+  var icons = [];
+  for (var i = 0; i < totalPositions; i++) {
+    icons.push(allIcons[Math.floor(Math.random() * allIcons.length)]);
+  }
+
+  // Place icons on the chosen line to match the pattern
+  for (var p = 0; p < tokens.length && p < chosenLine.length; p++) {
+    var token = tokens[p];
+    var pos = chosenLine[p];
+    if (token.indexOf('-') >= 0) {
+      // i-N = don't care, keep random (but avoid accidentally matching other patterns)
+      continue;
+    }
+    var reqIcon = parseInt(token.substring(1));
+    if (reqIcon === wildIcon) {
+      // Pattern requires wild icon at this position
+      icons[pos] = wildIcon;
+    } else {
+      // Pattern requires this specific icon (or wild can substitute)
+      icons[pos] = reqIcon;
+    }
+  }
+
+  return icons;
 }
 
 function mcDemoSimulateRoundOver() {
@@ -358,15 +444,15 @@ function matrizCopaShowLoadingAnim(onComplete) {
   overlay.id = 'mcLoadingOverlay';
   overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:9999;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;';
   overlay.innerHTML =
-    '<img id="mcLoadBg" src="/static/machine/MatrizCopa2026Nova/item/loading.PNG" style="position:absolute;width:100%;height:100%;object-fit:cover;transform:scale(1.5);opacity:0;transition:transform 2s ease-out, opacity 0.5s ease-in;">' +
-    '<img id="mcLoadScene" src="/static/machine/MatrizCopa2026Nova/item/loading1.png" style="position:absolute;width:80%;max-width:500px;height:auto;object-fit:contain;right:-600px;top:50%;transform:translateY(-50%) scale(1.5);opacity:0;transition:right 1.2s ease-out, transform 1.2s ease-out, opacity 0.3s;">' +
-    '<img id="mcLoadBall" src="/static/machine/MatrizCopa2026Nova/item/golden_ball.png" style="position:absolute;width:40px;height:40px;object-fit:contain;left:-60px;top:calc(50% - 20px);opacity:0;transition:none;">' +
-    '<div id="mcLoadText" style="position:absolute;left:50%;bottom:-60px;transform:translateX(-50%);opacity:0;transition:bottom 1s ease-out, opacity 0.5s;font-size:42px;font-weight:900;font-style:italic;color:transparent;background:linear-gradient(180deg,#ffd700,#ff8c00,#ffd700);-webkit-background-clip:text;background-clip:text;text-shadow:0 0 10px rgba(255,215,0,0.5);letter-spacing:4px;font-family:Arial Black,sans-serif;">2026</div>';
+    '<img id="mcLoadBg" src="/static/machine/MatrizCopa2026Nova/item/loading.PNG" style="position:absolute;width:100%;height:100%;object-fit:fill;transform:scale(1.5);opacity:0;transition:transform 2s ease-out, opacity 0.5s ease-in;">' +
+    '<img id="mcLoadScene" src="/static/machine/MatrizCopa2026Nova/item/loading1.png" style="position:absolute;width:60%;max-width:400px;height:auto;object-fit:contain;right:-600px;bottom:5%;transform:scale(1.5);opacity:0;transition:right 1.2s ease-out, transform 1.2s ease-out, opacity 0.3s;">' +
+    '<img id="mcLoadBall" src="/static/machine/MatrizCopa2026Nova/item/golden_ball.png" style="position:absolute;width:30px;height:30px;object-fit:contain;left:-60px;bottom:10%;opacity:0;transition:none;">' +
+    '<div id="mcLoadText" style="position:absolute;left:10%;bottom:-60px;opacity:0;transition:bottom 1s ease-out, opacity 0.5s;font-size:36px;font-weight:900;font-style:italic;color:transparent;background:linear-gradient(180deg,#ffd700,#ff8c00,#ffd700);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:2px #000;letter-spacing:4px;font-family:Arial Black,sans-serif;filter:drop-shadow(2px 2px 0 #000) drop-shadow(-1px -1px 0 #000);">2026</div>';
   gameArea.style.position = 'relative';
   gameArea.appendChild(overlay);
   setTimeout(function() { var bg = document.getElementById('mcLoadBg'); if (bg) { bg.style.opacity = '1'; bg.style.transform = 'scale(1)'; } }, 50);
-  setTimeout(function() { var s = document.getElementById('mcLoadScene'); if (s) { s.style.opacity = '1'; s.style.right = '10%'; s.style.transform = 'translateY(-50%) scale(0.5)'; } }, 1500);
-  setTimeout(function() { var b = document.getElementById('mcLoadBall'); if (b) { b.style.opacity = '1'; b.style.transition = 'left 1.5s cubic-bezier(0.25,0.46,0.45,0.94), transform 1.5s ease-out, width 1.5s ease-out, height 1.5s ease-out, top 1.5s ease-out'; b.style.left = 'calc(50% - 40px)'; b.style.top = 'calc(50% - 40px)'; b.style.width = '80px'; b.style.height = '80px'; b.style.transform = 'rotate(720deg)'; } }, 4000);
-  setTimeout(function() { var t = document.getElementById('mcLoadText'); if (t) { t.style.opacity = '1'; t.style.bottom = 'calc(50% - 80px)'; } }, 5200);
+  setTimeout(function() { var s = document.getElementById('mcLoadScene'); if (s) { s.style.opacity = '1'; s.style.right = '2%'; s.style.transform = 'scale(0.5)'; } }, 1500);
+  setTimeout(function() { var b = document.getElementById('mcLoadBall'); if (b) { b.style.opacity = '1'; b.style.transition = 'left 1.5s cubic-bezier(0.25,0.46,0.45,0.94), transform 1.5s ease-out, width 1.5s ease-out, height 1.5s ease-out'; b.style.left = '10%'; b.style.width = '60px'; b.style.height = '60px'; b.style.transform = 'rotate(720deg)'; } }, 4000);
+  setTimeout(function() { var t = document.getElementById('mcLoadText'); if (t) { t.style.opacity = '1'; t.style.bottom = '3%'; } }, 5200);
   setTimeout(function() { var ov = document.getElementById('mcLoadingOverlay'); if (ov) { ov.style.transition = 'opacity 0.5s'; ov.style.opacity = '0'; setTimeout(function() { if (ov.parentNode) ov.remove(); onComplete(); }, 500); } else { onComplete(); } }, 7000);
 }
