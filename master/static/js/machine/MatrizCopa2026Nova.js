@@ -93,6 +93,7 @@ function mcDemoSimulateLogin() {
 
   _playSessionToken = resp.session_token;
   _playCurrentMachine = { machine_id: 2026, response: resp, config: config, type: 'slot', name: 'MatrizCopa2026Nova' };
+  playLog('<<< [DEMO LOGIN] response: ' + JSON.stringify(resp));
   playHideLoading();
   document.getElementById('playMachineList').style.display = 'none';
   document.getElementById('playGameArea').style.display = '';
@@ -125,6 +126,7 @@ function mcDemoSimulateSpin() {
   };
 
   st.reelIcons = icons.slice();
+  playLog('<<< [DEMO SPIN] response: ' + JSON.stringify(resp));
   slotHandleSpinResponse(resp);
 }
 
@@ -133,6 +135,7 @@ function mcDemoSimulateRoundOver() {
     cmd: 'finalizajogada', features: [], balance: _mcDemoBalance,
     total_won: 0, currency: 'coins', left_free_spin_amount: 0, game_id: 2026
   };
+  playLog('<<< [DEMO ROUND OVER] response: ' + JSON.stringify(resp));
   slotHandleRoundOverResponse(resp);
 }
 
@@ -219,9 +222,8 @@ function mcDemoCalcWins(icons, mathModel, activeLines, bet) {
     }
     if (bestWin > 0) {
       totalWon += bestWin;
-      // Build won_pattern string: [lN,iXiYiZ...];
-      var iconStr = lineIcons.map(function(ic) { return 'i' + ic; }).join('');
-      wonPatterns.push('[l' + (li + 1) + ',' + iconStr + ']');
+      // Build won_pattern string using the matched pattern format: [lN,pattern_format];
+      wonPatterns.push('[l' + (li + 1) + ',' + bestPatFormat + ']');
     }
   }
 
@@ -233,9 +235,10 @@ function mcDemoCalcWins(icons, mathModel, activeLines, bet) {
 
 /**
  * Match line icons against a pattern format string.
- * Format: "i1i1i1i1i1" — each token iN means icon N must match.
- * i9 = wild (icon 9 matches any icon position).
+ * Format: "i1i1i1i1i1" — each token iN means icon N must be at this position.
+ * i9 in pattern = wild icon 9 must be at this position (only icon 9 matches).
  * i-N = any icon (don't care / wildcard position in pattern).
+ * On the reel: icon 9 (wild) can substitute for any non-wild required icon.
  */
 function mcDemoMatchPattern(lineIcons, format) {
   var regex = /i-?\d+/g;
@@ -244,16 +247,17 @@ function mcDemoMatchPattern(lineIcons, format) {
   while ((m = regex.exec(format)) !== null) tokens.push(m[0]);
   if (tokens.length !== lineIcons.length) return false;
 
-  var wildIcon = 9; // icon 9 is wild in this game
+  var wildIcon = 9; // icon 9 is wild on the reel
   for (var i = 0; i < tokens.length; i++) {
     var token = tokens[i];
     if (token.indexOf('-') >= 0) continue; // i-N = any icon, always matches
     var requiredIcon = parseInt(token.substring(1));
     var actualIcon = lineIcons[i];
-    // Match if: actual equals required, OR actual is wild, OR required is wild icon
-    if (actualIcon !== requiredIcon && actualIcon !== wildIcon && requiredIcon !== wildIcon) {
-      return false;
-    }
+    if (actualIcon === requiredIcon) continue; // exact match
+    // Wild on reel (icon 9) can substitute for a non-wild required icon
+    if (actualIcon === wildIcon && requiredIcon !== wildIcon) continue;
+    // No match
+    return false;
   }
   return true;
 }
