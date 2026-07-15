@@ -137,7 +137,7 @@ function slotRenderUI() {
     html += '<div style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,0.45) 0%,rgba(0,0,0,0.1) 20%,transparent 35%,transparent 65%,rgba(0,0,0,0.1) 80%,rgba(0,0,0,0.45) 100%);z-index:2;"></div>';
     html += '</div>'; // end wrapper
   }
-  html += '<svg id="slotLineSvg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></svg>';
+  html += '<svg id="slotLineSvg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;"></svg>';
   html += '</div>';
 
   // Win display (centered over reels area where coins appear)
@@ -248,6 +248,24 @@ function slotDrawLine(lineIdx) {
   var colW = w / st.colCount;
   var rowH = h / st.rowCount;
   var points = [];
+
+  // Find the line number button to connect the line to it
+  var lineNumEl = document.querySelector('.slot-line-num[data-line="' + lineIdx + '"]');
+  var containerRect = container.getBoundingClientRect();
+
+  // Add starting point from line number (left side) or ending point (right side)
+  if (lineNumEl) {
+    var btnRect = lineNumEl.getBoundingClientRect();
+    var btnCenterX = btnRect.left + btnRect.width / 2 - containerRect.left;
+    var btnCenterY = btnRect.top + btnRect.height / 2 - containerRect.top;
+    var isLeftSide = btnRect.left < containerRect.left;
+    var isRightSide = btnRect.right > containerRect.right;
+    if (isLeftSide || (!isRightSide && btnCenterX < w / 2)) {
+      // Left side: prepend connection point
+      points.push(btnCenterX + ',' + btnCenterY);
+    }
+  }
+
   for (var i = 0; i < line.length; i++) {
     var pos = line[i];
     var col = pos % st.colCount;
@@ -256,10 +274,23 @@ function slotDrawLine(lineIdx) {
     var cy = row * rowH + rowH / 2;
     points.push(cx + ',' + cy);
   }
+
+  // Add ending point to right-side line number
+  if (lineNumEl) {
+    var btnRect2 = lineNumEl.getBoundingClientRect();
+    var btnCenterX2 = btnRect2.left + btnRect2.width / 2 - containerRect.left;
+    var btnCenterY2 = btnRect2.top + btnRect2.height / 2 - containerRect.top;
+    var isRightSide2 = btnRect2.right > containerRect.right;
+    if (isRightSide2 || btnCenterX2 > w / 2) {
+      // Right side: append connection point
+      points.push(btnCenterX2 + ',' + btnCenterY2);
+    }
+  }
+
   var polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
   polyline.setAttribute('points', points.join(' '));
   polyline.setAttribute('fill', 'none');
-  polyline.setAttribute('stroke', SLOT_LINE_COLORS[lineIdx]);
+  polyline.setAttribute('stroke', SLOT_LINE_COLORS[lineIdx] || '#fff');
   polyline.setAttribute('stroke-width', '3');
   polyline.setAttribute('stroke-opacity', '0.8');
   polyline.setAttribute('data-line', lineIdx);
