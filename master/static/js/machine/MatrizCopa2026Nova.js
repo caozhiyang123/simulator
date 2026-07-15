@@ -7,17 +7,19 @@ MachineRegistry.register('MatrizCopa2026Nova', {
   type: 'slot',
 
   afterRender: function(resp, config) {
-    // Extend SLOT_LINE_COLORS to support 30 lines
-    var extraColors = ['#e53935','#1e88e5','#43a047','#fb8c00','#8e24aa','#00acc1','#d81b60','#ff6d00','#26a69a','#c0ca33'];
-    while (SLOT_LINE_COLORS.length < 30) {
-      SLOT_LINE_COLORS.push(extraColors[SLOT_LINE_COLORS.length % extraColors.length]);
-    }
-    // Override line number positions based on line_direction from config
-    var mathModel = (config.math_model && config.math_model[0]) || {};
-    var lineDir = mathModel.line_direction || [];
-    if (lineDir.length > 0) {
-      matrizCopaRebuildLineNumbers(lineDir);
-    }
+    // Show loading animation first
+    matrizCopaShowLoadingAnim(function() {
+      // After animation, set up the game
+      var extraColors = ['#e53935','#1e88e5','#43a047','#fb8c00','#8e24aa','#00acc1','#d81b60','#ff6d00','#26a69a','#c0ca33'];
+      while (SLOT_LINE_COLORS.length < 30) {
+        SLOT_LINE_COLORS.push(extraColors[SLOT_LINE_COLORS.length % extraColors.length]);
+      }
+      var mathModel = (config.math_model && config.math_model[0]) || {};
+      var lineDir = mathModel.line_direction || [];
+      if (lineDir.length > 0) {
+        matrizCopaRebuildLineNumbers(lineDir);
+      }
+    });
   }
 });
 
@@ -76,4 +78,59 @@ function matrizCopaRebuildLineNumbers(lineDir) {
     rightDiv.innerHTML += '<div class="slot-line-num" data-line="' + i + '" onclick="slotToggleLine(' + i + ')" style="width:' + ballSize + 'px;height:' + ballSize + 'px;border-radius:50%;background:url(' + ballImg + ') center/cover no-repeat;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:' + ballSize + 'px;cursor:pointer;opacity:' + opacity + ';text-shadow:0 1px 3px rgba(0,0,0,0.9);">' + (i + 1) + '</div>';
   });
   slotSkin.appendChild(rightDiv);
+}
+
+/**
+ * Show loading animation: background zooms from far to near,
+ * then a golden ball rolls to the center.
+ */
+function matrizCopaShowLoadingAnim(onComplete) {
+  var gameArea = document.getElementById('playGameArea');
+  if (!gameArea) { onComplete(); return; }
+
+  var overlay = document.createElement('div');
+  overlay.id = 'mcLoadingOverlay';
+  overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:9999;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;';
+
+  overlay.innerHTML =
+    '<img id="mcLoadBg" src="/static/machine/MatrizCopa2026Nova/item/loading.PNG" style="position:absolute;width:100%;height:100%;object-fit:cover;transform:scale(1.5);opacity:0;transition:transform 2s ease-out, opacity 0.5s ease-in;">' +
+    '<img id="mcLoadBall" src="/static/machine/MatrizCopa2026Nova/item/golden_ball.png" style="position:absolute;width:80px;height:80px;object-fit:contain;left:-100px;top:calc(50% - 40px);opacity:0;transition:none;">';
+
+  gameArea.style.position = 'relative';
+  gameArea.appendChild(overlay);
+
+  // Phase 1: Background zoom in (far to near)
+  setTimeout(function() {
+    var bg = document.getElementById('mcLoadBg');
+    if (bg) {
+      bg.style.opacity = '1';
+      bg.style.transform = 'scale(1)';
+    }
+  }, 50);
+
+  // Phase 2: Ball rolls in from left to center (after 1.5s)
+  setTimeout(function() {
+    var ball = document.getElementById('mcLoadBall');
+    if (ball) {
+      ball.style.opacity = '1';
+      ball.style.transition = 'left 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 1.2s linear';
+      ball.style.left = 'calc(50% - 40px)';
+      ball.style.transform = 'rotate(720deg)';
+    }
+  }, 1500);
+
+  // Phase 3: Fade out and remove (after 3.2s)
+  setTimeout(function() {
+    var ov = document.getElementById('mcLoadingOverlay');
+    if (ov) {
+      ov.style.transition = 'opacity 0.5s';
+      ov.style.opacity = '0';
+      setTimeout(function() {
+        if (ov.parentNode) ov.remove();
+        onComplete();
+      }, 500);
+    } else {
+      onComplete();
+    }
+  }, 3200);
 }
