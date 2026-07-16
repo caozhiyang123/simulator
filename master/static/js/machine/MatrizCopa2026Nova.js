@@ -146,11 +146,12 @@ function mcDemoSimulateSpin() {
   if (bonusResult) {
     resp.triggered = true;
     resp.opened_closet_content = bonusResult.content;
-    resp.hit_goal = bonusResult.hitGoal;
     resp.copa_bonus = bonusResult.copaBonus;
-    var totalBonusPrize = bonusResult.prize + bonusResult.copaBonus;
-    resp.total_won = parseFloat((resp.total_won + totalBonusPrize).toFixed(2));
-    _mcDemoBalance = parseFloat((_mcDemoBalance + totalBonusPrize).toFixed(2));
+    resp.calculated_goal = bonusResult.calculatedGoal;
+    resp.hit_goal_bonus = bonusResult.hitGoalBonus;
+    // Only copa_bonus counts as win (closet prize is used for goal calculation only)
+    resp.total_won = parseFloat((resp.total_won + bonusResult.copaBonus).toFixed(2));
+    _mcDemoBalance = parseFloat((_mcDemoBalance + bonusResult.copaBonus).toFixed(2));
     resp.balance = _mcDemoBalance;
   }
 
@@ -546,7 +547,7 @@ function mcDemoCheckBonusTrigger(icons, mathModel, bet) {
   for (var i = 0; i < content.length; i++) prize += content[i] * bet;
   prize = parseFloat(prize.toFixed(2));
 
-  // Shooting phase calculation
+  // Shooting phase calculation (放回式 - with replacement, single normalization)
   var timesToShoot = bonusConfig.times_to_shoot || 5;
   var shootWeight = bonusConfig.shoot_weight || [0.5,0.5,0.5,0.5,0.5];
   var goalMultipliers = (bonusConfig.goal || []).slice();
@@ -555,37 +556,41 @@ function mcDemoCheckBonusTrigger(icons, mathModel, bet) {
   // calculated_goal = prize * each goal multiplier
   var calculatedGoal = goalMultipliers.map(function(g) { return parseFloat((prize * g).toFixed(2)); });
 
-  // Simulate shooting: for each shot, pick a goal target, then check if hit
-  var hitGoal = new Array(goalMultipliers.length).fill(0);
-  var availGoalIdx = [];
-  for (var i = 0; i < goalMultipliers.length; i++) availGoalIdx.push(i);
+  // Normalize goal_weight once (with replacement - same weights each shot)
+  var totalGW = 0;
+  for (var i = 0; i < goalWeights.length; i++) totalGW += goalWeights[i];
+  var normalizedGW = goalWeights.map(function(w) { return w / totalGW; });
 
-  for (var shot = 0; shot < timesToShoot && availGoalIdx.length > 0; shot++) {
-    // Normalize goal_weight for available goals
-    var totalGW = 0;
-    for (var i = 0; i < availGoalIdx.length; i++) totalGW += goalWeights[availGoalIdx[i]];
-    var rg = Math.random() * totalGW;
-    var sumG = 0; var targetIdx = 0;
-    for (var i = 0; i < availGoalIdx.length; i++) {
-      sumG += goalWeights[availGoalIdx[i]];
-      if (rg <= sumG) { targetIdx = i; break; }
+  // Simulate shooting: for each shot, pick a goal target, then check if hit
+  // With replacement: same position can be hit multiple times
+  var hitGoal = new Array(goalMultipliers.length).fill(0);
+  var hitGoalBonus = []; // ordered list of prizes for each successful shot
+
+  for (var shot = 0; shot < timesToShoot; shot++) {
+    // Pick target using normalized weights (with replacement)
+    var rg = Math.random();
+    var sumG = 0; var goalPos = 0;
+    for (var i = 0; i < normalizedGW.length; i++) {
+      sumG += normalizedGW[i];
+      if (rg <= sumG) { goalPos = i; break; }
     }
-    var goalPos = availGoalIdx[targetIdx];
 
     // Check if shot hits (compare random with shoot_weight for this shot)
     var sw = (shot < shootWeight.length) ? shootWeight[shot] : 0.5;
     if (Math.random() <= sw) {
-      hitGoal[goalPos] = 1;
-      availGoalIdx.splice(targetIdx, 1); // no replacement
+      hitGoal[goalPos] += 1;
+      hitGoalBonus.push(calculatedGoal[goalPos]);
+    } else {
+      hitGoalBonus.push(0); // miss
     }
   }
 
-  // copa_bonus = sum of calculatedGoal where hitGoal is 1
+  // copa_bonus = sum of all hit prizes
   var copaBonus = 0;
-  for (var i = 0; i < hitGoal.length; i++) { if (hitGoal[i] === 1) copaBonus += calculatedGoal[i]; }
+  for (var i = 0; i < hitGoalBonus.length; i++) { copaBonus += hitGoalBonus[i]; }
   copaBonus = parseFloat(copaBonus.toFixed(2));
 
-  return { content: content, prize: prize, chances: numChances, hitGoal: hitGoal, copaBonus: copaBonus, calculatedGoal: calculatedGoal };
+  return { content: content, prize: prize, chances: numChances, copaBonus: copaBonus, calculatedGoal: calculatedGoal, hitGoalBonus: hitGoalBonus };
 }
 
 /**
@@ -742,7 +747,6 @@ function mcDemoStartShooting() {
   if (!result) { _playBonusPending = false; slotRoundOver(); return; }
 
   var imgBase = '/static/machine/MatrizCopa2026Nova/item/';
-  var hitGoal = result.hitGoal || [];
   var calculatedGoal = result.calculatedGoal || [];
   var timesToShoot = 5;
 
@@ -765,7 +769,7 @@ function mcDemoStartShooting() {
   // Target (moving)
   html += '<img id="mcShootTarget" src="' + imgBase + 'bonus1_step_3_target.PNG" style="position:absolute;width:50px;height:50px;object-fit:contain;top:20%;left:calc(50% - 25px);transition:left 0.3s, top 0.3s;pointer-events:none;">';
   // Goalkeeper
-  html += '<img src="' + imgBase + 'bonus1_step_3_player1.PNG" style="position:absolute;top:48%;left:50%;transform:translateX(-50%);width:80px;height:auto;object-fit:contain;pointer-events:none;">';
+  html += '<img id="mcShootKeeper" src="' + imgBase + 'bonus1_step_3_player1.PNG" style="position:absolute;top:48%;left:50%;transform:translateX(-50%);width:80px;height:auto;object-fit:contain;pointer-events:none;transition:transform 0.3s ease-out;">';
   // Ball (clickable)
   html += '<img id="mcShootBall" src="' + imgBase + 'bonus1_step_3_ball1.PNG" style="position:absolute;bottom:8%;left:50%;transform:translateX(-50%);width:50px;height:50px;object-fit:contain;cursor:pointer;" onclick="mcDemoShootBall()">';
   // Status
@@ -776,11 +780,12 @@ function mcDemoStartShooting() {
   document.body.appendChild(overlay);
 
   window._mcShootState = {
-    hitGoal: hitGoal,
+    hitGoalBonus: result.hitGoalBonus || [],
     calculatedGoal: calculatedGoal,
     shotsFired: 0,
     maxShots: timesToShoot,
     totalHit: 0,
+    runningTotal: 0,
     copaBonus: result.copaBonus,
     targetPos: 0,
     animating: false
@@ -818,10 +823,23 @@ function mcDemoShootBall() {
   state.shotsFired++;
 
   var imgBase = '/static/machine/MatrizCopa2026Nova/item/';
-  var targetPos = state.targetPos;
-  var isHit = state.hitGoal[targetPos] === 1;
+  var shotIdx = state.shotsFired - 1;
+  var shotPrize = state.hitGoalBonus[shotIdx] || 0;
+  var isHit = shotPrize > 0;
 
-  // Animate ball flying to target position (arc)
+  // Determine target position: if hit, find the matching goal spot; if miss, use moving target
+  var targetPos;
+  if (isHit) {
+    // Find goal spot that matches this prize value
+    targetPos = 0;
+    for (var i = 0; i < state.calculatedGoal.length; i++) {
+      if (Math.abs(state.calculatedGoal[i] - shotPrize) < 0.001) { targetPos = i; break; }
+    }
+  } else {
+    targetPos = state.targetPos; // miss goes to current moving target
+  }
+
+  // Animate ball flying to target position
   var ball = document.getElementById('mcShootBall');
   var goalSpot = document.querySelector('.mc-goal-spot[data-idx="' + targetPos + '"]');
   if (!ball || !goalSpot) { state.animating = false; return; }
@@ -851,32 +869,68 @@ function mcDemoShootBall() {
   // After ball arrives
   setTimeout(function() {
     flyBall.remove();
-    if (isHit) {
+    if (isHit && shotPrize > 0) {
       // Mark goal as hit
       var goalImg = document.getElementById('mcGoalImg' + targetPos);
       if (goalImg) goalImg.src = imgBase + 'bonus1_step_3_round2.PNG';
       state.totalHit++;
+      state.runningTotal = parseFloat((state.runningTotal + shotPrize).toFixed(2));
+    } else {
+      // Miss — goalkeeper dives to block
+      // targetPos 0,1,2 = row1 (col 0,1,2), targetPos 3,4,5 = row2 (col 0,1,2)
+      var col = targetPos % 3;
+      var keeper = document.getElementById('mcShootKeeper');
+      if (keeper) {
+        // col 0 (left) = dive left (player2), col 2 (right) = dive right (player3)
+        if (col === 0) {
+          keeper.src = imgBase + 'bonus1_step_3_player2.PNG';
+          keeper.style.transform = 'translateX(-50%)';
+        } else if (col === 2) {
+          keeper.src = imgBase + 'bonus1_step_3_player3.PNG';
+          keeper.style.transform = 'translateX(-50%)';
+        } else {
+          // Middle — random dive direction
+          keeper.src = imgBase + (Math.random() < 0.5 ? 'bonus1_step_3_player2.PNG' : 'bonus1_step_3_player3.PNG');
+          keeper.style.transform = 'translateX(-50%)';
+        }
+        // Reset keeper after a short delay
+        setTimeout(function() {
+          if (keeper) { keeper.src = imgBase + 'bonus1_step_3_player1.PNG'; keeper.style.transform = 'translateX(-50%)'; }
+        }, 600);
+      }
     }
 
-    // Update status
+    // Update status with running total
     var remaining = state.maxShots - state.shotsFired;
     var statusEl = document.getElementById('mcShootStatus');
     if (remaining > 0) {
-      statusEl.textContent = (isHit ? 'GOAL! ' : 'Miss! ') + remaining + ' shot(s) left';
+      var msg = isHit && shotPrize > 0 ? 'GOAL! +' + shotPrize.toFixed(2) + ' | ' : 'Miss! | ';
+      statusEl.innerHTML = msg + 'Total: <span style="color:#ffd700;">' + state.runningTotal.toFixed(2) + '</span> | ' + remaining + ' shot(s) left';
       state.animating = false;
     } else {
       // All shots done
       clearInterval(_mcTargetTimer);
       var target = document.getElementById('mcShootTarget');
       if (target) target.style.display = 'none';
-      statusEl.innerHTML = '<span style="color:#ffd700;font-size:16px;">⚽ Copa Bonus: +' + state.copaBonus.toFixed(2) + '</span>';
-      // Close and finish
+      // Copa bonus celebration animation
+      var shootContainer = document.querySelector('#mcShootOverlay > div');
+      if (shootContainer) {
+        var celebHtml = '<div id="mcCopaCelebration" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:30;animation:jpScale 0.8s ease-out;">';
+        celebHtml += '<div style="font-size:20px;margin-bottom:8px;">⚽🏆⚽</div>';
+        celebHtml += '<div style="color:#ffd700;font-size:24px;font-weight:900;text-shadow:0 0 20px rgba(255,215,0,0.6),0 2px 4px #000;margin-bottom:6px;">COPA BONUS!</div>';
+        celebHtml += '<div style="color:#fff;font-size:36px;font-weight:900;text-shadow:0 0 15px rgba(255,215,0,0.5);">+' + state.copaBonus.toFixed(2) + '</div>';
+        celebHtml += '<div style="color:#aaa;font-size:12px;margin-top:8px;">Goals: ' + state.totalHit + '/' + state.maxShots + '</div>';
+        celebHtml += '</div>';
+        shootContainer.insertAdjacentHTML('beforeend', celebHtml);
+      }
+      statusEl.innerHTML = '';
+      // Close and finish after celebration
       setTimeout(function() {
         var ov = document.getElementById('mcShootOverlay');
         if (ov) { ov.style.transition = 'opacity 0.5s'; ov.style.opacity = '0'; setTimeout(function() { ov.remove(); }, 500); }
         _playBonusPending = false;
         slotRoundOver();
-      }, 2500);
+      }, 3000);
     }
   }, 700);
 }
