@@ -754,10 +754,10 @@ function mcDemoStartShooting() {
   overlay.id = 'mcShootOverlay';
   overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);';
 
-  var html = '<div style="position:relative;width:500px;max-width:95vw;height:400px;border-radius:12px;overflow:hidden;">';
+  var html = '<div style="position:relative;width:750px;max-width:95vw;height:400px;border-radius:12px;overflow:hidden;">';
   html += '<img src="' + imgBase + 'bonus1_step_3_background.jpg" style="position:absolute;width:100%;height:100%;object-fit:fill;">';
   // Goal targets (2x3 grid)
-  html += '<div id="mcGoalGrid" style="position:absolute;top:15%;left:50%;transform:translateX(-50%);display:grid;grid-template-columns:repeat(3,70px);grid-template-rows:repeat(2,70px);gap:8px;">';
+  html += '<div id="mcGoalGrid" style="position:absolute;top:8%;left:50%;transform:translateX(-50%);display:grid;grid-template-columns:repeat(3,45px);grid-template-rows:repeat(2,45px);column-gap:120px;row-gap:50px;">';
   for (var i = 0; i < 6; i++) {
     var goalVal = calculatedGoal[i] !== undefined ? calculatedGoal[i].toFixed(2) : '0';
     html += '<div class="mc-goal-spot" data-idx="' + i + '" style="position:relative;display:flex;align-items:center;justify-content:center;">';
@@ -769,7 +769,7 @@ function mcDemoStartShooting() {
   // Target (moving)
   html += '<img id="mcShootTarget" src="' + imgBase + 'bonus1_step_3_target.PNG" style="position:absolute;width:50px;height:50px;object-fit:contain;top:20%;left:calc(50% - 25px);transition:left 0.3s, top 0.3s;pointer-events:none;">';
   // Goalkeeper
-  html += '<img id="mcShootKeeper" src="' + imgBase + 'bonus1_step_3_player1.PNG" style="position:absolute;top:48%;left:50%;transform:translateX(-50%);width:80px;height:auto;object-fit:contain;pointer-events:none;transition:transform 0.3s ease-out;">';
+  html += '<img id="mcShootKeeper" src="' + imgBase + 'bonus1_step_3_player1.PNG" style="position:absolute;bottom:50%;left:50%;transform:translateX(-50%);width:120px;height:120px;object-fit:contain;pointer-events:none;transition:transform 0.3s ease-out;">';
   // Ball (clickable)
   html += '<img id="mcShootBall" src="' + imgBase + 'bonus1_step_3_ball1.PNG" style="position:absolute;bottom:8%;left:50%;transform:translateX(-50%);width:50px;height:50px;object-fit:contain;cursor:pointer;" onclick="mcDemoShootBall()">';
   // Status
@@ -798,12 +798,12 @@ function mcDemoStartShooting() {
 var _mcTargetTimer = null;
 function mcDemoMoveTarget() {
   var positions = [
-    { top: '18%', left: 'calc(50% - 105px - 25px)' },
-    { top: '18%', left: 'calc(50% - 25px)' },
-    { top: '18%', left: 'calc(50% + 55px)' },
-    { top: '28%', left: 'calc(50% - 105px - 25px)' },
+    { top: '10%', left: 'calc(50% - 185px)' },
+    { top: '10%', left: 'calc(50% - 25px)' },
+    { top: '10%', left: 'calc(50% + 135px)' },
+    { top: '28%', left: 'calc(50% - 185px)' },
     { top: '28%', left: 'calc(50% - 25px)' },
-    { top: '28%', left: 'calc(50% + 55px)' }
+    { top: '28%', left: 'calc(50% + 135px)' }
   ];
   var idx = 0;
   _mcTargetTimer = setInterval(function() {
@@ -884,14 +884,19 @@ function mcDemoShootBall() {
         // col 0 (left) = dive left (player2), col 2 (right) = dive right (player3)
         if (col === 0) {
           keeper.src = imgBase + 'bonus1_step_3_player2.PNG';
-          keeper.style.transform = 'translateX(-50%)';
+          keeper.style.transform = 'translateX(-50%) translateX(-120px)';
         } else if (col === 2) {
           keeper.src = imgBase + 'bonus1_step_3_player3.PNG';
-          keeper.style.transform = 'translateX(-50%)';
+          keeper.style.transform = 'translateX(-50%) translateX(120px)';
         } else {
           // Middle — random dive direction
-          keeper.src = imgBase + (Math.random() < 0.5 ? 'bonus1_step_3_player2.PNG' : 'bonus1_step_3_player3.PNG');
-          keeper.style.transform = 'translateX(-50%)';
+          if (Math.random() < 0.5) {
+            keeper.src = imgBase + 'bonus1_step_3_player2.PNG';
+            keeper.style.transform = 'translateX(-50%) translateX(-60px)';
+          } else {
+            keeper.src = imgBase + 'bonus1_step_3_player3.PNG';
+            keeper.style.transform = 'translateX(-50%) translateX(60px)';
+          }
         }
         // Reset keeper after a short delay
         setTimeout(function() {
