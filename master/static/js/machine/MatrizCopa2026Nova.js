@@ -146,8 +146,11 @@ function mcDemoSimulateSpin() {
   if (bonusResult) {
     resp.triggered = true;
     resp.opened_closet_content = bonusResult.content;
-    resp.total_won = parseFloat((resp.total_won + bonusResult.prize).toFixed(2));
-    _mcDemoBalance = parseFloat((_mcDemoBalance + bonusResult.prize).toFixed(2));
+    resp.hit_goal = bonusResult.hitGoal;
+    resp.copa_bonus = bonusResult.copaBonus;
+    var totalBonusPrize = bonusResult.prize + bonusResult.copaBonus;
+    resp.total_won = parseFloat((resp.total_won + totalBonusPrize).toFixed(2));
+    _mcDemoBalance = parseFloat((_mcDemoBalance + totalBonusPrize).toFixed(2));
     resp.balance = _mcDemoBalance;
   }
 
@@ -158,6 +161,7 @@ function mcDemoSimulateSpin() {
   // Show bonus animation after reels stop if triggered
   if (bonusResult) {
     _playBonusPending = true;
+    window._mcBonusResult = bonusResult;
     setTimeout(function() { mcDemoShowClosetBonus(bonusResult.content, bonusResult.prize, bet); }, 3800);
   }
 }
@@ -461,13 +465,14 @@ function matrizCopaShowLoadingAnim(onComplete) {
   overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:9999;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;';
   overlay.innerHTML =
     '<img id="mcLoadBg" src="/static/machine/MatrizCopa2026Nova/item/loading.PNG" style="position:absolute;width:100%;height:100%;object-fit:fill;transform:scale(1.5);opacity:0;transition:transform 2s ease-out, opacity 0.5s ease-in;">' +
+    '<img id="mcLoadScene2" src="/static/machine/MatrizCopa2026Nova/item/loading2.png" style="position:absolute;width:60%;max-width:400px;height:auto;object-fit:contain;right:-600px;bottom:5%;transform:scale(3);opacity:0;transition:right 1.2s ease-out, transform 1.2s ease-out, opacity 0.3s;">' +
     '<img id="mcLoadScene" src="/static/machine/MatrizCopa2026Nova/item/loading1.png" style="position:absolute;width:60%;max-width:400px;height:auto;object-fit:contain;right:-600px;bottom:5%;transform:scale(1.5);opacity:0;transition:right 1.2s ease-out, transform 1.2s ease-out, opacity 0.3s;">' +
     '<img id="mcLoadBall" src="/static/machine/MatrizCopa2026Nova/item/golden_ball.png" style="position:absolute;width:30px;height:30px;object-fit:contain;left:-60px;bottom:10%;opacity:0;transition:none;">' +
     '<div id="mcLoadText" style="position:absolute;left:10%;bottom:-60px;opacity:0;transition:bottom 1s ease-out, opacity 0.5s;font-size:36px;font-weight:900;font-style:italic;color:transparent;background:linear-gradient(180deg,#ffd700,#ff8c00,#ffd700);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:2px #000;letter-spacing:4px;font-family:Arial Black,sans-serif;filter:drop-shadow(2px 2px 0 #000) drop-shadow(-1px -1px 0 #000);">2026</div>';
   gameArea.style.position = 'relative';
   gameArea.appendChild(overlay);
   setTimeout(function() { var bg = document.getElementById('mcLoadBg'); if (bg) { bg.style.opacity = '1'; bg.style.transform = 'scale(1)'; } }, 50);
-  setTimeout(function() { var s = document.getElementById('mcLoadScene'); if (s) { s.style.opacity = '1'; s.style.right = '2%'; s.style.transform = 'scale(0.5)'; } }, 1500);
+  setTimeout(function() { var s2 = document.getElementById('mcLoadScene2'); if (s2) { s2.style.opacity = '1'; s2.style.right = '2%'; s2.style.transform = 'scale(1)'; } var s = document.getElementById('mcLoadScene'); if (s) { s.style.opacity = '1'; s.style.right = '2%'; s.style.transform = 'scale(0.5)'; } }, 1500);
   setTimeout(function() { var b = document.getElementById('mcLoadBall'); if (b) { b.style.opacity = '1'; b.style.transition = 'left 1.5s cubic-bezier(0.25,0.46,0.45,0.94), transform 1.5s ease-out, width 1.5s ease-out, height 1.5s ease-out'; b.style.left = '10%'; b.style.width = '60px'; b.style.height = '60px'; b.style.transform = 'rotate(720deg)'; } }, 4000);
   setTimeout(function() { var t = document.getElementById('mcLoadText'); if (t) { t.style.opacity = '1'; t.style.bottom = '3%'; } }, 5200);
   setTimeout(function() { var ov = document.getElementById('mcLoadingOverlay'); if (ov) { ov.style.transition = 'opacity 0.5s'; ov.style.opacity = '0'; setTimeout(function() { if (ov.parentNode) ov.remove(); onComplete(); }, 500); } else { onComplete(); } }, 7000);
@@ -539,8 +544,48 @@ function mcDemoCheckBonusTrigger(icons, mathModel, bet) {
 
   var prize = 0;
   for (var i = 0; i < content.length; i++) prize += content[i] * bet;
+  prize = parseFloat(prize.toFixed(2));
 
-  return { content: content, prize: parseFloat(prize.toFixed(2)), chances: numChances };
+  // Shooting phase calculation
+  var timesToShoot = bonusConfig.times_to_shoot || 5;
+  var shootWeight = bonusConfig.shoot_weight || [0.5,0.5,0.5,0.5,0.5];
+  var goalMultipliers = (bonusConfig.goal || []).slice();
+  var goalWeights = (bonusConfig.goal_weight || []).slice();
+
+  // calculated_goal = prize * each goal multiplier
+  var calculatedGoal = goalMultipliers.map(function(g) { return parseFloat((prize * g).toFixed(2)); });
+
+  // Simulate shooting: for each shot, pick a goal target, then check if hit
+  var hitGoal = new Array(goalMultipliers.length).fill(0);
+  var availGoalIdx = [];
+  for (var i = 0; i < goalMultipliers.length; i++) availGoalIdx.push(i);
+
+  for (var shot = 0; shot < timesToShoot && availGoalIdx.length > 0; shot++) {
+    // Normalize goal_weight for available goals
+    var totalGW = 0;
+    for (var i = 0; i < availGoalIdx.length; i++) totalGW += goalWeights[availGoalIdx[i]];
+    var rg = Math.random() * totalGW;
+    var sumG = 0; var targetIdx = 0;
+    for (var i = 0; i < availGoalIdx.length; i++) {
+      sumG += goalWeights[availGoalIdx[i]];
+      if (rg <= sumG) { targetIdx = i; break; }
+    }
+    var goalPos = availGoalIdx[targetIdx];
+
+    // Check if shot hits (compare random with shoot_weight for this shot)
+    var sw = (shot < shootWeight.length) ? shootWeight[shot] : 0.5;
+    if (Math.random() <= sw) {
+      hitGoal[goalPos] = 1;
+      availGoalIdx.splice(targetIdx, 1); // no replacement
+    }
+  }
+
+  // copa_bonus = sum of calculatedGoal where hitGoal is 1
+  var copaBonus = 0;
+  for (var i = 0; i < hitGoal.length; i++) { if (hitGoal[i] === 1) copaBonus += calculatedGoal[i]; }
+  copaBonus = parseFloat(copaBonus.toFixed(2));
+
+  return { content: content, prize: prize, chances: numChances, hitGoal: hitGoal, copaBonus: copaBonus, calculatedGoal: calculatedGoal };
 }
 
 /**
@@ -656,9 +701,182 @@ function mcDemoRevealCloset(idx) {
     setTimeout(function() {
       var ov = document.getElementById('mcClosetBonusOverlay');
       if (ov) { ov.style.transition = 'opacity 0.5s'; ov.style.opacity = '0'; setTimeout(function() { ov.remove(); }, 500); }
-      // Bonus complete — allow round over
-      _playBonusPending = false;
-      slotRoundOver();
-    }, 2500);
+      // Start shooting phase transition
+      setTimeout(function() { mcDemoStartShootingTransition(); }, 600);
+    }, 2000);
   }
+}
+
+// ===========================================================================
+// Shooting Phase — Transition & Animation
+// ===========================================================================
+
+function mcDemoStartShootingTransition() {
+  var imgBase = '/static/machine/MatrizCopa2026Nova/item/';
+  var overlay = document.createElement('div');
+  overlay.id = 'mcShootTransOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);overflow:hidden;';
+  // bonus1_step_2.PNG zoom from far to near
+  overlay.innerHTML = '<div style="position:relative;width:500px;max-width:90vw;height:360px;border-radius:12px;overflow:hidden;"><img id="mcTransImg" src="' + imgBase + 'bonus1_step_2.PNG" style="width:100%;height:100%;object-fit:fill;transform:scale(0.5);opacity:0;transition:transform 2s ease-out, opacity 0.3s;"></div>';
+  document.body.appendChild(overlay);
+
+  // Phase 1: bonus1_step_2 zoom in
+  setTimeout(function() { var img = document.getElementById('mcTransImg'); if (img) { img.style.opacity = '1'; img.style.transform = 'scale(1)'; } }, 50);
+
+  // Phase 2: transition to loading.PNG (2s later)
+  setTimeout(function() {
+    var img = document.getElementById('mcTransImg');
+    if (img) { img.src = imgBase + 'loading.PNG'; }
+  }, 2000);
+
+  // Phase 3: start shooting (3s total transition)
+  setTimeout(function() {
+    var ov = document.getElementById('mcShootTransOverlay');
+    if (ov) ov.remove();
+    mcDemoStartShooting();
+  }, 3000);
+}
+
+function mcDemoStartShooting() {
+  var result = window._mcBonusResult;
+  if (!result) { _playBonusPending = false; slotRoundOver(); return; }
+
+  var imgBase = '/static/machine/MatrizCopa2026Nova/item/';
+  var hitGoal = result.hitGoal || [];
+  var calculatedGoal = result.calculatedGoal || [];
+  var timesToShoot = 5;
+
+  var overlay = document.createElement('div');
+  overlay.id = 'mcShootOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);';
+
+  var html = '<div style="position:relative;width:500px;max-width:95vw;height:400px;border-radius:12px;overflow:hidden;">';
+  html += '<img src="' + imgBase + 'bonus1_step_3_background.jpg" style="position:absolute;width:100%;height:100%;object-fit:fill;">';
+  // Goal targets (2x3 grid)
+  html += '<div id="mcGoalGrid" style="position:absolute;top:15%;left:50%;transform:translateX(-50%);display:grid;grid-template-columns:repeat(3,70px);grid-template-rows:repeat(2,70px);gap:8px;">';
+  for (var i = 0; i < 6; i++) {
+    var goalVal = calculatedGoal[i] !== undefined ? calculatedGoal[i].toFixed(2) : '0';
+    html += '<div class="mc-goal-spot" data-idx="' + i + '" style="position:relative;display:flex;align-items:center;justify-content:center;">';
+    html += '<img src="' + imgBase + 'bonus1_step_3_round1.PNG" style="width:100%;height:100%;object-fit:contain;" id="mcGoalImg' + i + '">';
+    html += '<div style="position:absolute;top:2px;font-size:9px;color:#fff;font-weight:700;text-shadow:0 1px 2px #000;">' + goalVal + '</div>';
+    html += '</div>';
+  }
+  html += '</div>';
+  // Target (moving)
+  html += '<img id="mcShootTarget" src="' + imgBase + 'bonus1_step_3_target.PNG" style="position:absolute;width:50px;height:50px;object-fit:contain;top:20%;left:calc(50% - 25px);transition:left 0.3s, top 0.3s;pointer-events:none;">';
+  // Goalkeeper
+  html += '<img src="' + imgBase + 'bonus1_step_3_player1.PNG" style="position:absolute;top:48%;left:50%;transform:translateX(-50%);width:80px;height:auto;object-fit:contain;pointer-events:none;">';
+  // Ball (clickable)
+  html += '<img id="mcShootBall" src="' + imgBase + 'bonus1_step_3_ball1.PNG" style="position:absolute;bottom:8%;left:50%;transform:translateX(-50%);width:50px;height:50px;object-fit:contain;cursor:pointer;" onclick="mcDemoShootBall()">';
+  // Status
+  html += '<div id="mcShootStatus" style="position:absolute;bottom:2%;left:50%;transform:translateX(-50%);color:#fff;font-size:12px;font-weight:600;text-shadow:0 1px 3px #000;">Tap the ball to shoot! (5 shots)</div>';
+  html += '</div>';
+
+  overlay.innerHTML = html;
+  document.body.appendChild(overlay);
+
+  window._mcShootState = {
+    hitGoal: hitGoal,
+    calculatedGoal: calculatedGoal,
+    shotsFired: 0,
+    maxShots: timesToShoot,
+    totalHit: 0,
+    copaBonus: result.copaBonus,
+    targetPos: 0,
+    animating: false
+  };
+
+  // Start target movement animation
+  mcDemoMoveTarget();
+}
+
+var _mcTargetTimer = null;
+function mcDemoMoveTarget() {
+  var positions = [
+    { top: '18%', left: 'calc(50% - 105px - 25px)' },
+    { top: '18%', left: 'calc(50% - 25px)' },
+    { top: '18%', left: 'calc(50% + 55px)' },
+    { top: '28%', left: 'calc(50% - 105px - 25px)' },
+    { top: '28%', left: 'calc(50% - 25px)' },
+    { top: '28%', left: 'calc(50% + 55px)' }
+  ];
+  var idx = 0;
+  _mcTargetTimer = setInterval(function() {
+    var state = window._mcShootState;
+    if (!state) { clearInterval(_mcTargetTimer); return; }
+    idx = (idx + 1) % positions.length;
+    state.targetPos = idx;
+    var target = document.getElementById('mcShootTarget');
+    if (target) { target.style.top = positions[idx].top; target.style.left = positions[idx].left; }
+  }, 400);
+}
+
+function mcDemoShootBall() {
+  var state = window._mcShootState;
+  if (!state || state.animating || state.shotsFired >= state.maxShots) return;
+  state.animating = true;
+  state.shotsFired++;
+
+  var imgBase = '/static/machine/MatrizCopa2026Nova/item/';
+  var targetPos = state.targetPos;
+  var isHit = state.hitGoal[targetPos] === 1;
+
+  // Animate ball flying to target position (arc)
+  var ball = document.getElementById('mcShootBall');
+  var goalSpot = document.querySelector('.mc-goal-spot[data-idx="' + targetPos + '"]');
+  if (!ball || !goalSpot) { state.animating = false; return; }
+
+  var container = document.querySelector('#mcShootOverlay > div');
+  if (!container) { state.animating = false; return; }
+  var containerRect = container.getBoundingClientRect();
+  var ballRect = ball.getBoundingClientRect();
+  var goalRect = goalSpot.getBoundingClientRect();
+
+  var startX = ballRect.left - containerRect.left + ballRect.width / 2;
+  var startY = ballRect.top - containerRect.top + ballRect.height / 2;
+  var endX = goalRect.left - containerRect.left + goalRect.width / 2;
+  var endY = goalRect.top - containerRect.top + goalRect.height / 2;
+
+  // Create flying ball clone
+  var flyBall = document.createElement('img');
+  flyBall.src = imgBase + 'bonus1_step_3_ball1.PNG';
+  flyBall.style.cssText = 'position:absolute;width:40px;height:40px;object-fit:contain;z-index:20;pointer-events:none;left:' + (startX - 20) + 'px;top:' + (startY - 20) + 'px;transition:left 0.6s ease-out, top 0.6s cubic-bezier(0.2,0,0.4,1.5);';
+  container.appendChild(flyBall);
+
+  setTimeout(function() {
+    flyBall.style.left = (endX - 20) + 'px';
+    flyBall.style.top = (endY - 20) + 'px';
+  }, 50);
+
+  // After ball arrives
+  setTimeout(function() {
+    flyBall.remove();
+    if (isHit) {
+      // Mark goal as hit
+      var goalImg = document.getElementById('mcGoalImg' + targetPos);
+      if (goalImg) goalImg.src = imgBase + 'bonus1_step_3_round2.PNG';
+      state.totalHit++;
+    }
+
+    // Update status
+    var remaining = state.maxShots - state.shotsFired;
+    var statusEl = document.getElementById('mcShootStatus');
+    if (remaining > 0) {
+      statusEl.textContent = (isHit ? 'GOAL! ' : 'Miss! ') + remaining + ' shot(s) left';
+      state.animating = false;
+    } else {
+      // All shots done
+      clearInterval(_mcTargetTimer);
+      var target = document.getElementById('mcShootTarget');
+      if (target) target.style.display = 'none';
+      statusEl.innerHTML = '<span style="color:#ffd700;font-size:16px;">⚽ Copa Bonus: +' + state.copaBonus.toFixed(2) + '</span>';
+      // Close and finish
+      setTimeout(function() {
+        var ov = document.getElementById('mcShootOverlay');
+        if (ov) { ov.style.transition = 'opacity 0.5s'; ov.style.opacity = '0'; setTimeout(function() { ov.remove(); }, 500); }
+        _playBonusPending = false;
+        slotRoundOver();
+      }, 2500);
+    }
+  }, 700);
 }
