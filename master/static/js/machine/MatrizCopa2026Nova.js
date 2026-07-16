@@ -585,9 +585,46 @@ function mcDemoShowClosetBonus(contentArray, totalPrize, bet) {
 function mcDemoClickCloset(idx) {
   var state = window._mcClosetState;
   if (!state || state.currentIdx >= state.content.length) return;
+  if (state.animating) return; // prevent clicking during animation
 
   var closetEl = document.querySelector('.mc-closet[data-idx="' + idx + '"]');
   if (!closetEl || closetEl.getAttribute('data-opened') === '1') return;
+
+  state.animating = true;
+
+  // Play 4-frame character animation before opening
+  var imgBase = '/static/machine/MatrizCopa2026Nova/item/';
+  var frames = ['bonus1_step_1_p1.PNG', 'bonus1_step_1_p2.png', 'bonus1_step_1_p3.png', 'bonus1_step_1_p4.PNG'];
+  var charEl = document.getElementById('mcClosetCharAnim');
+  if (!charEl) {
+    charEl = document.createElement('img');
+    charEl.id = 'mcClosetCharAnim';
+    charEl.style.cssText = 'position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:120px;height:auto;object-fit:contain;z-index:10;pointer-events:none;';
+    var bonusContainer = document.querySelector('#mcClosetBonusOverlay > div');
+    if (bonusContainer) { bonusContainer.style.position = 'relative'; bonusContainer.appendChild(charEl); }
+  }
+  charEl.style.display = '';
+
+  var frameIdx = 0;
+  charEl.src = imgBase + frames[0];
+  var frameTimer = setInterval(function() {
+    frameIdx++;
+    if (frameIdx < frames.length) {
+      charEl.src = imgBase + frames[frameIdx];
+    } else {
+      clearInterval(frameTimer);
+      charEl.style.display = 'none';
+      // Now open the closet
+      mcDemoRevealCloset(idx);
+    }
+  }, 200);
+}
+
+function mcDemoRevealCloset(idx) {
+  var state = window._mcClosetState;
+  var closetEl = document.querySelector('.mc-closet[data-idx="' + idx + '"]');
+  if (!closetEl) { state.animating = false; return; }
+
   closetEl.setAttribute('data-opened', '1');
   closetEl.style.cursor = 'default';
 
@@ -595,6 +632,7 @@ function mcDemoClickCloset(idx) {
   var prize = state.content[state.currentIdx];
   state.currentIdx++;
   state.totalRevealed++;
+  state.animating = false;
 
   // Replace closet image with opened version
   var img = document.getElementById('mcClosetImg' + idx);
@@ -611,7 +649,6 @@ function mcDemoClickCloset(idx) {
   var remaining = state.content.length - state.currentIdx;
   var statusEl = document.getElementById('mcClosetStatus');
   if (remaining > 0) {
-    statusEl.textContent = remaining + ' more to open! Prize so far: ' + (state.totalPrize - remaining * state.bet * state.content[state.currentIdx]).toFixed(2);
     statusEl.textContent = 'Tap ' + remaining + ' more closet(s)';
   } else {
     // All opened — show total and close
