@@ -559,10 +559,10 @@ function mcDemoShowClosetBonus(contentArray, totalPrize, bet) {
   // Title
   html += '<div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);color:#ffd700;font-size:16px;font-weight:700;text-shadow:0 2px 4px #000;">⚽ BONUS — Open Closets!</div>';
   // 2x5 closet grid
-  html += '<div id="mcClosetGrid" style="position:absolute;top:50px;left:50%;transform:translateX(-50%);display:grid;grid-template-columns:repeat(5,80px);grid-template-rows:repeat(2,110px);gap:0px;justify-content:center;">';
+  html += '<div id="mcClosetGrid" style="position:absolute;top:70px;left:50%;transform:translateX(-50%);display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(2,110px);gap:0;justify-content:center;width:320px;">';
   for (var i = 0; i < 10; i++) {
-    html += '<div class="mc-closet" data-idx="' + i + '" onclick="mcDemoClickCloset(' + i + ')" style="cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;">';
-    html += '<img src="' + imgBase + 'bonus1_step_closet1.PNG" style="width:100%;height:100%;object-fit:contain;" id="mcClosetImg' + i + '">';
+    html += '<div class="mc-closet" data-idx="' + i + '" onclick="mcDemoClickCloset(' + i + ')" style="cursor:pointer;position:relative;width:100%;height:100%;overflow:hidden;">';
+    html += '<img src="' + imgBase + 'bonus1_step_closet1.PNG" style="width:100%;height:100%;object-fit:fill;display:block;" id="mcClosetImg' + i + '">';
     html += '</div>';
   }
   html += '</div>';
