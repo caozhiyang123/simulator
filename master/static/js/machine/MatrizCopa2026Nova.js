@@ -141,9 +141,25 @@ function mcDemoSimulateSpin() {
     bonus_id: '', currency: 'coins', game_id: 2026
   };
 
+  // Check MatrizaCopaBonusFeature trigger
+  var bonusResult = mcDemoCheckBonusTrigger(icons, mathModel, bet);
+  if (bonusResult) {
+    resp.triggered = true;
+    resp.opened_closet_content = bonusResult.content;
+    resp.total_won = parseFloat((resp.total_won + bonusResult.prize).toFixed(2));
+    _mcDemoBalance = parseFloat((_mcDemoBalance + bonusResult.prize).toFixed(2));
+    resp.balance = _mcDemoBalance;
+  }
+
   st.reelIcons = icons.slice();
   playLog('<<< [DEMO SPIN] response: ' + JSON.stringify(resp));
   slotHandleSpinResponse(resp);
+
+  // Show bonus animation after reels stop if triggered
+  if (bonusResult) {
+    _playBonusPending = true;
+    setTimeout(function() { mcDemoShowClosetBonus(bonusResult.content, bonusResult.prize, bet); }, 3800);
+  }
 }
 
 /**
@@ -455,4 +471,157 @@ function matrizCopaShowLoadingAnim(onComplete) {
   setTimeout(function() { var b = document.getElementById('mcLoadBall'); if (b) { b.style.opacity = '1'; b.style.transition = 'left 1.5s cubic-bezier(0.25,0.46,0.45,0.94), transform 1.5s ease-out, width 1.5s ease-out, height 1.5s ease-out'; b.style.left = '10%'; b.style.width = '60px'; b.style.height = '60px'; b.style.transform = 'rotate(720deg)'; } }, 4000);
   setTimeout(function() { var t = document.getElementById('mcLoadText'); if (t) { t.style.opacity = '1'; t.style.bottom = '3%'; } }, 5200);
   setTimeout(function() { var ov = document.getElementById('mcLoadingOverlay'); if (ov) { ov.style.transition = 'opacity 0.5s'; ov.style.opacity = '0'; setTimeout(function() { if (ov.parentNode) ov.remove(); onComplete(); }, 500); } else { onComplete(); } }, 7000);
+}
+
+// ===========================================================================
+// MatrizaCopaBonusFeature — Closet Bonus
+// ===========================================================================
+
+/**
+ * Check if icons trigger the bonus.
+ * trigger_code: ["i10c5","i10c4","i10c3"] — icon 10, count 5/4/3
+ * chances_to_open_box: [3,2,1] — corresponding chances
+ */
+function mcDemoCheckBonusTrigger(icons, mathModel, bet) {
+  var features = (mathModel.features && mathModel.features.lists) || [];
+  var bonusConfig = null;
+  for (var i = 0; i < features.length; i++) {
+    if (features[i].reference && features[i].reference.indexOf('MatrizaCopaBonusFeature') >= 0) {
+      bonusConfig = features[i].config; break;
+    }
+  }
+  if (!bonusConfig) return null;
+
+  var triggerCodes = bonusConfig.trigger_code || [];
+  var chances = bonusConfig.chances_to_open_box || [];
+  var boxContent = bonusConfig.box_content || [];
+  var boxWeight = bonusConfig.box_content_weight || [];
+
+  // Count icon 10 occurrences
+  var icon10Count = 0;
+  for (var i = 0; i < icons.length; i++) { if (icons[i] === 10) icon10Count++; }
+
+  // Check trigger codes: "i10c5" means icon 10 count >= 5
+  var numChances = 0;
+  for (var i = 0; i < triggerCodes.length; i++) {
+    var match = triggerCodes[i].match(/i(\d+)c(\d+)/);
+    if (match) {
+      var reqIcon = parseInt(match[1]);
+      var reqCount = parseInt(match[2]);
+      if (reqIcon === 10 && icon10Count >= reqCount) {
+        numChances = chances[i] || 0;
+        break; // First match (highest count first)
+      }
+    }
+  }
+
+  if (numChances <= 0) return null;
+
+  // Generate opened_closet_content by weighted random (no replacement)
+  var content = [];
+  var availableIndices = [];
+  for (var i = 0; i < boxContent.length; i++) availableIndices.push(i);
+
+  for (var c = 0; c < numChances && availableIndices.length > 0; c++) {
+    // Normalize weights for available indices
+    var totalW = 0;
+    for (var i = 0; i < availableIndices.length; i++) totalW += boxWeight[availableIndices[i]];
+    var r = Math.random() * totalW;
+    var sum = 0;
+    var picked = 0;
+    for (var i = 0; i < availableIndices.length; i++) {
+      sum += boxWeight[availableIndices[i]];
+      if (r <= sum) { picked = i; break; }
+    }
+    content.push(boxContent[availableIndices[picked]]);
+    availableIndices.splice(picked, 1);
+  }
+
+  var prize = 0;
+  for (var i = 0; i < content.length; i++) prize += content[i] * bet;
+
+  return { content: content, prize: parseFloat(prize.toFixed(2)), chances: numChances };
+}
+
+/**
+ * Show closet bonus animation.
+ * Background + 2x5 closets, player clicks to reveal prizes.
+ */
+function mcDemoShowClosetBonus(contentArray, totalPrize, bet) {
+  var imgBase = '/static/machine/MatrizCopa2026Nova/item/';
+  var overlay = document.createElement('div');
+  overlay.id = 'mcClosetBonusOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);';
+
+  var html = '<div style="position:relative;width:500px;max-width:90vw;height:360px;border-radius:12px;overflow:hidden;">';
+  // Background
+  html += '<img src="' + imgBase + 'bonus1_step_background.jpg" style="position:absolute;width:100%;height:100%;object-fit:cover;">';
+  // Title
+  html += '<div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);color:#ffd700;font-size:16px;font-weight:700;text-shadow:0 2px 4px #000;">⚽ BONUS — Open Closets!</div>';
+  // 2x5 closet grid
+  html += '<div id="mcClosetGrid" style="position:absolute;top:50px;left:50%;transform:translateX(-50%);display:grid;grid-template-columns:repeat(5,80px);grid-template-rows:repeat(2,110px);gap:0px;justify-content:center;">';
+  for (var i = 0; i < 10; i++) {
+    html += '<div class="mc-closet" data-idx="' + i + '" onclick="mcDemoClickCloset(' + i + ')" style="cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;">';
+    html += '<img src="' + imgBase + 'bonus1_step_closet1.PNG" style="width:100%;height:100%;object-fit:contain;" id="mcClosetImg' + i + '">';
+    html += '</div>';
+  }
+  html += '</div>';
+  // Status
+  html += '<div id="mcClosetStatus" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);color:#fff;font-size:13px;font-weight:600;text-shadow:0 1px 3px #000;">Tap ' + contentArray.length + ' closet(s) to reveal prizes</div>';
+  html += '</div>';
+
+  overlay.innerHTML = html;
+  document.body.appendChild(overlay);
+
+  window._mcClosetState = {
+    content: contentArray,
+    currentIdx: 0,
+    totalRevealed: 0,
+    totalPrize: totalPrize,
+    bet: bet
+  };
+}
+
+function mcDemoClickCloset(idx) {
+  var state = window._mcClosetState;
+  if (!state || state.currentIdx >= state.content.length) return;
+
+  var closetEl = document.querySelector('.mc-closet[data-idx="' + idx + '"]');
+  if (!closetEl || closetEl.getAttribute('data-opened') === '1') return;
+  closetEl.setAttribute('data-opened', '1');
+  closetEl.style.cursor = 'default';
+
+  var imgBase = '/static/machine/MatrizCopa2026Nova/item/';
+  var prize = state.content[state.currentIdx];
+  state.currentIdx++;
+  state.totalRevealed++;
+
+  // Replace closet image with opened version
+  var img = document.getElementById('mcClosetImg' + idx);
+  if (img) img.src = imgBase + 'bonus1_step_closet2.PNG';
+
+  // Show power bar + prize value
+  var prizeHtml = '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px;">';
+  prizeHtml += '<div style="color:#ffd700;font-size:14px;font-weight:900;text-shadow:0 1px 3px #000;">x' + prize + '</div>';
+  prizeHtml += '<img src="' + imgBase + 'bonus1_step_1_power.png" style="width:50px;height:auto;">';
+  prizeHtml += '</div>';
+  closetEl.insertAdjacentHTML('beforeend', prizeHtml);
+
+  // Update status
+  var remaining = state.content.length - state.currentIdx;
+  var statusEl = document.getElementById('mcClosetStatus');
+  if (remaining > 0) {
+    statusEl.textContent = remaining + ' more to open! Prize so far: ' + (state.totalPrize - remaining * state.bet * state.content[state.currentIdx]).toFixed(2);
+    statusEl.textContent = 'Tap ' + remaining + ' more closet(s)';
+  } else {
+    // All opened — show total and close
+    statusEl.innerHTML = '<span style="color:#ffd700;font-size:16px;">🎉 Total Bonus: +' + state.totalPrize.toFixed(2) + '</span>';
+    setTimeout(function() {
+      var ov = document.getElementById('mcClosetBonusOverlay');
+      if (ov) { ov.style.transition = 'opacity 0.5s'; ov.style.opacity = '0'; setTimeout(function() { ov.remove(); }, 500); }
+      // Bonus complete — allow round over
+      _playBonusPending = false;
+      slotRoundOver();
+    }, 2500);
+  }
 }
