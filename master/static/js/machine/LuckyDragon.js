@@ -1,0 +1,371 @@
+// ---------------------------------------------------------------------------
+// LuckyDragon Machine Plugin (Slot)
+// 3x3 slot, 5 lines, 7 icons. DEMO mode with client-side simulation.
+// Features: DragonMultiplierFeature, DragonSpinFeature.
+// ---------------------------------------------------------------------------
+var _ldDemoMode = false;
+var _ldDemoBalance = 10000.00;
+var _ldDemoConfig = null;
+
+MachineRegistry.register('LuckyDragon', {
+  type: 'slot',
+
+  afterRender: function(resp, config) {
+    _ldDemoConfig = config;
+  },
+
+  onSpinResponse: function(resp) {
+    if (_ldDemoMode && (resp.error_code || resp.error_message)) {
+      ldDemoSimulateSpin(); return;
+    }
+    slotHandleSpinResponse(resp);
+  },
+
+  onRoundOver: function(resp) {
+    if (_ldDemoMode && (resp.error_code || resp.error_message)) {
+      ldDemoSimulateRoundOver(); return;
+    }
+    slotHandleRoundOverResponse(resp);
+  }
+});
+
+// ===========================================================================
+// DEMO Mode — Lobby Selection & Simulation
+// ===========================================================================
+function ldDemoSimulateLogin() {
+  var config = _ldDemoConfig;
+  var mathModel = (config && config.math_model && config.math_model[0]) || {};
+  var icons = ldDemoGenerateIcons(mathModel);
+
+  var resp = {
+    cmd: 'iniciar', round_is_over: true, role: 'admin', triggered: false,
+    sound: true, remaining_amount: 0, total_won: 0, language: 'en',
+    session_token: 'demo_sess_' + Date.now(), mode: 'play', won_pattern: '',
+    display_currency_precision: 2, features: [], music: true,
+    balance: _ldDemoBalance, nickname: 'demo_player', bonus_id: '',
+    currency: 'coins', free_spin: false, game_id: 2027, rtp_range: '94%-96%',
+    left_free_spin_by_bet: [],
+    bet_list: [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5],
+    bonus_unique_id: '', icons: icons, current_amount: 0,
+    is_bonus_session: false, total_amount: 0,
+    display_currency_symbol: 'CC', opt_id: 'demo', username: 'demo_player',
+    ext_config: '{}', bonus_type: '', bet_per_spin: 0, expire_time: 0,
+    enabled_auto_features: ['auto_spin'], game_currency: 'coins', target_amount: 0,
+    multiplier_reel: (function() { var sf = ldGetFeatureConfig(mathModel, 'DragonSpinFeature'); return sf ? (sf.multiplier_reel || []) : []; })()
+  };
+
+  _playSessionToken = resp.session_token;
+  _playCurrentMachine = { machine_id: 2027, response: resp, config: config, type: 'slot', name: 'LuckyDragon' };
+  playLog('<<< [DEMO LOGIN] response: ' + JSON.stringify(resp));
+  playHideLoading();
+  document.getElementById('playMachineList').style.display = 'none';
+  document.getElementById('playGameArea').style.display = '';
+  document.getElementById('playBackBtn').style.display = '';
+  document.getElementById('playAuthBar').style.display = 'none';
+  var tabBar = document.getElementById('playTabBar');
+  if (tabBar) tabBar.style.display = 'none';
+  SlotEngine.render(resp, config, 'LuckyDragon');
+}
+
+function ldDemoSimulateSpin() {
+  var st = _slotState;
+  var config = _ldDemoConfig || (_playCurrentMachine && _playCurrentMachine.config);
+  var mathModel = (config && config.math_model && config.math_model[0]) || {};
+  var bet = (st.betList[st.betIndex] || 0.01);
+  var totalBet = bet * st.activeLines;
+
+  // Get tool overrides
+  var toolOverrides = (typeof slotSpinToolGetOverrides === 'function') ? slotSpinToolGetOverrides() : {};
+  var toolIcons = toolOverrides.icons || [];
+  var toolPatternIds = toolOverrides.targetPatternIds || [];
+
+  var icons;
+  if (toolIcons.length >= st.rowCount * st.colCount) {
+    icons = toolIcons.slice();
+  } else if (toolPatternIds.length > 0) {
+    icons = ldDemoGenerateIconsForPattern(mathModel, toolPatternIds[0], st.activeLines);
+  } else {
+    icons = ldDemoGenerateIcons(mathModel);
+  }
+
+  // Calculate base wins
+  var winResult = ldDemoCalcWins(icons, mathModel, st.activeLines, bet);
+  var baseWon = winResult.totalWon;
+
+  // DragonMultiplierFeature: normalize weight, pick random index, get multiplier value
+  var multiplier = 0;
+  var dragonMultiplierTriggered = false;
+  var dragonSpinTriggered = false;
+  var dragonSpinMultiplier = [];
+
+  var multFeature = ldGetFeatureConfig(mathModel, 'DragonMultiplierFeature');
+  if (multFeature) {
+    var mults = multFeature.multiplier || [];
+    var mWeights = multFeature.multiplier_weight || [];
+    var mIdx = ldWeightedRandomIdx(mWeights);
+    multiplier = mults[mIdx] || 0;
+    if (multiplier > 0) dragonMultiplierTriggered = true;
+  }
+  var totalWon = dragonMultiplierTriggered ? parseFloat((baseWon * multiplier).toFixed(2)) : baseWon;
+
+  // DragonSpinFeature: mutually exclusive with DragonMultiplierFeature
+  // Only triggers if DragonMultiplierFeature did NOT trigger (multiplier === 0)
+  if (!dragonMultiplierTriggered) {
+    var spinFeature = ldGetFeatureConfig(mathModel, 'DragonSpinFeature');
+    if (spinFeature && Math.random() < (spinFeature.hit_rate || 0.1)) {
+      dragonSpinTriggered = true;
+      var sReel = spinFeature.multiplier_reel || [];
+      var sWeights = spinFeature.multiplier_reel_weight || [];
+      var windowSize = spinFeature.column_count || 3;
+      // Pick a starting position on the reel via weighted random
+      var pickedIdx = ldWeightedRandomIdx(sWeights);
+      // Get the visible window (column_count consecutive values, circular)
+      dragonSpinMultiplier = [];
+      var spinSum = 0;
+      for (var s = 0; s < windowSize; s++) {
+        var val = sReel[(pickedIdx + s) % sReel.length];
+        dragonSpinMultiplier.push(val);
+        spinSum += val;
+      }
+      // Apply spin multiplier sum to total_won (multiplicative)
+      if (spinSum > 0) {
+        totalWon = parseFloat((totalWon * spinSum).toFixed(2));
+      }
+    }
+  }
+
+  _ldDemoBalance = parseFloat((_ldDemoBalance - totalBet + totalWon).toFixed(2));
+
+  var resp = {
+    cmd: 'solicitajogada', triggered: dragonSpinTriggered, bonus_unique_id: '',
+    aposta: bet, total_won: totalWon, remaining_amount: 0, bonus_type: '',
+    bet_per_spin: 0, expire_time: 0, icons: icons, left_free_spin_amount: 0,
+    won_pattern: winResult.wonPattern, current_amount: 0, features: [],
+    balance: _ldDemoBalance, is_bonus_session: false, total_amount: 0,
+    bonus_id: '', currency: 'coins', game_id: 2027,
+    dragon_multiplier: multiplier,
+    dragon_spin_triggered: dragonSpinTriggered,
+    dragon_spin_multiplier: dragonSpinMultiplier
+  };
+
+  st.reelIcons = icons.slice();
+  playLog('<<< [DEMO SPIN] response: ' + JSON.stringify(resp));
+  slotHandleSpinResponse(resp);
+}
+
+function ldDemoSimulateRoundOver() {
+  var resp = {
+    cmd: 'finalizajogada', features: [], balance: _ldDemoBalance,
+    total_won: 0, currency: 'coins', left_free_spin_amount: 0, game_id: 2027
+  };
+  playLog('<<< [DEMO ROUND OVER] response: ' + JSON.stringify(resp));
+  slotHandleRoundOverResponse(resp);
+}
+
+// ===========================================================================
+// Icon Generation & Win Calculation
+// ===========================================================================
+function ldDemoGenerateIcons(mathModel) {
+  var reelIcons = mathModel.actual_reel_icons || [];
+  var reelWeights = mathModel.actual_reel_weight || [];
+  var rowCount = mathModel.row_count || 3;
+  var colCount = mathModel.column_count || 3;
+  var reelResults = [];
+  for (var col = 0; col < colCount; col++) {
+    var strip = reelIcons[col] || [1,2,3,4,5,6,7];
+    var weights = reelWeights[col] || [];
+    var startIdx = ldWeightedRandomIdx(weights);
+    var colIcons = [];
+    for (var row = 0; row < rowCount; row++) {
+      colIcons.push(strip[(startIdx + row) % strip.length]);
+    }
+    reelResults.push(colIcons);
+  }
+  var flat = [];
+  for (var row = 0; row < rowCount; row++) {
+    for (var col = 0; col < colCount; col++) { flat.push(reelResults[col][row]); }
+  }
+  return flat;
+}
+
+function ldDemoGenerateIconsForPattern(mathModel, targetPatId, activeLines) {
+  var patterns = mathModel.pattern || [];
+  var lines = mathModel.lines || [];
+  var lineDir = mathModel.line_direction || [];
+  var rowCount = mathModel.row_count || 3;
+  var colCount = mathModel.column_count || 3;
+  var allIcons = mathModel.icon || [1,2,3,4,5,6,7];
+  var targetPat = null;
+  for (var i = 0; i < patterns.length; i++) { if (patterns[i].id === targetPatId) { targetPat = patterns[i]; break; } }
+  if (!targetPat) return ldDemoGenerateIcons(mathModel);
+  var eligibleLines = [];
+  for (var li = 0; li < activeLines && li < lines.length; li++) {
+    var dir = lineDir[li] || 1;
+    if (targetPat.type === 0 || targetPat.type === dir) eligibleLines.push(li);
+  }
+  if (eligibleLines.length === 0) return ldDemoGenerateIcons(mathModel);
+  var chosenLineIdx = eligibleLines[Math.floor(Math.random() * eligibleLines.length)];
+  var chosenLine = lines[chosenLineIdx];
+  var regex = /i-?\d+/g; var tokens = []; var m;
+  while ((m = regex.exec(targetPat.format)) !== null) tokens.push(m[0]);
+  var icons = [];
+  for (var i = 0; i < rowCount * colCount; i++) icons.push(allIcons[Math.floor(Math.random() * allIcons.length)]);
+  for (var p = 0; p < tokens.length && p < chosenLine.length; p++) {
+    var token = tokens[p];
+    if (token.indexOf('-') >= 0) continue;
+    icons[chosenLine[p]] = parseInt(token.substring(1));
+  }
+  return icons;
+}
+
+function ldDemoCalcWins(icons, mathModel, activeLines, bet) {
+  var lines = mathModel.lines || [];
+  var lineDir = mathModel.line_direction || [];
+  var patterns = mathModel.pattern || [];
+  var totalWon = 0;
+  var wonPatterns = [];
+  for (var li = 0; li < activeLines && li < lines.length; li++) {
+    var line = lines[li];
+    var dir = lineDir[li] || 1;
+    var lineIcons = [];
+    for (var p = 0; p < line.length; p++) lineIcons.push(icons[line[p]]);
+    var bestWin = 0; var bestPatFormat = '';
+    for (var pi = 0; pi < patterns.length; pi++) {
+      var pat = patterns[pi];
+      if (pat.type !== 0 && pat.type !== dir) continue;
+      if (ldMatchPattern(lineIcons, pat.format)) {
+        var win = pat.value * bet;
+        if (win > bestWin) { bestWin = win; bestPatFormat = pat.format; }
+      }
+    }
+    if (bestWin > 0) {
+      totalWon += bestWin;
+      wonPatterns.push('[l' + (li + 1) + ',' + bestPatFormat + ']');
+    }
+  }
+  return { totalWon: parseFloat(totalWon.toFixed(2)), wonPattern: wonPatterns.length > 0 ? wonPatterns.join(';') + ';' : '' };
+}
+
+function ldMatchPattern(lineIcons, format) {
+  var regex = /i-?\d+/g; var tokens = []; var m;
+  while ((m = regex.exec(format)) !== null) tokens.push(m[0]);
+  if (tokens.length !== lineIcons.length) return false;
+  var wildIcon = 1; // icon 1 (Tiger/Dragon) is wild in this game
+  for (var i = 0; i < tokens.length; i++) {
+    var token = tokens[i];
+    if (token.indexOf('-') >= 0) continue;
+    var requiredIcon = parseInt(token.substring(1));
+    var actualIcon = lineIcons[i];
+    if (actualIcon === requiredIcon) continue;
+    if (actualIcon === wildIcon && requiredIcon !== wildIcon) continue;
+    return false;
+  }
+  return true;
+}
+
+// ===========================================================================
+// Utility Functions
+// ===========================================================================
+function ldGetFeatureConfig(mathModel, featureName) {
+  var features = (mathModel.features && mathModel.features.lists) || [];
+  for (var i = 0; i < features.length; i++) {
+    if (features[i].reference && features[i].reference.indexOf(featureName) >= 0) return features[i].config;
+  }
+  return null;
+}
+
+function ldWeightedPick(values, weights) {
+  if (!values || values.length === 0) return 1;
+  var total = 0;
+  for (var i = 0; i < weights.length; i++) total += weights[i];
+  var r = Math.random() * total; var sum = 0;
+  for (var i = 0; i < weights.length; i++) { sum += weights[i]; if (r <= sum) return values[i]; }
+  return values[values.length - 1];
+}
+
+function ldWeightedRandomIdx(weights) {
+  if (!weights || weights.length === 0) return Math.floor(Math.random() * 7);
+  var total = 0;
+  for (var i = 0; i < weights.length; i++) total += weights[i];
+  var r = Math.random() * total; var sum = 0;
+  for (var i = 0; i < weights.length; i++) { sum += weights[i]; if (r <= sum) return i; }
+  return weights.length - 1;
+}
+
+// ===========================================================================
+// Hook: Intercept machine click for DEMO choice
+// ===========================================================================
+(function() {
+  var origSelectMachine = window.playSelectMachine;
+  if (!origSelectMachine) return;
+  var prevHook = window.playSelectMachine;
+  window.playSelectMachine = function(machineId, enabled, machineType) {
+    if (machineId === 2027) {
+      if (!enabled) { showAlert('Coming soon'); return; }
+      ldShowDemoChoiceModal(function(isDemo) {
+        if (isDemo) {
+          playShowLoading('Loading DEMO...');
+          fetch('/play/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({machine_id: machineId}) })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            _ldDemoConfig = data.config || {};
+            ldDemoSimulateLogin();
+            ldDemoHookSpin();
+          })
+          .catch(function() { playHideLoading(); showAlert('Failed to load config'); });
+        } else {
+          prevHook(machineId, enabled, machineType);
+        }
+      });
+    } else {
+      prevHook(machineId, enabled, machineType);
+    }
+  };
+})();
+
+function ldShowDemoChoiceModal(onChoice) {
+  var overlay = document.createElement('div');
+  overlay.id = 'ldDemoChoiceModal';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:100000;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML =
+    '<div style="background:#1a1a2e;border-radius:12px;padding:28px;border:2px solid #e74c3c;text-align:center;min-width:300px;">' +
+    '<div style="font-size:18px;font-weight:700;color:#e74c3c;margin-bottom:6px;">🐉 LuckyDragon</div>' +
+    '<div style="font-size:12px;color:#aaa;margin-bottom:20px;">Choose play mode</div>' +
+    '<div style="display:flex;gap:16px;justify-content:center;">' +
+    '<button onclick="ldDemoChoiceSelect(true)" style="background:linear-gradient(180deg,#ffd700,#ff8c00);color:#000;border:none;border-radius:8px;padding:12px 28px;cursor:pointer;font-size:14px;font-weight:700;">DEMO</button>' +
+    '<button onclick="ldDemoChoiceSelect(false)" style="background:linear-gradient(180deg,#4a90d9,#2a6ab9);color:#fff;border:none;border-radius:8px;padding:12px 28px;cursor:pointer;font-size:14px;font-weight:700;">NORMAL</button>' +
+    '</div></div>';
+  document.body.appendChild(overlay);
+  window._ldDemoChoiceCallback = onChoice;
+}
+
+function ldDemoChoiceSelect(isDemo) {
+  _ldDemoMode = isDemo;
+  _ldDemoBalance = 10000.00;
+  var modal = document.getElementById('ldDemoChoiceModal');
+  if (modal) modal.remove();
+  if (window._ldDemoChoiceCallback) window._ldDemoChoiceCallback(isDemo);
+}
+
+var _ldOrigSlotSpin = null;
+function ldDemoHookSpin() {
+  if (_ldOrigSlotSpin) return;
+  _ldOrigSlotSpin = window.slotSpin;
+  window.slotSpin = function() {
+    if (_ldDemoMode && _playCurrentMachine && _playCurrentMachine.name === 'LuckyDragon') {
+      var st = _slotState;
+      if (st.spinning) return;
+      st.spinning = true;
+      var btn = document.getElementById('slotSpinBtn');
+      if (btn) { btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; }
+      document.getElementById('slotWinDisplay').textContent = '';
+      var winAmtEl = document.getElementById('slotWinAmount');
+      if (winAmtEl) winAmtEl.textContent = '0.00';
+      slotClearAllLines();
+      slotStartReelAnimation();
+      setTimeout(function() { ldDemoSimulateSpin(); }, 3500);
+    } else {
+      _ldOrigSlotSpin();
+    }
+  };
+}
