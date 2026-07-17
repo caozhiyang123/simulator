@@ -6,12 +6,16 @@
 var _ldDemoMode = false;
 var _ldDemoBalance = 10000.00;
 var _ldDemoConfig = null;
+var _ldDemoFreeSpinsLeft = 0;
+var _ldDemoDragonSpinTotalWin = 0;
 
 MachineRegistry.register('LuckyDragon', {
   type: 'slot',
 
   afterRender: function(resp, config) {
     _ldDemoConfig = config;
+    // Build custom UI: dragon image + dragon spin reel area + wheel
+    setTimeout(function() { ldBuildCustomUI(config); }, 100);
   },
 
   onSpinResponse: function(resp) {
@@ -19,6 +23,10 @@ MachineRegistry.register('LuckyDragon', {
       ldDemoSimulateSpin(); return;
     }
     slotHandleSpinResponse(resp);
+    // After reels stop, play wheel + dragon spin animations
+    if (_ldDemoMode) {
+      setTimeout(function() { ldPlayFeatureAnimations(resp); }, 3600);
+    }
   },
 
   onRoundOver: function(resp) {
@@ -131,21 +139,37 @@ function ldDemoSimulateSpin() {
       if (spinSum > 0) {
         totalWon = parseFloat((totalWon * spinSum).toFixed(2));
       }
+      // Calculate free spins
+      var freeSpins = spinFeature.free_spin || [];
+      var freeSpinWeights = spinFeature.free_spin_weight || [];
+      if (freeSpins.length > 0) {
+        var fsIdx = ldWeightedRandomIdx(freeSpinWeights);
+        _ldDemoFreeSpinsLeft = freeSpins[fsIdx] || 0;
+      }
     }
   }
 
-  _ldDemoBalance = parseFloat((_ldDemoBalance - totalBet + totalWon).toFixed(2));
+  // If in free spin mode, don't deduct bet and decrement counter
+  if (_ldDemoFreeSpinsLeft > 0) {
+    _ldDemoFreeSpinsLeft--;
+    _ldDemoBalance = parseFloat((_ldDemoBalance + totalWon).toFixed(2));
+    _ldDemoDragonSpinTotalWin = parseFloat((_ldDemoDragonSpinTotalWin + totalWon).toFixed(2));
+  } else {
+    _ldDemoBalance = parseFloat((_ldDemoBalance - totalBet + totalWon).toFixed(2));
+    _ldDemoDragonSpinTotalWin = 0;
+  }
 
   var resp = {
     cmd: 'solicitajogada', triggered: dragonSpinTriggered, bonus_unique_id: '',
     aposta: bet, total_won: totalWon, remaining_amount: 0, bonus_type: '',
-    bet_per_spin: 0, expire_time: 0, icons: icons, left_free_spin_amount: 0,
+    bet_per_spin: 0, expire_time: 0, icons: icons, left_free_spin_amount: _ldDemoFreeSpinsLeft,
     won_pattern: winResult.wonPattern, current_amount: 0, features: [],
     balance: _ldDemoBalance, is_bonus_session: false, total_amount: 0,
     bonus_id: '', currency: 'coins', game_id: 2027,
     dragon_multiplier: multiplier,
     dragon_spin_triggered: dragonSpinTriggered,
-    dragon_spin_multiplier: dragonSpinMultiplier
+    dragon_spin_multiplier: dragonSpinMultiplier,
+    dragon_spin_total_win: _ldDemoDragonSpinTotalWin
   };
 
   st.reelIcons = icons.slice();
@@ -363,9 +387,155 @@ function ldDemoHookSpin() {
       if (winAmtEl) winAmtEl.textContent = '0.00';
       slotClearAllLines();
       slotStartReelAnimation();
+      // Start wheel spinning immediately
+      var wheel = document.getElementById('ldWheelImg');
+      if (wheel) { wheel.style.transition = 'transform 3s linear'; var cur = parseInt(wheel.getAttribute('data-rotation') || '0'); wheel.style.transform = 'rotate(' + (cur + 360) + 'deg)'; }
       setTimeout(function() { ldDemoSimulateSpin(); }, 3500);
     } else {
       _ldOrigSlotSpin();
     }
   };
+}
+
+// ===========================================================================
+// Custom UI: Dragon image + Dragon Spin Reel + Wheel
+// ===========================================================================
+function ldBuildCustomUI(config) {
+  var slotSkin = document.getElementById('slotSkin');
+  if (!slotSkin) return;
+  var imgBase = '/static/machine/LuckyDragon/item/';
+  var mathModel = (config && config.math_model && config.math_model[0]) || {};
+  var spinFeature = ldGetFeatureConfig(mathModel, 'DragonSpinFeature');
+  var multiplierReel = (spinFeature && spinFeature.multiplier_reel) || [];
+
+  // Dragon image: bottom aligned with reel top (50% of previous 600px = 300px)
+  var dragonEl = document.createElement('div');
+  dragonEl.id = 'ldDragonArea';
+  dragonEl.style.cssText = 'position:absolute;bottom:70%;left:50%;transform:translateX(-50%);width:300px;height:auto;z-index:50;pointer-events:none;';
+  dragonEl.innerHTML = '<img src="' + imgBase + 'dragon.png" style="width:100%;height:auto;object-fit:contain;display:block;">';
+  slotSkin.appendChild(dragonEl);
+
+  // Dragon spin reel area (between dragon and reels)
+  var reelArea = document.createElement('div');
+  reelArea.id = 'ldDragonReelArea';
+  reelArea.style.cssText = 'position:absolute;top:18%;left:50%;transform:translateX(-50%);width:180px;height:30px;overflow:hidden;border-radius:4px;border:2px solid #ffd700;background:#1a0a0a;z-index:60;display:none;';
+  var stripHtml = '<div id="ldDragonReelStrip" style="display:flex;transition:transform 0.5s cubic-bezier(0.25,0.46,0.45,0.94);white-space:nowrap;">';
+  for (var rep = 0; rep < 3; rep++) {
+    for (var i = 0; i < multiplierReel.length; i++) {
+      stripHtml += '<div style="min-width:60px;height:30px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:' + (multiplierReel[i] > 0 ? '#ffd700' : '#555') + ';">' + (multiplierReel[i] > 0 ? 'x' + multiplierReel[i] : '-') + '</div>';
+    }
+  }
+  stripHtml += '</div>';
+  reelArea.innerHTML = stripHtml;
+  slotSkin.appendChild(reelArea);
+
+  // Wheel area: above controls with enough gap (top:68% to avoid overlap with BET/LINE/SPIN at ~80%)
+  var wheelArea = document.createElement('div');
+  wheelArea.id = 'ldWheelArea';
+  wheelArea.style.cssText = 'position:absolute;top:65%;left:50%;transform:translateX(-50%);width:80px;height:80px;z-index:50;';
+  wheelArea.innerHTML = '<img id="ldWheelImg" src="' + imgBase + 'wheel.png" style="width:100%;height:100%;object-fit:contain;">';
+  slotSkin.appendChild(wheelArea);
+}
+
+// ===========================================================================
+// Feature Animations after spin
+// ===========================================================================
+function ldPlayFeatureAnimations(resp) {
+  // Wheel spin animation (always plays)
+  ldAnimateWheel(resp.dragon_multiplier || 0, function() {
+    // After wheel stops, check dragon spin
+    if (resp.dragon_spin_triggered && resp.dragon_spin_multiplier && resp.dragon_spin_multiplier.length > 0) {
+      ldAnimateDragonSpinReel(resp.dragon_spin_multiplier, function() {
+        // Dragon spin triggered: update free spins and SPIN button
+        if (resp.left_free_spin_amount > 0) {
+          _ldDemoFreeSpinsLeft = resp.left_free_spin_amount;
+          ldUpdateSpinBtn();
+        }
+      });
+    } else if (resp.left_free_spin_amount > 0) {
+      _ldDemoFreeSpinsLeft = resp.left_free_spin_amount;
+      ldUpdateSpinBtn();
+    }
+  });
+}
+
+function ldAnimateWheel(multiplier, onComplete) {
+  var wheel = document.getElementById('ldWheelImg');
+  if (!wheel) { if (onComplete) onComplete(); return; }
+  // Reset and spin: always full 360+ rotation
+  var currentRotation = parseInt(wheel.getAttribute('data-rotation') || '0');
+  var newRotation = currentRotation + 720 + Math.floor(Math.random() * 360);
+  wheel.setAttribute('data-rotation', newRotation);
+  wheel.style.transition = 'transform 2s cubic-bezier(0.2, 0, 0.2, 1)';
+  wheel.style.transform = 'rotate(' + newRotation + 'deg)';
+
+  setTimeout(function() {
+    // Show multiplier effect if > 0
+    if (multiplier > 0) {
+      ldShowMultiplierEffect(multiplier);
+      setTimeout(function() { if (onComplete) onComplete(); }, 2000);
+    } else {
+      if (onComplete) onComplete();
+    }
+  }, 2200);
+}
+
+function ldShowMultiplierEffect(multiplier) {
+  var slotSkin = document.getElementById('slotSkin');
+  if (!slotSkin) return;
+  var effect = document.createElement('div');
+  effect.style.cssText = 'position:absolute;top:74%;left:50%;transform:translateX(-50%);z-index:100;font-size:36px;font-weight:900;color:#ffd700;text-shadow:0 0 20px rgba(255,215,0,0.8),0 2px 4px #000;transition:top 1s ease-out, opacity 0.5s;opacity:1;pointer-events:none;';
+  effect.textContent = 'x' + multiplier;
+  slotSkin.appendChild(effect);
+  setTimeout(function() { effect.style.top = '45%'; }, 50);
+  setTimeout(function() { effect.style.opacity = '0'; setTimeout(function() { effect.remove(); }, 500); }, 2000);
+}
+
+function ldAnimateDragonSpinReel(spinResult, onComplete) {
+  var reelArea = document.getElementById('ldDragonReelArea');
+  var strip = document.getElementById('ldDragonReelStrip');
+  if (!reelArea || !strip) { if (onComplete) onComplete(); return; }
+  reelArea.style.display = '';
+  // Calculate target position (show the 3 result values centered)
+  var cellWidth = 60;
+  var config = _ldDemoConfig || (_playCurrentMachine && _playCurrentMachine.config);
+  var mathModel = (config && config.math_model && config.math_model[0]) || {};
+  var spinFeature = ldGetFeatureConfig(mathModel, 'DragonSpinFeature');
+  var reel = (spinFeature && spinFeature.multiplier_reel) || [];
+  var reelLen = reel.length;
+  // Find the start index that matches spinResult
+  var targetIdx = 0;
+  for (var i = 0; i < reelLen; i++) {
+    var match = true;
+    for (var j = 0; j < spinResult.length; j++) {
+      if (reel[(i + j) % reelLen] !== spinResult[j]) { match = false; break; }
+    }
+    if (match) { targetIdx = i; break; }
+  }
+  // Scroll to position (middle repetition + offset)
+  var offset = (reelLen + targetIdx) * cellWidth;
+  strip.style.transition = 'none';
+  strip.style.transform = 'translateX(0)';
+  setTimeout(function() {
+    strip.style.transition = 'transform 1.5s cubic-bezier(0.2, 0, 0.2, 1)';
+    strip.style.transform = 'translateX(-' + offset + 'px)';
+  }, 50);
+  // Show sum after stop
+  var spinSum = 0;
+  for (var i = 0; i < spinResult.length; i++) spinSum += spinResult[i];
+  setTimeout(function() {
+    if (spinSum > 0) ldShowMultiplierEffect(spinSum);
+    setTimeout(function() { if (onComplete) onComplete(); }, 1500);
+  }, 1800);
+}
+
+function ldUpdateSpinBtn() {
+  var spinBtn = document.getElementById('slotSpinBtn');
+  if (!spinBtn) return;
+  var span = spinBtn.querySelector('span');
+  if (_ldDemoFreeSpinsLeft > 0) {
+    if (span) span.textContent = _ldDemoFreeSpinsLeft + ' FREE';
+  } else {
+    if (span) span.textContent = 'SPIN';
+  }
 }
