@@ -433,7 +433,7 @@ function ldBuildCustomUI(config) {
   // Dragon spin reel area (below dragon image, lower z-index so dragon covers it partially)
   var reelArea = document.createElement('div');
   reelArea.id = 'ldDragonReelArea';
-  reelArea.style.cssText = 'position:absolute;top:19%;left:50%;transform:translateX(-50%);width:180px;height:30px;overflow:hidden;border-radius:4px;border:2px solid #ffd700;background:#1a0a0a;z-index:40;display:none;';
+  reelArea.style.cssText = 'position:absolute;top:19%;left:calc(60%);transform:translateX(-50%);width:180px;height:30px;overflow:hidden;border-radius:4px;border:2px solid #ffd700;background:#1a0a0a;z-index:40;display:none;';
   var stripHtml = '<div id="ldDragonReelStrip" style="display:flex;transition:transform 0.5s cubic-bezier(0.25,0.46,0.45,0.94);white-space:nowrap;">';
   for (var rep = 0; rep < 3; rep++) {
     for (var i = 0; i < multiplierReel.length; i++) {
@@ -499,6 +499,10 @@ function ldShowFeatureResults(resp) {
       } else if (resp.left_free_spin_amount === 0 && resp.cmd === 'free_spin') {
         if (reelArea) reelArea.style.display = 'none';
         ldUpdateSpinBtn();
+        // Show dragon_spin_total_win celebration
+        if (resp.dragon_spin_total_win > 0) {
+          ldShowDragonSpinTotalWin(resp.dragon_spin_total_win);
+        }
       }
     });
   } else {
@@ -543,7 +547,7 @@ function ldStopDragonReel(spinResult, onComplete) {
 
   setTimeout(function() {
     if (spinSum > 0) {
-      ldShowMultiplierEffect(spinSum);
+      ldShowMultiplierEffect(spinSum, '19%');
       setTimeout(function() { if (onComplete) onComplete(); }, 1500);
     } else {
       if (onComplete) onComplete();
@@ -551,11 +555,12 @@ function ldStopDragonReel(spinResult, onComplete) {
   }, 1000);
 }
 
-function ldShowMultiplierEffect(multiplier) {
+function ldShowMultiplierEffect(multiplier, startTop) {
   var slotSkin = document.getElementById('slotSkin');
   if (!slotSkin) return;
+  var fromTop = startTop || '65%';
   var effect = document.createElement('div');
-  effect.style.cssText = 'position:absolute;top:65%;left:50%;transform:translateX(-50%);z-index:100;font-size:40px;font-weight:900;color:#ffd700;text-shadow:0 0 20px rgba(255,215,0,0.8),0 2px 4px #000;transition:top 1s ease-out, font-size 1s ease-out, opacity 0.5s 1s;opacity:1;pointer-events:none;';
+  effect.style.cssText = 'position:absolute;top:' + fromTop + ';left:50%;transform:translateX(-50%);z-index:100;font-size:40px;font-weight:900;color:#ffd700;text-shadow:0 0 20px rgba(255,215,0,0.8),0 2px 4px #000;transition:top 1s ease-out, font-size 1s ease-out, opacity 0.5s 1s;opacity:1;pointer-events:none;';
   effect.textContent = 'x' + multiplier;
   slotSkin.appendChild(effect);
   setTimeout(function() { effect.style.top = '40%'; effect.style.fontSize = '52px'; }, 50);
@@ -576,4 +581,23 @@ function ldUpdateSpinBtn() {
     spinBtn.style.opacity = '1';
     spinBtn.style.pointerEvents = 'auto';
   }
+}
+
+function ldShowDragonSpinTotalWin(totalWin) {
+  var slotSkin = document.getElementById('slotSkin');
+  if (!slotSkin) return;
+  var overlay = document.createElement('div');
+  overlay.id = 'ldDragonSpinWinOverlay';
+  overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;animation:jpScale 0.8s ease-out;';
+  overlay.innerHTML =
+    '<div style="font-size:20px;margin-bottom:8px;">🐉🔥🐉</div>' +
+    '<div style="color:#ffd700;font-size:18px;font-weight:700;text-shadow:0 0 15px rgba(255,215,0,0.6);margin-bottom:6px;">DRAGON SPIN BONUS!</div>' +
+    '<div style="color:#fff;font-size:42px;font-weight:900;text-shadow:0 0 20px rgba(255,215,0,0.5);">+' + totalWin.toFixed(2) + '</div>' +
+    '<div style="color:#aaa;font-size:12px;margin-top:8px;">Total Free Spin Winnings</div>';
+  slotSkin.appendChild(overlay);
+  setTimeout(function() {
+    overlay.style.transition = 'opacity 0.5s';
+    overlay.style.opacity = '0';
+    setTimeout(function() { overlay.remove(); }, 500);
+  }, 3000);
 }
