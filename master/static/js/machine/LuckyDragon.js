@@ -430,10 +430,10 @@ function ldBuildCustomUI(config) {
   dragonEl.innerHTML = '<img src="' + imgBase + 'dragon.png" style="width:100%;height:auto;object-fit:contain;display:block;">';
   slotSkin.appendChild(dragonEl);
 
-  // Dragon spin reel area (below dragon image, above main reels)
+  // Dragon spin reel area (below dragon image, lower z-index so dragon covers it partially)
   var reelArea = document.createElement('div');
   reelArea.id = 'ldDragonReelArea';
-  reelArea.style.cssText = 'position:absolute;top:19%;left:50%;transform:translateX(-50%);width:180px;height:30px;overflow:hidden;border-radius:4px;border:2px solid #ffd700;background:#1a0a0a;z-index:60;display:none;';
+  reelArea.style.cssText = 'position:absolute;top:19%;left:50%;transform:translateX(-50%);width:180px;height:30px;overflow:hidden;border-radius:4px;border:2px solid #ffd700;background:#1a0a0a;z-index:40;display:none;';
   var stripHtml = '<div id="ldDragonReelStrip" style="display:flex;transition:transform 0.5s cubic-bezier(0.25,0.46,0.45,0.94);white-space:nowrap;">';
   for (var rep = 0; rep < 3; rep++) {
     for (var i = 0; i < multiplierReel.length; i++) {
