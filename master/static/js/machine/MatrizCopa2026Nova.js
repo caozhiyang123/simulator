@@ -868,20 +868,18 @@ function mcDemoShootBall() {
 
   // After ball arrives
   setTimeout(function() {
-    flyBall.remove();
     if (isHit && shotPrize > 0) {
-      // Mark goal as hit
+      // Hit: remove ball, mark goal
+      flyBall.remove();
       var goalImg = document.getElementById('mcGoalImg' + targetPos);
       if (goalImg) goalImg.src = imgBase + 'bonus1_step_3_round2.PNG';
       state.totalHit++;
       state.runningTotal = parseFloat((state.runningTotal + shotPrize).toFixed(2));
     } else {
-      // Miss — goalkeeper dives to block
-      // targetPos 0,1,2 = row1 (col 0,1,2), targetPos 3,4,5 = row2 (col 0,1,2)
+      // Miss: bounce ball back + goalkeeper dive
       var col = targetPos % 3;
       var keeper = document.getElementById('mcShootKeeper');
       if (keeper) {
-        // col 0 (left) = dive left (player2), col 2 (right) = dive right (player3)
         if (col === 0) {
           keeper.src = imgBase + 'bonus1_step_3_player2.PNG';
           keeper.style.transform = 'translateX(-50%) translateX(-120px)';
@@ -889,7 +887,6 @@ function mcDemoShootBall() {
           keeper.src = imgBase + 'bonus1_step_3_player3.PNG';
           keeper.style.transform = 'translateX(-50%) translateX(120px)';
         } else {
-          // Middle — random dive direction
           if (Math.random() < 0.5) {
             keeper.src = imgBase + 'bonus1_step_3_player2.PNG';
             keeper.style.transform = 'translateX(-50%) translateX(-60px)';
@@ -898,11 +895,17 @@ function mcDemoShootBall() {
             keeper.style.transform = 'translateX(-50%) translateX(60px)';
           }
         }
-        // Reset keeper after a short delay
         setTimeout(function() {
           if (keeper) { keeper.src = imgBase + 'bonus1_step_3_player1.PNG'; keeper.style.transform = 'translateX(-50%)'; }
-        }, 600);
+        }, 800);
       }
+      // Ball bounce back animation
+      flyBall.style.transition = 'left 0.5s ease-in, top 0.5s cubic-bezier(0.5,0,1,0.5), opacity 0.3s 0.4s';
+      var bounceX = parseFloat(flyBall.style.left) + (col === 0 ? -60 : (col === 2 ? 60 : (Math.random() < 0.5 ? -40 : 40)));
+      flyBall.style.left = bounceX + 'px';
+      flyBall.style.top = (startY - 20) + 'px';
+      flyBall.style.opacity = '0';
+      setTimeout(function() { flyBall.remove(); }, 600);
     }
 
     // Update status with running total
