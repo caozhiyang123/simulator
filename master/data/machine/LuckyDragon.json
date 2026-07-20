@@ -21,14 +21,14 @@
 				  "reference": "com.gamesmart.halloween.lottoBingo.feature.DragonMultiplierFeature",
 				  "config": {
 					"feature_id":4,  
-					"multiplier":[0,0,0,0,0,0,0,0,0,0,1,2,3,4,5,6,7,8,9,10],
-					"multiplier_weight":[0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05]
+					"multiplier":[0,1,2,3,4,5,6,7,8,9,10],
+					"multiplier_weight":[0.5,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05]
 				  }
 				},{
 				  "reference": "com.gamesmart.halloween.lottoBingo.feature.DragonSpinFeature",
 				  "config": {
 					"feature_id":5,
-					"hit_rate":0.10,
+					"hit_rate":0.90,
 					"free_spin":[1,3,5,8],
 					"free_spin_weight":[0.25,0.25,0.25,0.25],
 					"multiplier_reel":[2,0,0,10,0,0,2,2,0,0,0,2,0,2,0,2,0,5,0,0],

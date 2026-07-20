@@ -23,10 +23,6 @@ MachineRegistry.register('LuckyDragon', {
       ldDemoSimulateSpin(); return;
     }
     slotHandleSpinResponse(resp);
-    // After reels stop, play wheel + dragon spin animations
-    if (_ldDemoMode) {
-      setTimeout(function() { ldPlayFeatureAnimations(resp); }, 3600);
-    }
   },
 
   onRoundOver: function(resp) {
@@ -100,34 +96,22 @@ function ldDemoSimulateSpin() {
   var winResult = ldDemoCalcWins(icons, mathModel, st.activeLines, bet);
   var baseWon = winResult.totalWon;
 
-  // DragonMultiplierFeature: normalize weight, pick random index, get multiplier value
   var multiplier = 0;
   var dragonMultiplierTriggered = false;
   var dragonSpinTriggered = false;
   var dragonSpinMultiplier = [];
+  var isFreeSpin = _ldDemoFreeSpinsLeft > 0;
 
-  var multFeature = ldGetFeatureConfig(mathModel, 'DragonMultiplierFeature');
-  if (multFeature) {
-    var mults = multFeature.multiplier || [];
-    var mWeights = multFeature.multiplier_weight || [];
-    var mIdx = ldWeightedRandomIdx(mWeights);
-    multiplier = mults[mIdx] || 0;
-    if (multiplier > 0) dragonMultiplierTriggered = true;
-  }
-  var totalWon = dragonMultiplierTriggered ? parseFloat((baseWon * multiplier).toFixed(2)) : baseWon;
-
-  // DragonSpinFeature: mutually exclusive with DragonMultiplierFeature
-  // Only triggers if DragonMultiplierFeature did NOT trigger (multiplier === 0)
-  if (!dragonMultiplierTriggered) {
+  if (isFreeSpin) {
+    // FREE SPIN (Dragon Spin) mode:
+    // - No DragonMultiplierFeature
+    // - Always run DragonSpinFeature reel (but no re-trigger free spins)
     var spinFeature = ldGetFeatureConfig(mathModel, 'DragonSpinFeature');
-    if (spinFeature && Math.random() < (spinFeature.hit_rate || 0.1)) {
-      dragonSpinTriggered = true;
+    if (spinFeature) {
       var sReel = spinFeature.multiplier_reel || [];
       var sWeights = spinFeature.multiplier_reel_weight || [];
       var windowSize = spinFeature.column_count || 3;
-      // Pick a starting position on the reel via weighted random
       var pickedIdx = ldWeightedRandomIdx(sWeights);
-      // Get the visible window (column_count consecutive values, circular)
       dragonSpinMultiplier = [];
       var spinSum = 0;
       for (var s = 0; s < windowSize; s++) {
@@ -135,36 +119,66 @@ function ldDemoSimulateSpin() {
         dragonSpinMultiplier.push(val);
         spinSum += val;
       }
-      // Apply spin multiplier sum to total_won (multiplicative)
       if (spinSum > 0) {
-        totalWon = parseFloat((totalWon * spinSum).toFixed(2));
-      }
-      // Calculate free spins
-      var freeSpins = spinFeature.free_spin || [];
-      var freeSpinWeights = spinFeature.free_spin_weight || [];
-      if (freeSpins.length > 0) {
-        var fsIdx = ldWeightedRandomIdx(freeSpinWeights);
-        _ldDemoFreeSpinsLeft = freeSpins[fsIdx] || 0;
+        baseWon = parseFloat((baseWon * spinSum).toFixed(2));
       }
     }
-  }
-
-  // If in free spin mode, don't deduct bet and decrement counter
-  if (_ldDemoFreeSpinsLeft > 0) {
+    var totalWon = baseWon;
     _ldDemoFreeSpinsLeft--;
     _ldDemoBalance = parseFloat((_ldDemoBalance + totalWon).toFixed(2));
     _ldDemoDragonSpinTotalWin = parseFloat((_ldDemoDragonSpinTotalWin + totalWon).toFixed(2));
   } else {
+    // NORMAL SPIN mode:
+    // DragonMultiplierFeature first
+    var multFeature = ldGetFeatureConfig(mathModel, 'DragonMultiplierFeature');
+    if (multFeature) {
+      var mults = multFeature.multiplier || [];
+      var mWeights = multFeature.multiplier_weight || [];
+      var mIdx = ldWeightedRandomIdx(mWeights);
+      multiplier = mults[mIdx] || 0;
+      if (multiplier > 0) dragonMultiplierTriggered = true;
+    }
+    var totalWon = dragonMultiplierTriggered ? parseFloat((baseWon * multiplier).toFixed(2)) : baseWon;
+
+    // DragonSpinFeature: only if DragonMultiplier did NOT trigger
+    if (!dragonMultiplierTriggered) {
+      var spinFeature = ldGetFeatureConfig(mathModel, 'DragonSpinFeature');
+      if (spinFeature && Math.random() < (spinFeature.hit_rate || 0.1)) {
+        dragonSpinTriggered = true;
+        var sReel = spinFeature.multiplier_reel || [];
+        var sWeights = spinFeature.multiplier_reel_weight || [];
+        var windowSize = spinFeature.column_count || 3;
+        var pickedIdx = ldWeightedRandomIdx(sWeights);
+        dragonSpinMultiplier = [];
+        var spinSum = 0;
+        for (var s = 0; s < windowSize; s++) {
+          var val = sReel[(pickedIdx + s) % sReel.length];
+          dragonSpinMultiplier.push(val);
+          spinSum += val;
+        }
+        if (spinSum > 0) {
+          totalWon = parseFloat((totalWon * spinSum).toFixed(2));
+        }
+        // Calculate free spins
+        var freeSpins = spinFeature.free_spin || [];
+        var freeSpinWeights = spinFeature.free_spin_weight || [];
+        if (freeSpins.length > 0) {
+          var fsIdx = ldWeightedRandomIdx(freeSpinWeights);
+          _ldDemoFreeSpinsLeft = freeSpins[fsIdx] || 0;
+        }
+      }
+    }
     _ldDemoBalance = parseFloat((_ldDemoBalance - totalBet + totalWon).toFixed(2));
-    _ldDemoDragonSpinTotalWin = 0;
+    _ldDemoDragonSpinTotalWin = dragonSpinTriggered ? totalWon : 0;
   }
 
   var resp = {
-    cmd: 'solicitajogada', triggered: dragonSpinTriggered, bonus_unique_id: '',
+    cmd: isFreeSpin ? 'free_spin' : 'solicitajogada',
+    triggered: dragonSpinTriggered, bonus_unique_id: '',
     aposta: bet, total_won: totalWon, remaining_amount: 0, bonus_type: '',
     bet_per_spin: 0, expire_time: 0, icons: icons, left_free_spin_amount: _ldDemoFreeSpinsLeft,
     won_pattern: winResult.wonPattern, current_amount: 0, features: [],
-    balance: _ldDemoBalance, is_bonus_session: false, total_amount: 0,
+    balance: _ldDemoBalance, is_bonus_session: isFreeSpin, total_amount: 0,
     bonus_id: '', currency: 'coins', game_id: 2027,
     dragon_multiplier: multiplier,
     dragon_spin_triggered: dragonSpinTriggered,
@@ -175,6 +189,8 @@ function ldDemoSimulateSpin() {
   st.reelIcons = icons.slice();
   playLog('<<< [DEMO SPIN] response: ' + JSON.stringify(resp));
   slotHandleSpinResponse(resp);
+  // Play feature animations after reels stop (~3.5s)
+  setTimeout(function() { ldPlayFeatureAnimations(resp); }, 3600);
 }
 
 function ldDemoSimulateRoundOver() {
@@ -387,9 +403,16 @@ function ldDemoHookSpin() {
       if (winAmtEl) winAmtEl.textContent = '0.00';
       slotClearAllLines();
       slotStartReelAnimation();
-      // Start wheel spinning immediately
+      // Start wheel spinning immediately (360 degree rotation)
       var wheel = document.getElementById('ldWheelImg');
-      if (wheel) { wheel.style.transition = 'transform 3s linear'; var cur = parseInt(wheel.getAttribute('data-rotation') || '0'); wheel.style.transform = 'rotate(' + (cur + 360) + 'deg)'; }
+      if (wheel) {
+        wheel.style.transition = 'none';
+        wheel.style.transform = 'rotate(0deg)';
+        setTimeout(function() {
+          wheel.style.transition = 'transform 2s ease-in-out';
+          wheel.style.transform = 'rotate(360deg)';
+        }, 20);
+      }
       setTimeout(function() { ldDemoSimulateSpin(); }, 3500);
     } else {
       _ldOrigSlotSpin();
@@ -441,22 +464,33 @@ function ldBuildCustomUI(config) {
 // Feature Animations after spin
 // ===========================================================================
 function ldPlayFeatureAnimations(resp) {
-  // Wheel spin animation (always plays)
-  ldAnimateWheel(resp.dragon_multiplier || 0, function() {
-    // After wheel stops, check dragon spin
-    if (resp.dragon_spin_triggered && resp.dragon_spin_multiplier && resp.dragon_spin_multiplier.length > 0) {
-      ldAnimateDragonSpinReel(resp.dragon_spin_multiplier, function() {
-        // Dragon spin triggered: update free spins and SPIN button
+  // Show dragon spin reel during free spin or when triggered
+  var reelArea = document.getElementById('ldDragonReelArea');
+  if (resp.dragon_spin_multiplier && resp.dragon_spin_multiplier.length > 0) {
+    // Always show reel animation during free spin or when dragon spin triggered
+    ldAnimateDragonSpinReel(resp.dragon_spin_multiplier, function() {
+      ldAnimateWheel(resp.dragon_multiplier || 0, function() {
         if (resp.left_free_spin_amount > 0) {
           _ldDemoFreeSpinsLeft = resp.left_free_spin_amount;
           ldUpdateSpinBtn();
+        } else if (resp.left_free_spin_amount === 0 && resp.cmd === 'free_spin') {
+          // Free spins ended, hide reel area
+          if (reelArea) reelArea.style.display = 'none';
+          ldUpdateSpinBtn();
         }
       });
-    } else if (resp.left_free_spin_amount > 0) {
-      _ldDemoFreeSpinsLeft = resp.left_free_spin_amount;
-      ldUpdateSpinBtn();
-    }
-  });
+    });
+  } else {
+    // Normal spin: wheel animation + multiplier effect
+    ldAnimateWheel(resp.dragon_multiplier || 0, function() {
+      if (resp.dragon_spin_triggered && resp.left_free_spin_amount > 0) {
+        _ldDemoFreeSpinsLeft = resp.left_free_spin_amount;
+        ldUpdateSpinBtn();
+      }
+      // Hide reel if no free spins left
+      if (_ldDemoFreeSpinsLeft <= 0 && reelArea) reelArea.style.display = 'none';
+    });
+  }
 }
 
 function ldAnimateWheel(multiplier, onComplete) {
@@ -482,13 +516,21 @@ function ldAnimateWheel(multiplier, onComplete) {
 
 function ldShowMultiplierEffect(multiplier) {
   var slotSkin = document.getElementById('slotSkin');
-  if (!slotSkin) return;
+  var wheelArea = document.getElementById('ldWheelArea');
+  if (!slotSkin || !wheelArea) return;
   var effect = document.createElement('div');
-  effect.style.cssText = 'position:absolute;top:74%;left:50%;transform:translateX(-50%);z-index:100;font-size:36px;font-weight:900;color:#ffd700;text-shadow:0 0 20px rgba(255,215,0,0.8),0 2px 4px #000;transition:top 1s ease-out, opacity 0.5s;opacity:1;pointer-events:none;';
+  // Start at wheel position (top:65%), fly to reel center (top:40%)
+  effect.style.cssText = 'position:absolute;top:65%;left:50%;transform:translateX(-50%);z-index:100;font-size:40px;font-weight:900;color:#ffd700;text-shadow:0 0 20px rgba(255,215,0,0.8),0 2px 4px #000;transition:top 1s ease-out, font-size 1s ease-out, opacity 0.5s 1s;opacity:1;pointer-events:none;';
   effect.textContent = 'x' + multiplier;
   slotSkin.appendChild(effect);
-  setTimeout(function() { effect.style.top = '45%'; }, 50);
-  setTimeout(function() { effect.style.opacity = '0'; setTimeout(function() { effect.remove(); }, 500); }, 2000);
+  // Animate: fly from wheel to reel center
+  setTimeout(function() {
+    effect.style.top = '40%';
+    effect.style.fontSize = '52px';
+  }, 50);
+  // Fade out after arriving
+  setTimeout(function() { effect.style.opacity = '0'; }, 1500);
+  setTimeout(function() { effect.remove(); }, 2200);
 }
 
 function ldAnimateDragonSpinReel(spinResult, onComplete) {
@@ -535,7 +577,11 @@ function ldUpdateSpinBtn() {
   var span = spinBtn.querySelector('span');
   if (_ldDemoFreeSpinsLeft > 0) {
     if (span) span.textContent = _ldDemoFreeSpinsLeft + ' FREE';
+    spinBtn.style.opacity = '1';
+    spinBtn.style.pointerEvents = 'auto';
   } else {
     if (span) span.textContent = 'SPIN';
+    spinBtn.style.opacity = '1';
+    spinBtn.style.pointerEvents = 'auto';
   }
 }
