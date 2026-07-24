@@ -1,30 +1,27 @@
 // ---------------------------------------------------------------------------
 // DoubleMania Machine Plugin
-// BonusGameFeature: When spin response has has_bonus:true, open a slot mini-game.
+// BonusGameFeature: When spin/EB response has has_bonus:true, defer the bonus
+// mini-game until the round is about to end (collect, all EBs bought, or no EB).
 // The bonus game is a 1x4 (1 row, 4 reels) slot with icon images.
+// multiplier is always returned with has_bonus and should use the latest value.
 // ---------------------------------------------------------------------------
 MachineRegistry.register('DoubleMania', {
   type: 'bingo',
 
   onSpinResponse: function(resp) {
-    // If bonus game triggered, set flag to defer round over
-    if (resp.has_bonus === true) {
-      _playBonusPending = true;
-    }
+    // Always update bonus state from latest server response (spin or EB)
+    doubleManiaUpdateBonusState(resp);
+
     // Call default spin handler
     playHandleSpinResponse(resp);
-    // Open bonus game modal after a short delay
-    if (resp.has_bonus === true) {
-      setTimeout(function() {
-        doubleManiaOpenBonusGame();
-      }, 800);
-    }
   }
 });
 
 // ---------------------------------------------------------------------------
 // DoubleMania Bonus Game State
 // ---------------------------------------------------------------------------
+var _dmBonusHasBonus = false;   // latest has_bonus from server
+var _dmBonusMultiplier = 0;     // latest multiplier from server (e.g. 1.2 -> displayed as x1.2)
 var _dmBonus = {
   active: false,
   totalWon: 0,
@@ -33,6 +30,36 @@ var _dmBonus = {
   loseCount: 0,
   maxLose: 7
 };
+
+// ---------------------------------------------------------------------------
+// Update bonus state from every spin/EB response (always overwrite with latest)
+// ---------------------------------------------------------------------------
+function doubleManiaUpdateBonusState(resp) {
+  // Every spin/EB response contains has_bonus and multiplier
+  _dmBonusHasBonus = resp.has_bonus === true;
+  _dmBonusMultiplier = resp.multiplier || 0;
+
+  // If has_bonus is true, set pending flag to defer round over
+  if (_dmBonusHasBonus) {
+    _playBonusPending = true;
+  } else {
+    _playBonusPending = false;
+  }
+
+  playLog('[DoubleMania] bonus state updated: has_bonus=' + _dmBonusHasBonus + ', multiplier=' + _dmBonusMultiplier);
+}
+
+// ---------------------------------------------------------------------------
+// Trigger bonus game (called when round is about to end and has_bonus is true)
+// This replaces the immediate opening — now deferred until round end.
+// ---------------------------------------------------------------------------
+function doubleManiaTriggeredBonusBeforeRoundOver() {
+  if (_dmBonusHasBonus) {
+    doubleManiaOpenBonusGame();
+    return true; // bonus game was opened, caller should NOT send round over yet
+  }
+  return false; // no bonus, caller can proceed with round over
+}
 
 // ---------------------------------------------------------------------------
 // Open the Bonus Game Modal
@@ -74,6 +101,10 @@ function doubleManiaOpenBonusGame() {
   topHtml += '<div style="width:120px;background:#000;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;border:2px solid #333;">';
   topHtml += '<div style="color:#f5d742;font-size:11px;font-weight:700;margin-bottom:4px;">Won</div>';
   topHtml += '<div id="dmBonusWonDisplay" style="color:#fff;font-size:24px;font-weight:700;">0</div>';
+  // Show multiplier if > 0
+  if (_dmBonusMultiplier > 0) {
+    topHtml += '<div id="dmBonusMultiplierDisplay" style="color:#2ecc71;font-size:16px;font-weight:700;margin-top:4px;text-shadow:0 0 8px #2ecc71;">x' + _dmBonusMultiplier + '</div>';
+  }
   topHtml += '</div>';
 
   // Lose tracker (right)
@@ -112,7 +143,7 @@ function doubleManiaOpenBonusGame() {
   modal.appendChild(container);
   document.body.appendChild(modal);
 
-  playLog('🎰 [BONUS GAME] opened');
+  playLog('🎰 [BONUS GAME] opened (multiplier: x' + _dmBonusMultiplier + ')');
 }
 
 // ---------------------------------------------------------------------------
@@ -329,6 +360,7 @@ function doubleManiaMarkLose() {
 // ---------------------------------------------------------------------------
 function doubleManiaCloseBonusGame() {
   _dmBonus.active = false;
+  _dmBonusHasBonus = false;
   // Clear any remaining reel timers
   for (var i = 0; i < _dmReelTimers.length; i++) {
     if (_dmReelTimers[i]) { clearInterval(_dmReelTimers[i]); _dmReelTimers[i] = null; }

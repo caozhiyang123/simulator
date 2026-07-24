@@ -616,6 +616,13 @@ function playUpdateCardMasks() {
 
 function playCollectRound() {
   if (!_playWs || _playWs.readyState !== WebSocket.OPEN) { showAlert('Not connected'); return; }
+  // DoubleMania: if bonus game pending, open bonus first (round over after bonus closes)
+  _playSpinState = 'waiting_roundover';
+  if (_playBonusPending && typeof doubleManiaTriggeredBonusBeforeRoundOver === 'function') {
+    var collectBtn = document.getElementById('playCollectBtn');
+    if (collectBtn) collectBtn.style.display = 'none';
+    if (doubleManiaTriggeredBonusBeforeRoundOver()) return;
+  }
   var resp = _playCurrentMachine.response;
   var roCmd = {
     cmd: 'finalizajogada',
@@ -1117,8 +1124,10 @@ function playHandleSpinResponse(spinResp) {
       // Keep spin disabled during round over
       var spinBtn2 = document.getElementById('playSpinBtn');
       if (spinBtn2) { spinBtn2.style.opacity = '0.5'; spinBtn2.style.pointerEvents = 'none'; }
-      // If a bonus game is pending, defer round over until bonus finishes
-      if (!_playBonusPending) {
+      // If a bonus game is pending, open bonus first (round over after bonus closes)
+      if (_playBonusPending && typeof doubleManiaTriggeredBonusBeforeRoundOver === 'function') {
+        doubleManiaTriggeredBonusBeforeRoundOver();
+      } else if (!_playBonusPending) {
         playRoundOver();
       }
     } else {
@@ -1338,6 +1347,10 @@ function playHandleBuyEbResponse(ebResp) {
     // No more EBs or finalizou, round over
     playRemoveEbButtons();
     _playSpinState = 'waiting_roundover';
+    // DoubleMania: if bonus game pending, open bonus first (round over after bonus closes)
+    if (_playBonusPending && typeof doubleManiaTriggeredBonusBeforeRoundOver === 'function') {
+      if (doubleManiaTriggeredBonusBeforeRoundOver()) return;
+    }
     playRoundOver();
   }
 }
@@ -1512,6 +1525,10 @@ function playBuyEb() {
 function playCollect() {
   playRemoveEbButtons();
   _playSpinState = 'waiting_roundover';
+  // DoubleMania: if bonus game pending, open bonus first (round over after bonus closes)
+  if (_playBonusPending && typeof doubleManiaTriggeredBonusBeforeRoundOver === 'function') {
+    if (doubleManiaTriggeredBonusBeforeRoundOver()) return;
+  }
   playRoundOver();
 }
 

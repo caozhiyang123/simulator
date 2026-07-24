@@ -163,3 +163,58 @@ function addBatchExcludeDir() {
 // Play module loaded from /static/js/play.js
 init();
 
+
+
+// ---------------------------------------------------------------------------
+// Repeat Number Position Calculation
+// ---------------------------------------------------------------------------
+function rnpCalculate() {
+  var input = document.getElementById('rnpCardsInput').value.trim();
+  var resultEl = document.getElementById('rnpResult');
+  if (!input) { resultEl.textContent = 'Please enter cards data'; return; }
+
+  var cards;
+  try { cards = JSON.parse(input); } catch(e) { resultEl.textContent = 'Invalid JSON: ' + e.message; return; }
+  if (!Array.isArray(cards) || cards.length === 0) { resultEl.textContent = 'Input must be a non-empty array'; return; }
+
+  // Group indices by number value
+  var groups = {};
+  for (var i = 0; i < cards.length; i++) {
+    var num = cards[i];
+    if (!groups[num]) groups[num] = [];
+    groups[num].push(i);
+  }
+
+  // Filter groups with more than 1 occurrence (repeat numbers)
+  var result = [];
+  var keys = Object.keys(groups);
+  for (var k = 0; k < keys.length; k++) {
+    if (groups[keys[k]].length > 1) {
+      result.push(groups[keys[k]]);
+    }
+  }
+
+  // Sort by group size descending, then by first index ascending
+  result.sort(function(a, b) {
+    if (b.length !== a.length) return b.length - a.length;
+    return a[0] - b[0];
+  });
+
+  // Display result — one group per line with copy button
+  if (result.length === 0) {
+    resultEl.innerHTML = 'No repeat numbers found';
+  } else {
+    var lines = result.map(function(g) { return JSON.stringify(g); });
+    var text = '[' + lines.join(',\n') + ']';
+    resultEl.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="font-size:12px;color:#666;">Result (' + result.length + ' groups)</span><span onclick="rnpCopyResult()" style="cursor:pointer;font-size:16px;" title="Copy">📋</span></div><pre id="rnpResultText" style="margin:0;white-space:pre-wrap;word-break:break-all;">' + text + '</pre>';
+  }
+}
+
+function rnpCopyResult() {
+  var text = document.getElementById('rnpResultText');
+  if (!text) return;
+  navigator.clipboard.writeText(text.textContent).then(function() {
+    var btn = text.parentElement.querySelector('span[onclick]');
+    if (btn) { btn.textContent = '✅'; setTimeout(function() { btn.textContent = '📋'; }, 2000); }
+  });
+}

@@ -61,6 +61,7 @@
         <div style="padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('cardgen');hidePluginMenu()">🃏 Card Generation</div>
         <div style="padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('patterncomb');hidePluginMenu()">🧩 Pattern Combination</div>
         <div style="padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('patterncalc');hidePluginMenu()">🎯 Pattern Calculation</div>
+        <div style="padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('repeatnumpos');hidePluginMenu()">🔢 Repeat Number Position</div>
       </div>
     </div>
     <button class="sidebar-btn" onclick="switchPage('cicd')" id="navCicd">🚀<span>CICD</span></button>
@@ -643,6 +644,19 @@
         <div id="pcalcResult" style="margin-top:16px;"></div>
       </div>
     </div><!-- end pagePatterncalc -->
+
+    <!-- REPEAT NUMBER POSITION PAGE -->
+    <div class="page-panel" id="pageRepeatnumpos">
+      <div class="card full-width">
+        <h2>🔢 Repeat Number Position Calculation</h2>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Cards (JSON array of numbers)</label>
+          <textarea id="rnpCardsInput" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:12px;font-family:monospace;box-sizing:border-box;resize:vertical;" placeholder="[24,75,34,12,8,30,1,49,44,81,...]"></textarea>
+        </div>
+        <button onclick="rnpCalculate()" style="background:#4a90d9;color:#fff;border:none;border-radius:4px;padding:8px 20px;cursor:pointer;font-size:13px;font-weight:500;">Calculate</button>
+        <div id="rnpResult" style="margin-top:16px;padding:12px;background:#f9f9f9;border:1px solid #eee;border-radius:6px;font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:500px;overflow-y:auto;color:#333;"></div>
+      </div>
+    </div><!-- end pageRepeatnumpos -->
 
     <!-- CICD PAGE -->
     <div class="page-panel" id="pageCicd">
@@ -3124,7 +3138,7 @@ function switchPage(page) {
   var navId = 'nav' + page.charAt(0).toUpperCase() + page.slice(1);
   var navEl = document.getElementById(navId);
   if (navEl) { navEl.classList.add('active'); }
-  else if (page === 'compare' || page === 'formatjson' || page === 'batchoverride' || page === 'formattime' || page === 'cardgen' || page === 'patterncomb' || page === 'patterncalc') {
+  else if (page === 'compare' || page === 'formatjson' || page === 'batchoverride' || page === 'formattime' || page === 'cardgen' || page === 'patterncomb' || page === 'patterncalc' || page === 'repeatnumpos') {
     document.getElementById('navPlugin').classList.add('active');
   }
   if (page === 'history') histLoadAll();
