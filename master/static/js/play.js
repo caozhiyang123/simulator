@@ -206,10 +206,20 @@ async function playSelectMachine(machineId, enabled, machineType) {
       var engine = (machineType === 'slot') ? SlotEngine : BingoEngine;
       engine.onJackpotUpdate(resp.features, machineName);
     } else if (resp.cmd === 'bonus_game') {
-      // Bonus game response (e.g. DoubleMania BonusGameFeature)
+      // Bonus game response (e.g. DoubleMania/WildWestBingo SlotBonusFeature)
       playLog('<<< [BONUS GAME] response: ' + JSON.stringify(resp));
-      if (typeof doubleManiaHandleBonusResponse === 'function') {
+      if (machineName === 'WildWestBingo' && typeof wildWestHandleBonusResponse === 'function') {
+        wildWestHandleBonusResponse(resp);
+      } else if (typeof doubleManiaHandleBonusResponse === 'function') {
         doubleManiaHandleBonusResponse(resp);
+      }
+    } else if (resp.cmd === 'bonus_start') {
+      // Bonus start response (server acknowledges bonus session started)
+      playLog('<<< [BONUS START] response: ' + JSON.stringify(resp));
+      if (machineName === 'WildWestBingo' && typeof wildWestHandleBonusStartResponse === 'function') {
+        wildWestHandleBonusStartResponse(resp);
+      } else if (typeof doubleManiaHandleBonusStartResponse === 'function') {
+        doubleManiaHandleBonusStartResponse(resp);
       }
     } else if (resp.cmd === 'magic_ball') {
       // Magic ball response (e.g. SuperRich lucky ball)
@@ -616,12 +626,12 @@ function playUpdateCardMasks() {
 
 function playCollectRound() {
   if (!_playWs || _playWs.readyState !== WebSocket.OPEN) { showAlert('Not connected'); return; }
-  // DoubleMania: if bonus game pending, open bonus first (round over after bonus closes)
+  // DoubleMania/WildWestBingo: if bonus game pending, open bonus first (round over after bonus closes)
   _playSpinState = 'waiting_roundover';
-  if (_playBonusPending && typeof doubleManiaTriggeredBonusBeforeRoundOver === 'function') {
+  if (_playBonusPending) {
     var collectBtn = document.getElementById('playCollectBtn');
     if (collectBtn) collectBtn.style.display = 'none';
-    if (doubleManiaTriggeredBonusBeforeRoundOver()) return;
+    if (_playTriggerBonusBeforeRoundOver()) return;
   }
   var resp = _playCurrentMachine.response;
   var roCmd = {
@@ -775,6 +785,19 @@ var _playSpinResponse = null;
 var _playBalanceAnimTimer = null; // balance counting animation timer
 var _playCurrentBalance = 0; // tracks the currently displayed balance value
 var _playBonusPending = false; // set by machine plugins to defer round over
+
+// Helper: attempt to trigger bonus game before round over (supports multiple machines)
+function _playTriggerBonusBeforeRoundOver() {
+  if (!_playBonusPending) return false;
+  var name = (_playCurrentMachine && _playCurrentMachine.name) || '';
+  if (name === 'WildWestBingo' && typeof wildWestTriggeredBonusBeforeRoundOver === 'function') {
+    return wildWestTriggeredBonusBeforeRoundOver();
+  }
+  if (typeof doubleManiaTriggeredBonusBeforeRoundOver === 'function') {
+    return doubleManiaTriggeredBonusBeforeRoundOver();
+  }
+  return false;
+}
 
 // ---------------------------------------------------------------------------
 // Coin Effect & Animated Balance Helpers (Bingo Common)
@@ -1125,9 +1148,9 @@ function playHandleSpinResponse(spinResp) {
       var spinBtn2 = document.getElementById('playSpinBtn');
       if (spinBtn2) { spinBtn2.style.opacity = '0.5'; spinBtn2.style.pointerEvents = 'none'; }
       // If a bonus game is pending, open bonus first (round over after bonus closes)
-      if (_playBonusPending && typeof doubleManiaTriggeredBonusBeforeRoundOver === 'function') {
-        doubleManiaTriggeredBonusBeforeRoundOver();
-      } else if (!_playBonusPending) {
+      if (_playBonusPending) {
+        _playTriggerBonusBeforeRoundOver();
+      } else {
         playRoundOver();
       }
     } else {
@@ -1347,9 +1370,9 @@ function playHandleBuyEbResponse(ebResp) {
     // No more EBs or finalizou, round over
     playRemoveEbButtons();
     _playSpinState = 'waiting_roundover';
-    // DoubleMania: if bonus game pending, open bonus first (round over after bonus closes)
-    if (_playBonusPending && typeof doubleManiaTriggeredBonusBeforeRoundOver === 'function') {
-      if (doubleManiaTriggeredBonusBeforeRoundOver()) return;
+    // If bonus game pending, open bonus first (round over after bonus closes)
+    if (_playBonusPending) {
+      if (_playTriggerBonusBeforeRoundOver()) return;
     }
     playRoundOver();
   }
@@ -1525,9 +1548,9 @@ function playBuyEb() {
 function playCollect() {
   playRemoveEbButtons();
   _playSpinState = 'waiting_roundover';
-  // DoubleMania: if bonus game pending, open bonus first (round over after bonus closes)
-  if (_playBonusPending && typeof doubleManiaTriggeredBonusBeforeRoundOver === 'function') {
-    if (doubleManiaTriggeredBonusBeforeRoundOver()) return;
+  // If bonus game pending, open bonus first (round over after bonus closes)
+  if (_playBonusPending) {
+    if (_playTriggerBonusBeforeRoundOver()) return;
   }
   playRoundOver();
 }

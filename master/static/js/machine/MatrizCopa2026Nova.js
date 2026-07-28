@@ -770,6 +770,8 @@ function mcDemoStartShooting() {
   html += '<img id="mcShootTarget" src="' + imgBase + 'bonus1_step_3_target.PNG" style="position:absolute;width:50px;height:50px;object-fit:contain;top:20%;left:calc(50% - 25px);transition:left 0.3s, top 0.3s;pointer-events:none;">';
   // Goalkeeper
   html += '<img id="mcShootKeeper" src="' + imgBase + 'bonus1_step_3_player1.PNG" style="position:absolute;bottom:50%;left:50%;transform:translateX(-50%);width:120px;height:120px;object-fit:contain;pointer-events:none;transition:transform 0.3s ease-out;">';
+  // Kicker (4-frame animation before ball is kicked)
+  html += '<img id="mcShootKicker" src="' + imgBase + 'p1.png" style="position:absolute;bottom:10%;left:25%;width:200px;height:200px;object-fit:contain;pointer-events:none;opacity:0;">';
   // Ball (clickable)
   html += '<img id="mcShootBall" src="' + imgBase + 'bonus1_step_3_ball1.PNG" style="position:absolute;bottom:8%;left:50%;transform:translateX(-50%);width:50px;height:50px;object-fit:contain;cursor:pointer;" onclick="mcDemoShootBall()">';
   // Status
@@ -823,6 +825,49 @@ function mcDemoShootBall() {
   state.shotsFired++;
 
   var imgBase = '/static/machine/MatrizCopa2026Nova/item/';
+
+  // Hide the ball during kicker animation
+  var ball = document.getElementById('mcShootBall');
+  if (ball) ball.style.opacity = '0.5';
+
+  // Play kicker 4-frame animation (p1→p2→p3→p4), then kick the ball
+  var kicker = document.getElementById('mcShootKicker');
+  if (kicker) {
+    kicker.style.opacity = '1';
+    kicker.style.left = '25%';
+    kicker.src = imgBase + 'p1.png';
+
+    var kickerFrames = ['p1.png', 'p2.png', 'p3.png', 'p4.png'];
+    var frameIdx = 0;
+    var kickerInterval = setInterval(function() {
+      frameIdx++;
+      if (frameIdx < kickerFrames.length) {
+        kicker.src = imgBase + kickerFrames[frameIdx];
+        // Move kicker towards ball position
+        var progress = frameIdx / (kickerFrames.length - 1);
+        kicker.style.left = (25 + progress * 20) + '%';
+      } else {
+        clearInterval(kickerInterval);
+        // Hide kicker after animation, then launch the ball
+        setTimeout(function() {
+          kicker.style.opacity = '0';
+          kicker.style.left = '25%';
+          if (ball) ball.style.opacity = '1';
+          mcDemoLaunchBall(state, imgBase);
+        }, 80);
+      }
+    }, 120);
+  } else {
+    // Fallback: no kicker element, just launch directly
+    if (ball) ball.style.opacity = '1';
+    mcDemoLaunchBall(state, imgBase);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Launch the ball after kicker animation completes
+// ---------------------------------------------------------------------------
+function mcDemoLaunchBall(state, imgBase) {
   var shotIdx = state.shotsFired - 1;
   var shotPrize = state.hitGoalBonus[shotIdx] || 0;
   var isHit = shotPrize > 0;

@@ -281,6 +281,15 @@
         "enabled": true,
         "type": "slot",
         "choose_quantity": true
+      },
+      {
+        "name": "WildWestBingo",
+        "config_file": "WildWestBingo.json",
+        "machine_id": 200,
+        "connection_url": "ws://localhost:9090/wildWest?authorization=ihUi2JeEDf1jFcVWlgjiNBp8o1kWOdXlPOApnimvCK8=&reconnect=false",
+        "enabled": true,
+        "type": "bingo",
+        "choose_quantity": true
       }
     ]
   }

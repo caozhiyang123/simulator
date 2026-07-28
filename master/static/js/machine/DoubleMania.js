@@ -52,13 +52,50 @@ function doubleManiaUpdateBonusState(resp) {
 // ---------------------------------------------------------------------------
 // Trigger bonus game (called when round is about to end and has_bonus is true)
 // This replaces the immediate opening — now deferred until round end.
+// Sends bonus_start first, then opens the modal after server confirms.
 // ---------------------------------------------------------------------------
 function doubleManiaTriggeredBonusBeforeRoundOver() {
   if (_dmBonusHasBonus) {
-    doubleManiaOpenBonusGame();
-    return true; // bonus game was opened, caller should NOT send round over yet
+    doublemaniaSendBonusStart();
+    return true; // bonus start sent, caller should NOT send round over yet
   }
   return false; // no bonus, caller can proceed with round over
+}
+
+// ---------------------------------------------------------------------------
+// Send bonus_start command to server before opening bonus game
+// ---------------------------------------------------------------------------
+function doublemaniaSendBonusStart() {
+  var resp = _playCurrentMachine.response;
+  var cmd = {
+    cmd: 'bonus_start',
+    session_token: _playSessionToken,
+    game_id: _playCurrentMachine.machine_id,
+    currency: _playCurrency,
+    opt_id: resp.opt_id || '',
+    username: resp.username || ''
+  };
+  playLog('>>> [BONUS START] send: ' + JSON.stringify(cmd));
+  _playWs.send(JSON.stringify(cmd));
+}
+
+// ---------------------------------------------------------------------------
+// Handle bonus_start response from server
+// ---------------------------------------------------------------------------
+function doubleManiaHandleBonusStartResponse(resp) {
+  playLog('[DoubleMania] bonus_start confirmed: ' + JSON.stringify(resp));
+  if (resp.bonus_start === true) {
+    // Server confirmed, now open the bonus game modal
+    doubleManiaOpenBonusGame();
+  } else {
+    // Server rejected bonus start — proceed with round over
+    playLog('[DoubleMania] bonus_start rejected, proceeding with round over');
+    _playBonusPending = false;
+    _dmBonusHasBonus = false;
+    if (_playSpinState === 'waiting_roundover') {
+      playRoundOver();
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
