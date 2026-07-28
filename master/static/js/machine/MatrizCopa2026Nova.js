@@ -830,31 +830,43 @@ function mcDemoShootBall() {
   var ball = document.getElementById('mcShootBall');
   if (ball) ball.style.opacity = '0.5';
 
-  // Play kicker 4-frame animation (p1→p2→p3→p4), then kick the ball
   var kicker = document.getElementById('mcShootKicker');
   if (kicker) {
     kicker.style.opacity = '1';
     kicker.style.left = '25%';
-    kicker.src = imgBase + 'p1.png';
+    kicker.src = imgBase + 'p5.png';
 
-    var kickerFrames = ['p1.png', 'p2.png', 'p3.png', 'p4.png'];
-    var frameIdx = 0;
-    var kickerInterval = setInterval(function() {
-      frameIdx++;
-      if (frameIdx < kickerFrames.length) {
-        kicker.src = imgBase + kickerFrames[frameIdx];
-        // Move kicker towards ball position
-        var progress = frameIdx / (kickerFrames.length - 1);
-        kicker.style.left = (25 + progress * 20) + '%';
+    // Phase 1: Idle stepping animation (p5→p6→p7→p8) — player steps in place
+    var idleFrames = ['p5.png', 'p6.png', 'p7.png', 'p8.png'];
+    var idleIdx = 0;
+    var idleInterval = setInterval(function() {
+      idleIdx++;
+      if (idleIdx < idleFrames.length) {
+        kicker.src = imgBase + idleFrames[idleIdx];
       } else {
-        clearInterval(kickerInterval);
-        // Hide kicker after animation, then launch the ball
-        setTimeout(function() {
-          kicker.style.opacity = '0';
-          kicker.style.left = '25%';
-          if (ball) ball.style.opacity = '1';
-          mcDemoLaunchBall(state, imgBase);
-        }, 80);
+        clearInterval(idleInterval);
+        // Phase 2: Run-up kick animation (p1→p2→p3→p4) — player runs and kicks
+        kicker.src = imgBase + 'p1.png';
+        var kickerFrames = ['p1.png', 'p2.png', 'p3.png', 'p4.png'];
+        var frameIdx = 0;
+        var kickerInterval = setInterval(function() {
+          frameIdx++;
+          if (frameIdx < kickerFrames.length) {
+            kicker.src = imgBase + kickerFrames[frameIdx];
+            // Move kicker towards ball position
+            var progress = frameIdx / (kickerFrames.length - 1);
+            kicker.style.left = (25 + progress * 20) + '%';
+          } else {
+            clearInterval(kickerInterval);
+            // Hide kicker after animation, then launch the ball
+            setTimeout(function() {
+              kicker.style.opacity = '0';
+              kicker.style.left = '25%';
+              if (ball) ball.style.opacity = '1';
+              mcDemoLaunchBall(state, imgBase);
+            }, 80);
+          }
+        }, 120);
       }
     }, 120);
   } else {
