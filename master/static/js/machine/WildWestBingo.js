@@ -304,14 +304,13 @@ function wildWestOpenBonusGame() {
   container.id = 'wwBonusContainer';
   container.style.cssText = 'width:680px;max-width:95vw;background:linear-gradient(135deg,#3d1f00,#6b3a1a,#3d1f00);border-radius:12px;padding:20px;box-shadow:0 8px 32px rgba(0,0,0,0.6);position:relative;border:2px solid #c8860a;';
 
-  // === TOP SECTION: Spins left + Won display + Multiplier ===
-  var topHtml = '<div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">';
-
-  // Pattern prize table
-  topHtml += '<div style="flex:1;background:rgba(255,255,200,0.9);border-radius:8px;padding:6px;text-align:center;">';
-  topHtml += '<div style="color:#8b4513;font-size:11px;font-weight:700;margin-bottom:4px;">Prize</div>';
-  topHtml += '<img src="/static/machine/WildWestBingo/BonusGame/pattern/pattern1.PNG" style="width:100%;max-width:180px;height:auto;border-radius:4px;">';
+  // === PATTERN ROW: Prize pattern image (full width) ===
+  var topHtml = '<div style="margin-bottom:12px;text-align:center;">';
+  topHtml += '<img src="/static/machine/WildWestBingo/BonusGame/pattern/pattern1.PNG" style="width:100%;max-width:620px;height:auto;border-radius:6px;border:1px solid #c8860a;">';
   topHtml += '</div>';
+
+  // === INFO ROW: Spins left + Won display + Multiplier ===
+  topHtml += '<div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">';
 
   // Spins left
   topHtml += '<div style="flex:1;background:rgba(0,0,0,0.5);border-radius:8px;padding:10px;text-align:center;border:1px solid #c8860a;">';
