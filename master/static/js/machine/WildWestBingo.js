@@ -2,33 +2,40 @@
 // WildWestBingo Machine Plugin (Bingo)
 // 5x3 cards, max 16 cards, overlap_win pattern matching.
 // Features: SlotBonusFeature (deferred bonus game with bonus_start),
-//           BuffDoubleFreeEBFeature (free extra balls),
-//           BuffCalaWildEBFeature (wild extra balls),
+//           BuffDoubleFreeEBFeature (free extra balls — same as CalacaBingo lightning_ebs),
+//           BuffCalaWildEBFeature (wild/lucky ball — same as CalacaBingo magic_available_balls),
 //           GoldenBadgeFeature (golden badge multiplier wheel),
 //           MoreRepeatNumberFeature (repeated numbers across cards)
 // ---------------------------------------------------------------------------
 MachineRegistry.register('WildWestBingo', {
   type: 'bingo',
 
+  // Handle reconnection state from login response (bonus_slot in login data)
+  afterRender: function(resp, machineConfig) {
+    wildWestHandleLoginBonusState(resp);
+  },
+
   onSpinResponse: function(resp) {
     // Always update slot bonus state from latest server response (spin or EB)
     wildWestUpdateBonusState(resp);
 
-    // Check if this is an EB response
-    if (resp.extra !== undefined) {
+    // Lucky ball (BuffCalaWildEBFeature) — same handling as CalacaBingo
+    if (resp.extra !== undefined && resp.magic_available_balls && resp.magic_available_balls.length > 0) {
+      _superRichMagicBalls = resp.magic_available_balls;
+      _superRichLastEb = resp.extra;
+      playHandleBuyEbResponse(resp);
+      playDisableEbButton();
+      setTimeout(function() {
+        superRichShowLuckyBallModal(_superRichMagicBalls);
+      }, 600);
+    } else if (resp.extra !== undefined) {
+      // Normal EB response
       playHandleBuyEbResponse(resp);
 
-      // Check for free EB (lightning-style) from BuffDoubleFreeEBFeature
-      if (resp.free_ebs && resp.free_ebs.length > 0) {
+      // Free EB (BuffDoubleFreeEBFeature) — same as CalacaBingo lightning_ebs
+      if (resp.lightning_ebs && resp.lightning_ebs.length > 0) {
         setTimeout(function() {
-          wildWestFreeEb(resp.free_ebs);
-        }, 400);
-      }
-
-      // Check for wild EB from BuffCalaWildEBFeature
-      if (resp.wild_eb) {
-        setTimeout(function() {
-          wildWestWildEb(resp.wild_eb);
+          carnavalLightningEb(resp.lightning_ebs);
         }, 400);
       }
 
@@ -40,10 +47,10 @@ MachineRegistry.register('WildWestBingo', {
       // Normal spin response
       playHandleSpinResponse(resp);
 
-      // Check for free EB on initial spin
-      if (resp.free_ebs && resp.free_ebs.length > 0) {
+      // Free EB on initial spin
+      if (resp.lightning_ebs && resp.lightning_ebs.length > 0) {
         setTimeout(function() {
-          wildWestFreeEb(resp.free_ebs);
+          carnavalLightningEb(resp.lightning_ebs);
         }, 400);
       }
 
@@ -58,8 +65,9 @@ MachineRegistry.register('WildWestBingo', {
 // ---------------------------------------------------------------------------
 // WildWestBingo Slot Bonus State (same pattern as DoubleMania)
 // ---------------------------------------------------------------------------
-var _wwBonusHasBonus = false;   // latest has_bonus from server
-var _wwBonusMultiplier = 0;     // latest multiplier from server
+var _wwBonusHasBonus = false;   // true when bonus_slot is present in response
+var _wwBonusMultiplier = 0;     // multiplier from bonus_slot JSON
+var _wwBonusRemainingSpins = 0; // bonus_remaining_spins from bonus_slot JSON
 var _wwBonus = {
   active: false,
   totalWon: 0,
@@ -71,18 +79,88 @@ var _wwBonus = {
 
 // ---------------------------------------------------------------------------
 // Update bonus state from every spin/EB response (always overwrite with latest)
+// Data comes via "bonus_slot" field as a JSON string.
 // ---------------------------------------------------------------------------
 function wildWestUpdateBonusState(resp) {
-  _wwBonusHasBonus = resp.has_bonus === true;
-  _wwBonusMultiplier = resp.multiplier || 0;
-
-  if (_wwBonusHasBonus) {
+  if (resp.bonus_slot) {
+    // Parse bonus_slot JSON string
+    var bonusData = {};
+    try {
+      bonusData = (typeof resp.bonus_slot === 'string') ? JSON.parse(resp.bonus_slot) : resp.bonus_slot;
+    } catch (e) {
+      playLog('[WildWestBingo] ERROR parsing bonus_slot: ' + e);
+      bonusData = {};
+    }
+    _wwBonusHasBonus = true;
+    _wwBonusMultiplier = bonusData.multiplier || 0;
+    _wwBonusRemainingSpins = bonusData.bonus_remaining_spins || 8;
     _playBonusPending = true;
+    playLog('[WildWestBingo] bonus_slot detected: multiplier=' + _wwBonusMultiplier + ', remaining_spins=' + _wwBonusRemainingSpins);
   } else {
+    _wwBonusHasBonus = false;
     _playBonusPending = false;
   }
+}
 
-  playLog('[WildWestBingo] bonus state updated: has_bonus=' + _wwBonusHasBonus + ', multiplier=' + _wwBonusMultiplier);
+// ---------------------------------------------------------------------------
+// Handle bonus state from login response (reconnection scenario)
+// Login returns bonus_slot with bonus_start flag:
+//   bonus_start=false: player disconnected before entering bonus game
+//     -> if has_extra_ball, allow EB purchase; bonus deferred as normal
+//   bonus_start=true: player disconnected after entering bonus game
+//     -> skip EB, directly enter bonus game if bonus_remaining_spins > 0
+//     -> otherwise just round over
+// ---------------------------------------------------------------------------
+function wildWestHandleLoginBonusState(resp) {
+  if (!resp.bonus_slot) return;
+
+  var bonusData = {};
+  try {
+    bonusData = (typeof resp.bonus_slot === 'string') ? JSON.parse(resp.bonus_slot) : resp.bonus_slot;
+  } catch (e) {
+    playLog('[WildWestBingo] ERROR parsing login bonus_slot: ' + e);
+    return;
+  }
+
+  var bonusStart = bonusData.bonus_start === true;
+  var remainingSpins = bonusData.bonus_remaining_spins || 0;
+  var multiplier = bonusData.multiplier || 0;
+
+  playLog('[WildWestBingo] login bonus_slot: bonus_start=' + bonusStart + ', remaining_spins=' + remainingSpins + ', multiplier=' + multiplier);
+
+  // Store bonus state
+  _wwBonusMultiplier = multiplier;
+  _wwBonusRemainingSpins = remainingSpins;
+
+  if (bonusStart) {
+    // Player was already inside bonus game before disconnect
+    // Do NOT allow EB purchase — go directly into bonus game or round over
+    _wwBonusHasBonus = true;
+    _playBonusPending = true;
+
+    if (remainingSpins > 0) {
+      // Resume bonus game after a short delay for UI to render
+      setTimeout(function() {
+        wildWestOpenBonusGame();
+      }, 1000);
+    } else {
+      // No spins left — just send round over
+      _playBonusPending = false;
+      _wwBonusHasBonus = false;
+      setTimeout(function() {
+        _playSpinState = 'waiting_roundover';
+        playRoundOver();
+      }, 1000);
+    }
+  } else {
+    // Player disconnected before entering bonus game
+    // Allow normal EB purchase flow; bonus will be triggered at round end as usual
+    if (remainingSpins > 0) {
+      _wwBonusHasBonus = true;
+      _playBonusPending = true;
+    }
+    // If has_extra_ball is true, the normal UI will show EB buttons
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -91,7 +169,7 @@ function wildWestUpdateBonusState(resp) {
 // ---------------------------------------------------------------------------
 function wildWestTriggeredBonusBeforeRoundOver() {
   if (_wwBonusHasBonus) {
-    wildWestSendBonusStart();
+    wildWestSendBonusStart(6); // SlotBonusFeature feature_id = 6
     return true;
   }
   return false;
@@ -100,7 +178,7 @@ function wildWestTriggeredBonusBeforeRoundOver() {
 // ---------------------------------------------------------------------------
 // Send bonus_start command to server
 // ---------------------------------------------------------------------------
-function wildWestSendBonusStart() {
+function wildWestSendBonusStart(featureId) {
   var resp = _playCurrentMachine.response;
   var cmd = {
     cmd: 'bonus_start',
@@ -108,7 +186,8 @@ function wildWestSendBonusStart() {
     game_id: _playCurrentMachine.machine_id,
     currency: _playCurrency,
     opt_id: resp.opt_id || '',
-    username: resp.username || ''
+    username: resp.username || '',
+    feature_id: featureId || 6
   };
   playLog('>>> [WW BONUS START] send: ' + JSON.stringify(cmd));
   _playWs.send(JSON.stringify(cmd));
@@ -136,14 +215,14 @@ function wildWestHandleBonusStartResponse(resp) {
 // ---------------------------------------------------------------------------
 function wildWestOpenBonusGame() {
   var config = wildWestGetBonusConfig();
-  var baseSpins = config.base_bonus_spins || 8;
+  var spins = _wwBonusRemainingSpins || config.base_bonus_spins || 8;
 
   _wwBonus.active = true;
   _wwBonus.totalWon = 0;
   _wwBonus.totalBonusPrize = 0;
   _wwBonus.spinning = false;
-  _wwBonus.spinsLeft = baseSpins;
-  _wwBonus.totalSpins = baseSpins;
+  _wwBonus.spinsLeft = spins;
+  _wwBonus.totalSpins = spins;
 
   // Remove existing modal if any
   var old = document.getElementById('wwBonusModal');
@@ -159,6 +238,12 @@ function wildWestOpenBonusGame() {
 
   // === TOP SECTION: Spins left + Won display + Multiplier ===
   var topHtml = '<div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">';
+
+  // Pattern prize table
+  topHtml += '<div style="flex:1;background:rgba(255,255,200,0.9);border-radius:8px;padding:6px;text-align:center;">';
+  topHtml += '<div style="color:#8b4513;font-size:11px;font-weight:700;margin-bottom:4px;">Prize</div>';
+  topHtml += '<img src="/static/machine/WildWestBingo/BonusGame/pattern/pattern1.PNG" style="width:100%;max-width:180px;height:auto;border-radius:4px;">';
+  topHtml += '</div>';
 
   // Spins left
   topHtml += '<div style="flex:1;background:rgba(0,0,0,0.5);border-radius:8px;padding:10px;text-align:center;border:1px solid #c8860a;">';
@@ -188,7 +273,7 @@ function wildWestOpenBonusGame() {
   for (var r = 0; r < 4; r++) {
     midHtml += '<div class="ww-reel-frame" style="width:130px;height:130px;background:#fff;border:4px solid #8b4513;border-radius:4px;overflow:hidden;position:relative;">';
     midHtml += '<div id="wwReel' + r + '" class="ww-reel-strip" style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;">';
-    midHtml += '<img src="/static/machine/WildWestBingo/BonusGame/icon/i1.PNG" style="width:100%;height:100%;object-fit:cover;">';
+    midHtml += '<img src="/static/machine/WildWestBingo/BonusGame/icon/i1.png" style="width:100%;height:100%;object-fit:cover;">';
     midHtml += '</div>';
     midHtml += '</div>';
   }
@@ -205,7 +290,7 @@ function wildWestOpenBonusGame() {
   modal.appendChild(container);
   document.body.appendChild(modal);
 
-  playLog('🤠 [WW BONUS GAME] opened (multiplier: x' + _wwBonusMultiplier + ', spins: ' + baseSpins + ')');
+  playLog('🤠 [WW BONUS GAME] opened (multiplier: x' + _wwBonusMultiplier + ', spins: ' + spins + ')');
 }
 
 // ---------------------------------------------------------------------------
@@ -270,7 +355,7 @@ function wildWestAnimateReels() {
         var icons = '';
         for (var k = 0; k < 4; k++) {
           var iconId = ((reelIdx + k + Math.floor(Math.abs(offset) / 30)) % iconCount) + 1;
-          icons += '<img src="/static/machine/WildWestBingo/BonusGame/icon/i' + iconId + '.PNG" style="width:100%;height:130px;object-fit:cover;display:block;flex-shrink:0;">';
+          icons += '<img src="/static/machine/WildWestBingo/BonusGame/icon/i' + iconId + '.png" style="width:100%;height:130px;object-fit:cover;display:block;flex-shrink:0;">';
         }
         reelEl.style.display = 'flex';
         reelEl.style.flexDirection = 'column';
@@ -302,7 +387,7 @@ function wildWestStopReels(icons) {
           reelEl.style.flexDirection = 'column';
           reelEl.style.alignItems = 'center';
           reelEl.style.justifyContent = 'center';
-          reelEl.innerHTML = '<img src="/static/machine/WildWestBingo/BonusGame/icon/i' + iconId + '.PNG" style="width:100%;height:100%;object-fit:cover;animation:wwReelBounce 0.3s ease;">';
+          reelEl.innerHTML = '<img src="/static/machine/WildWestBingo/BonusGame/icon/i' + iconId + '.png" style="width:100%;height:100%;object-fit:cover;animation:wwReelBounce 0.3s ease;">';
         }
       }, 400 + reelIdx * 300);
     })(r);
@@ -311,18 +396,32 @@ function wildWestStopReels(icons) {
 
 // ---------------------------------------------------------------------------
 // Handle bonus_game response from server
+// Data comes via "bonus_slot" JSON string + "total_won" at top level.
+// bonus_slot: {"multiplier":0.6,"bonus_remaining_spins":8,"icons":[1,2,3,4],"bonus":0.0,"total_bonus_prize":0.0}
 // ---------------------------------------------------------------------------
 function wildWestHandleBonusResponse(resp) {
   playLog('<<< [WW BONUS GAME] response: ' + JSON.stringify(resp));
 
   if (!_wwBonus.active) return;
 
-  var icons = resp.icons || [];
-  var bonusPrize = resp.bonus_prize || 0;
-  var totalBonusPrize = resp.total_bonus_prize || 0;
+  // Parse bonus_slot JSON string
+  var bonusData = {};
+  try {
+    bonusData = (typeof resp.bonus_slot === 'string') ? JSON.parse(resp.bonus_slot) : (resp.bonus_slot || {});
+  } catch (e) {
+    playLog('[WildWestBingo] ERROR parsing bonus_slot in bonus_game response: ' + e);
+    bonusData = {};
+  }
+
+  var icons = bonusData.icons || [];
+  var bonusPrize = bonusData.bonus || 0;
+  var totalBonusPrize = bonusData.total_bonus_prize || 0;
   var totalWon = resp.total_won || 0;
-  var isOver = resp.is_bonus_over === true;
-  var extraSpins = resp.extra_spins || 0;
+  var remainingSpins = bonusData.bonus_remaining_spins;
+  var multiplier = bonusData.multiplier || _wwBonusMultiplier;
+
+  // Update multiplier if changed
+  _wwBonusMultiplier = multiplier;
 
   _wwBonus.totalWon = totalWon;
   _wwBonus.totalBonusPrize = totalBonusPrize;
@@ -333,11 +432,11 @@ function wildWestHandleBonusResponse(resp) {
   // After reels stop, update display
   var stopDelay = 400 + 4 * 300 + 200;
   setTimeout(function() {
-    // Update spins
-    _wwBonus.spinsLeft--;
-    if (extraSpins > 0) {
-      _wwBonus.spinsLeft += extraSpins;
-      _wwBonus.totalSpins += extraSpins;
+    // Update spins from server remaining_spins
+    if (remainingSpins !== undefined) {
+      _wwBonus.spinsLeft = remainingSpins;
+    } else {
+      _wwBonus.spinsLeft--;
     }
 
     var spinsEl = document.getElementById('wwBonusSpinsLeft');
@@ -347,7 +446,11 @@ function wildWestHandleBonusResponse(resp) {
     var wonEl = document.getElementById('wwBonusWonDisplay');
     if (wonEl) wonEl.textContent = totalBonusPrize.toLocaleString();
 
-    if (isOver || _wwBonus.spinsLeft <= 0) {
+    // Update multiplier display if changed
+    var multiEl = document.getElementById('wwBonusMultiplierDisplay');
+    if (multiEl) multiEl.textContent = 'x' + _wwBonusMultiplier;
+
+    if (_wwBonus.spinsLeft <= 0) {
       // Game over
       _wwBonus.spinning = false;
       var status = document.getElementById('wwBonusStatus');
@@ -397,52 +500,6 @@ function wildWestCloseBonusGame() {
   if (_playSpinState === 'waiting_roundover') {
     playRoundOver();
   }
-}
-
-// ---------------------------------------------------------------------------
-// Free EB (from BuffDoubleFreeEBFeature) — mark free balls on cards
-// ---------------------------------------------------------------------------
-function wildWestFreeEb(freeBalls) {
-  if (!freeBalls || freeBalls.length === 0) return;
-
-  playLog('🎯 [WW FREE EB] balls: ' + JSON.stringify(freeBalls));
-
-  var ballArea = document.getElementById('playBallArea');
-
-  freeBalls.forEach(function(ballNum, idx) {
-    setTimeout(function() {
-      if (ballArea) {
-        ballArea.innerHTML += '<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#ffd700,#ff8c00);border:2px solid #b8860b;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#333;box-shadow:0 0 8px rgba(255,215,0,0.8);">' + ballNum + '</div>';
-      }
-      playMarkBallOnCards(ballNum);
-
-      if (idx === freeBalls.length - 1) {
-        setTimeout(function() {
-          playRecheckPatternsAfterEb();
-        }, 300);
-      }
-    }, idx * 500);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Wild EB (from BuffCalaWildEBFeature) — wild ball marks a selected number
-// ---------------------------------------------------------------------------
-function wildWestWildEb(wildData) {
-  if (!wildData) return;
-
-  var ballNum = wildData.ball || wildData;
-  playLog('🃏 [WW WILD EB] wild ball: ' + ballNum);
-
-  var ballArea = document.getElementById('playBallArea');
-  if (ballArea) {
-    ballArea.innerHTML += '<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#9b59b6,#8e44ad);border:2px solid #6c3483;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;box-shadow:0 0 8px rgba(155,89,182,0.8);">W</div>';
-  }
-  playMarkBallOnCards(ballNum);
-
-  setTimeout(function() {
-    playRecheckPatternsAfterEb();
-  }, 300);
 }
 
 // ---------------------------------------------------------------------------

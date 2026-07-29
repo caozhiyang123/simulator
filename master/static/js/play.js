@@ -533,6 +533,53 @@ function playRenderGame(resp, machineConfig) {
 
   gameArea.innerHTML = html;
   document.getElementById('playBottomText').textContent = 'Connected | Balance: ' + balance.toLocaleString() + ' ' + currency;
+
+  // -----------------------------------------------------------------------
+  // Reconnection: if round_is_over=false, display previously drawn balls,
+  // already purchased extra_balls, mark them on cards, and show EB button.
+  // -----------------------------------------------------------------------
+  if (resp.round_is_over === false && resp.balls && resp.balls.length > 0) {
+    var ballArea = document.getElementById('playBallArea');
+
+    // Display base balls
+    resp.balls.forEach(function(ballNum) {
+      if (ballArea) {
+        ballArea.innerHTML += '<div style="width:28px;height:28px;border-radius:50%;background:#4a90d9;border:2px solid #fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;">' + ballNum + '</div>';
+      }
+      playMarkBallOnCards(ballNum);
+    });
+
+    // Display already purchased extra balls (different color — red)
+    if (resp.extra_balls && resp.extra_balls.length > 0) {
+      resp.extra_balls.forEach(function(ballNum) {
+        if (ballArea) {
+          ballArea.innerHTML += '<div style="width:28px;height:28px;border-radius:50%;background:#e74c3c;border:2px solid #fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;">' + ballNum + '</div>';
+        }
+        playMarkBallOnCards(ballNum);
+      });
+    }
+
+    // Check patterns after all balls are marked
+    var allBalls = (resp.balls || []).concat(resp.extra_balls || []);
+    playCheckPatterns(allBalls);
+
+    // Show EB button if has_extra_ball is true
+    if (resp.has_extra_ball === true && resp.eb_price !== undefined) {
+      _playSpinState = 'eb_available';
+      // Hide the inline COLLECT button (EB buttons have their own COLLECT)
+      var collectBtn = document.getElementById('playCollectBtn');
+      if (collectBtn) collectBtn.style.display = 'none';
+      playShowEbButtons(resp.eb_price);
+    } else {
+      // No more EBs — show collect only
+      _playSpinState = 'waiting_roundover';
+      var spinBtn = document.getElementById('playSpinBtn');
+      if (spinBtn) { spinBtn.style.opacity = '0.5'; spinBtn.style.pointerEvents = 'none'; }
+    }
+
+    // Store the response for EB purchase flow
+    _playSpinResponse = resp;
+  }
 }
 
 function playCalcJackpot(betIndex) {
