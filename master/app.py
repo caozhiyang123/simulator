@@ -1567,19 +1567,28 @@ def bingo_generate():
 
 @app.route("/files/batch-check", methods=["POST"])
 def batch_check():
-    """Recursively find all files matching the source filename.
+    """Recursively find all files matching the source filename(s).
 
-    Request body: {"source": "path", "target_dirs": ["dir1", "dir2"], "exclude_dirs": ["ex1"]}
+    Request body: {
+        "sources": ["path1", "path2"],  // multiple sources (new)
+        "source": "path",               // single source (backward compat)
+        "target_dirs": ["dir1", "dir2"],
+        "exclude_dirs": ["ex1"]
+    }
     """
     data = request.get_json(force=True)
+    sources = data.get("sources", [])
     source = data.get("source", "").strip()
     target_dirs = data.get("target_dirs", [])
     exclude_dirs = data.get("exclude_dirs", [])
+    # Backward compat: support single source
+    if not sources and source:
+        sources = [source]
     # Backward compat: support single target_dir
     if not target_dirs and data.get("target_dir"):
         target_dirs = [data.get("target_dir", "").strip()]
 
-    if not source:
+    if not sources:
         return jsonify({"error": "source file path is required"}), 400
     if not target_dirs:
         return jsonify({"error": "at least one target directory is required"}), 400
@@ -1587,7 +1596,16 @@ def batch_check():
     # Normalize exclude dirs for comparison
     exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
 
-    filename = os.path.basename(source)
+    # Get all filenames to search for
+    filenames = set()
+    for s in sources:
+        s = s.strip()
+        if s:
+            filenames.add(os.path.basename(s))
+
+    if not filenames:
+        return jsonify({"error": "no valid source files provided"}), 400
+
     found = []
 
     for td in target_dirs:
@@ -1605,7 +1623,7 @@ def batch_check():
             if skip:
                 continue
             for f in files:
-                if f == filename:
+                if f in filenames:
                     found.append(os.path.join(root, f).replace("\\", "/"))
 
     return jsonify({"status": "ok", "found": found, "count": len(found)})
@@ -1613,34 +1631,55 @@ def batch_check():
 
 @app.route("/files/batch-override", methods=["POST"])
 def batch_override():
-    """Recursively find and replace files matching the source filename.
+    """Recursively find and replace files matching the source filename(s).
 
-    Request body: {"source": "path", "target_dirs": ["dir1"], "exclude_dirs": ["ex1"]}
+    Request body: {
+        "sources": ["path1", "path2"],  // multiple sources (new)
+        "source": "path",               // single source (backward compat)
+        "target_dirs": ["dir1"],
+        "exclude_dirs": ["ex1"]
+    }
     """
     import shutil
     data = request.get_json(force=True)
+    sources = data.get("sources", [])
     source = data.get("source", "").strip()
     target_dirs = data.get("target_dirs", [])
     exclude_dirs = data.get("exclude_dirs", [])
+    # Backward compat: support single source
+    if not sources and source:
+        sources = [source]
     # Backward compat
     if not target_dirs and data.get("target_dir"):
         target_dirs = [data.get("target_dir", "").strip()]
 
-    if not source:
+    if not sources:
         return jsonify({"error": "source file path is required"}), 400
     if not target_dirs:
         return jsonify({"error": "at least one target directory is required"}), 400
 
-    source = os.path.normpath(source)
-    if not os.path.isfile(source):
-        return jsonify({"error": f"Source file not found: {source}"}), 404
+    # Validate and build source map: filename -> full path
+    source_map = {}
+    source_errors = []
+    for s in sources:
+        s = s.strip()
+        if not s:
+            continue
+        s_norm = os.path.normpath(s)
+        if not os.path.isfile(s_norm):
+            source_errors.append(f"Source file not found: {s}")
+            continue
+        source_map[os.path.basename(s_norm)] = s_norm
+
+    if not source_map:
+        error_msg = "; ".join(source_errors) if source_errors else "no valid source files provided"
+        return jsonify({"error": error_msg}), 400
 
     # Normalize exclude dirs
     exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
 
-    filename = os.path.basename(source)
     replaced = []
-    errors = []
+    errors = list(source_errors)  # Include source file not found errors
 
     for td in target_dirs:
         td = os.path.normpath(td.strip())
@@ -1658,17 +1697,510 @@ def batch_override():
             if skip:
                 continue
             for f in files:
-                if f == filename:
+                if f in source_map:
                     target_path = os.path.join(root, f)
-                    if os.path.normpath(target_path) == source:
+                    if os.path.normpath(target_path) == source_map[f]:
                         continue
                     try:
-                        shutil.copy2(source, target_path)
+                        shutil.copy2(source_map[f], target_path)
                         replaced.append(target_path.replace("\\", "/"))
                     except Exception as exc:
                         errors.append(f"{target_path.replace(chr(92), '/')} - {str(exc)}")
 
     return jsonify({"status": "ok", "replaced": replaced, "errors": errors, "count": len(replaced)})
+
+
+@app.route("/files/batch-delete", methods=["POST"])
+def batch_delete():
+    """Delete a list of files.
+
+    Request body: {"files": ["/full/path/to/file1", "/full/path/to/file2"]}
+    """
+    data = request.get_json(force=True)
+    files = data.get("files", [])
+
+    if not files:
+        return jsonify({"error": "no files provided for deletion"}), 400
+
+    deleted = []
+    errors = []
+
+    for file_path in files:
+        file_path = file_path.strip()
+        if not file_path:
+            continue
+        file_path_norm = os.path.normpath(file_path)
+        if not os.path.isfile(file_path_norm):
+            errors.append(f"File not found: {file_path}")
+            continue
+        try:
+            os.remove(file_path_norm)
+            deleted.append(file_path_norm.replace("\\", "/"))
+        except Exception as exc:
+            errors.append(f"{file_path_norm.replace(chr(92), '/')} - {str(exc)}")
+
+    return jsonify({"status": "ok", "deleted": deleted, "errors": errors, "count": len(deleted)})
+
+
+# ---------------------------------------------------------------------------
+# Batch Edit File (properties file key=value editing)
+# ---------------------------------------------------------------------------
+
+@app.route("/files/batch-edit-check", methods=["POST"])
+def batch_edit_check():
+    """Recursively find all files matching the given filename.
+
+    Request body: {"filename": "name.ext", "target_dirs": ["dir1"], "exclude_dirs": ["ex1"]}
+    """
+    data = request.get_json(force=True)
+    filename = data.get("filename", "").strip()
+    target_dirs = data.get("target_dirs", [])
+    exclude_dirs = data.get("exclude_dirs", [])
+
+    if not filename:
+        return jsonify({"error": "filename is required"}), 400
+    if not target_dirs:
+        return jsonify({"error": "at least one target directory is required"}), 400
+
+    exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
+    found = []
+
+    for td in target_dirs:
+        td = os.path.normpath(td.strip())
+        if not os.path.isdir(td):
+            continue
+        for root, dirs, files in os.walk(td, followlinks=True):
+            root_norm = os.path.normpath(root).lower()
+            skip = False
+            for ex in exclude_normalized:
+                if root_norm == ex or root_norm.startswith(ex + os.sep):
+                    skip = True
+                    break
+            if skip:
+                continue
+            for f in files:
+                if f == filename:
+                    found.append(os.path.join(root, f).replace("\\", "/"))
+
+    return jsonify({"status": "ok", "found": found, "count": len(found)})
+
+
+@app.route("/files/batch-edit-apply", methods=["POST"])
+def batch_edit_apply():
+    """Batch edit .properties files: update existing keys or append new ones.
+
+    Request body: {
+        "filename": "stresstest.properties",
+        "contents": ["WildEastGameIds=200", "openCardAmount=1"],
+        "target_dirs": ["D:\\tools2"],
+        "exclude_dirs": []
+    }
+    """
+    data = request.get_json(force=True)
+    filename = data.get("filename", "").strip()
+    contents = data.get("contents", [])
+    target_dirs = data.get("target_dirs", [])
+    exclude_dirs = data.get("exclude_dirs", [])
+
+    if not filename:
+        return jsonify({"error": "filename is required"}), 400
+    if not contents:
+        return jsonify({"error": "at least one content entry is required"}), 400
+    if not target_dirs:
+        return jsonify({"error": "at least one target directory is required"}), 400
+    if not filename.endswith(".properties"):
+        return jsonify({"error": "Batch Edit currently only supports .properties files"}), 400
+
+    # Parse contents into key=value pairs
+    kv_pairs = []
+    for item in contents:
+        item = item.strip()
+        if "=" in item:
+            key, value = item.split("=", 1)
+            kv_pairs.append((key.strip(), value.strip()))
+        else:
+            # Treat as key with empty value
+            kv_pairs.append((item.strip(), ""))
+
+    if not kv_pairs:
+        return jsonify({"error": "no valid key=value pairs found in contents"}), 400
+
+    # Find all matching files
+    exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
+    found_files = []
+
+    for td in target_dirs:
+        td = os.path.normpath(td.strip())
+        if not os.path.isdir(td):
+            continue
+        for root, dirs, files in os.walk(td, followlinks=True):
+            root_norm = os.path.normpath(root).lower()
+            skip = False
+            for ex in exclude_normalized:
+                if root_norm == ex or root_norm.startswith(ex + os.sep):
+                    skip = True
+                    break
+            if skip:
+                continue
+            for f in files:
+                if f == filename:
+                    found_files.append(os.path.join(root, f))
+
+    updated = []
+    errors = []
+
+    for file_path in found_files:
+        try:
+            # Read current content
+            with open(file_path, "r", encoding="utf-8") as fh:
+                lines = fh.readlines()
+
+            # Track which keys have been updated
+            keys_updated = set()
+            new_lines = []
+
+            for line in lines:
+                stripped = line.rstrip("\n").rstrip("\r")
+                matched = False
+                for key, value in kv_pairs:
+                    # Check if line starts with the key (handle key= or key =)
+                    if stripped.startswith(key) and "=" in stripped:
+                        line_key = stripped.split("=", 1)[0].strip()
+                        if line_key == key:
+                            new_lines.append(f"{key}={value}\n")
+                            keys_updated.add(key)
+                            matched = True
+                            break
+                if not matched:
+                    new_lines.append(line if line.endswith("\n") else line + "\n")
+
+            # Append keys that were not found in the file
+            for key, value in kv_pairs:
+                if key not in keys_updated:
+                    # Ensure there's a newline before appending
+                    if new_lines and not new_lines[-1].endswith("\n"):
+                        new_lines[-1] += "\n"
+                    new_lines.append(f"{key}={value}\n")
+
+            # Write back
+            with open(file_path, "w", encoding="utf-8") as fh:
+                fh.writelines(new_lines)
+
+            updated.append(file_path.replace("\\", "/"))
+        except Exception as exc:
+            errors.append(f"{file_path.replace(chr(92), '/')} - {str(exc)}")
+
+    return jsonify({"status": "ok", "updated": updated, "errors": errors, "count": len(updated)})
+
+
+@app.route("/files/batch-edit-read", methods=["POST"])
+def batch_edit_read():
+    """Read the content of a file for preview/editing.
+
+    Request body: {"path": "/full/path/to/file"}
+    """
+    data = request.get_json(force=True)
+    file_path = data.get("path", "").strip()
+
+    if not file_path:
+        return jsonify({"error": "path is required"}), 400
+
+    file_path = os.path.normpath(file_path)
+    if not os.path.isfile(file_path):
+        return jsonify({"error": f"File not found: {file_path}"}), 404
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as fh:
+            content = fh.read()
+        return jsonify({"status": "ok", "content": content})
+    except UnicodeDecodeError:
+        # Try latin-1 as fallback
+        try:
+            with open(file_path, "r", encoding="latin-1") as fh:
+                content = fh.read()
+            return jsonify({"status": "ok", "content": content})
+        except Exception as exc:
+            return jsonify({"error": f"Cannot read file (binary?): {str(exc)}"}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/files/batch-edit-save", methods=["POST"])
+def batch_edit_save():
+    """Save edited content back to a file.
+
+    Request body: {"path": "/full/path/to/file", "content": "new content"}
+    """
+    data = request.get_json(force=True)
+    file_path = data.get("path", "").strip()
+    content = data.get("content", "")
+
+    if not file_path:
+        return jsonify({"error": "path is required"}), 400
+
+    file_path = os.path.normpath(file_path)
+    if not os.path.isfile(file_path):
+        return jsonify({"error": f"File not found: {file_path}"}), 404
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        return jsonify({"status": "ok", "message": "File saved successfully"})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Batch Upload File (glob pattern directory matching + file copy)
+# ---------------------------------------------------------------------------
+
+@app.route("/files/batch-up-check", methods=["POST"])
+def batch_up_check():
+    """Find directories matching glob patterns for batch upload.
+
+    Target directories support * wildcard patterns (glob).
+    Request body: {
+        "src_files": ["VBWildBallLogic.jar", "VBWildEastBingoLogic.jar"],
+        "target_dirs": ["E:/python/workSpace/temp/ShowBingoSim/*/simulator/B2BGameSimulator/lib"],
+        "exclude_dirs": []
+    }
+    """
+    import glob
+
+    data = request.get_json(force=True)
+    src_files = data.get("src_files", [])
+    target_dirs = data.get("target_dirs", [])
+    exclude_dirs = data.get("exclude_dirs", [])
+
+    if not src_files:
+        return jsonify({"error": "at least one source file is required"}), 400
+    if not target_dirs:
+        return jsonify({"error": "at least one target directory is required"}), 400
+
+    exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
+    found = []
+
+    for td in target_dirs:
+        td = td.strip()
+        # Use glob to expand wildcard patterns
+        if "*" in td or "?" in td:
+            matched_dirs = glob.glob(td)
+        else:
+            matched_dirs = [td]
+
+        for d in matched_dirs:
+            d_norm = os.path.normpath(d)
+            if not os.path.isdir(d_norm):
+                continue
+            # Check exclusion
+            d_lower = d_norm.lower()
+            skip = False
+            for ex in exclude_normalized:
+                if d_lower == ex or d_lower.startswith(ex + os.sep):
+                    skip = True
+                    break
+            if skip:
+                continue
+            found.append(d_norm.replace("\\", "/"))
+
+    # Remove duplicates and sort
+    found = sorted(set(found))
+
+    return jsonify({"status": "ok", "found": found, "count": len(found)})
+
+
+@app.route("/files/batch-up-upload", methods=["POST"])
+def batch_up_upload():
+    """Copy source files to all selected target directories.
+
+    For each source file name, search the system for that file (using the same
+    name in the working directory or provided path), then copy it to each
+    selected target directory.
+
+    Request body: {
+        "src_files": ["VBWildBallLogic.jar", "VBWildEastBingoLogic.jar"],
+        "target_dirs": ["E:/path/to/dir1", "E:/path/to/dir2"]
+    }
+    """
+    import shutil
+
+    data = request.get_json(force=True)
+    src_files = data.get("src_files", [])
+    target_dirs = data.get("target_dirs", [])
+
+    if not src_files:
+        return jsonify({"error": "at least one source file is required"}), 400
+    if not target_dirs:
+        return jsonify({"error": "at least one target directory is required"}), 400
+
+    copied = []
+    errors = []
+
+    for src in src_files:
+        src = src.strip()
+        if not src:
+            continue
+
+        # Determine if src is a full path or just a filename
+        src_path = os.path.normpath(src)
+        if not os.path.isfile(src_path):
+            errors.append(f"Source file not found: {src}")
+            continue
+
+        filename = os.path.basename(src_path)
+
+        for td in target_dirs:
+            td_norm = os.path.normpath(td.strip())
+            if not os.path.isdir(td_norm):
+                errors.append(f"Target directory not found: {td}")
+                continue
+            dest_path = os.path.join(td_norm, filename)
+            try:
+                shutil.copy2(src_path, dest_path)
+                copied.append(dest_path.replace("\\", "/"))
+            except Exception as exc:
+                errors.append(f"{dest_path.replace(chr(92), '/')} - {str(exc)}")
+
+    return jsonify({"status": "ok", "copied": copied, "errors": errors, "count": len(copied)})
+
+
+# ---------------------------------------------------------------------------
+# Batch Download File (wildcard search + zip download)
+# ---------------------------------------------------------------------------
+
+@app.route("/files/batch-dl-check", methods=["POST"])
+def batch_dl_check():
+    """Recursively find files matching the given filename (supports * wildcard).
+
+    Request body: {"filename": "CalacaBingo*.txt", "target_dirs": ["dir1"], "exclude_dirs": ["ex1"]}
+    """
+    import fnmatch
+
+    data = request.get_json(force=True)
+    filename = data.get("filename", "").strip()
+    target_dirs = data.get("target_dirs", [])
+    exclude_dirs = data.get("exclude_dirs", [])
+
+    if not filename:
+        return jsonify({"error": "filename is required"}), 400
+    if not target_dirs:
+        return jsonify({"error": "at least one target directory is required"}), 400
+
+    exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
+    found = []
+
+    # Determine if wildcard matching is needed
+    use_wildcard = "*" in filename or "?" in filename
+
+    for td in target_dirs:
+        td = os.path.normpath(td.strip())
+        if not os.path.isdir(td):
+            continue
+        for root, dirs, files in os.walk(td, followlinks=True):
+            root_norm = os.path.normpath(root).lower()
+            skip = False
+            for ex in exclude_normalized:
+                if root_norm == ex or root_norm.startswith(ex + os.sep):
+                    skip = True
+                    break
+            if skip:
+                continue
+            for f in files:
+                if use_wildcard:
+                    if fnmatch.fnmatch(f, filename):
+                        found.append(os.path.join(root, f).replace("\\", "/"))
+                else:
+                    if f == filename:
+                        found.append(os.path.join(root, f).replace("\\", "/"))
+
+    return jsonify({"status": "ok", "found": found, "count": len(found)})
+
+
+@app.route("/files/batch-dl-download", methods=["POST"])
+def batch_dl_download():
+    """Create a zip of selected files preserving relative directory structure.
+
+    The zip is created under a 'temp' folder in the first target directory,
+    preserving the relative paths from that target directory.
+
+    Request body: {"files": ["/full/path/to/file1", ...], "target_dirs": ["dir1"]}
+    """
+    import shutil
+    import zipfile
+    from flask import send_file
+
+    data = request.get_json(force=True)
+    files = data.get("files", [])
+    target_dirs = data.get("target_dirs", [])
+
+    if not files:
+        return jsonify({"error": "no files selected"}), 400
+    if not target_dirs:
+        return jsonify({"error": "at least one target directory is required"}), 400
+
+    # Use the first target directory as the base for temp folder
+    base_dir = os.path.normpath(target_dirs[0].strip())
+    if not os.path.isdir(base_dir):
+        return jsonify({"error": f"Target directory not found: {base_dir}"}), 404
+
+    temp_dir = os.path.join(base_dir, "temp")
+    zip_path = os.path.join(base_dir, "temp.zip")
+
+    # Remove existing temp folder and zip
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir)
+    if os.path.exists(zip_path):
+        os.remove(zip_path)
+
+    # Create temp folder and copy files preserving relative structure
+    os.makedirs(temp_dir, exist_ok=True)
+
+    errors = []
+    for file_path in files:
+        file_path_norm = os.path.normpath(file_path)
+        if not os.path.isfile(file_path_norm):
+            errors.append(f"File not found: {file_path}")
+            continue
+
+        # Determine relative path from the matching target directory
+        rel_path = None
+        for td in target_dirs:
+            td_norm = os.path.normpath(td.strip())
+            if file_path_norm.lower().startswith(td_norm.lower() + os.sep):
+                rel_path = os.path.relpath(file_path_norm, td_norm)
+                break
+
+        if rel_path is None:
+            # Fallback: use filename only
+            rel_path = os.path.basename(file_path_norm)
+
+        dest_path = os.path.join(temp_dir, rel_path)
+        dest_dir = os.path.dirname(dest_path)
+        os.makedirs(dest_dir, exist_ok=True)
+
+        try:
+            shutil.copy2(file_path_norm, dest_path)
+        except Exception as exc:
+            errors.append(f"{file_path} - {str(exc)}")
+
+    # Create zip file
+    try:
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, zip_files in os.walk(temp_dir):
+                for f in zip_files:
+                    abs_path = os.path.join(root, f)
+                    arc_name = os.path.join("temp", os.path.relpath(abs_path, temp_dir))
+                    zf.write(abs_path, arc_name)
+    except Exception as exc:
+        return jsonify({"error": f"Failed to create zip: {str(exc)}"}), 500
+
+    # Clean up temp folder (keep zip for download)
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+    if not os.path.isfile(zip_path):
+        return jsonify({"error": "Failed to create zip file"}), 500
+
+    return send_file(zip_path, as_attachment=True, download_name="temp.zip")
 
 
 @app.route("/files/local/download", methods=["GET"])

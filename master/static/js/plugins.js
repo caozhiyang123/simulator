@@ -1,4 +1,176 @@
 // ---------------------------------------------------------------------------
+// Input History Autocomplete (localStorage-based)
+// ---------------------------------------------------------------------------
+var _inputHistoryMax = 20;
+var _activeHistoryDropdown = null;
+
+function _getInputHistoryKey(inputEl) {
+  // Use a combination of class name and placeholder to generate a unique key
+  var cls = inputEl.className || '';
+  var placeholder = inputEl.getAttribute('placeholder') || '';
+  var id = inputEl.id || '';
+  var key = 'inputHistory_' + (id || cls + '_' + placeholder).replace(/[^a-zA-Z0-9]/g, '_').substring(0, 80);
+  return key;
+}
+
+function _getInputHistory(key) {
+  try {
+    var data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : [];
+  } catch (e) { return []; }
+}
+
+function _saveInputHistory(key, value) {
+  if (!value || !value.trim()) return;
+  value = value.trim();
+  var history = _getInputHistory(key);
+  // Remove duplicates
+  history = history.filter(function(h) { return h !== value; });
+  // Add to front
+  history.unshift(value);
+  // Keep only max items
+  if (history.length > _inputHistoryMax) history = history.slice(0, _inputHistoryMax);
+  try { localStorage.setItem(key, JSON.stringify(history)); } catch (e) {}
+}
+
+function _showHistoryDropdown(inputEl) {
+  _hideHistoryDropdown();
+  var key = _getInputHistoryKey(inputEl);
+  var history = _getInputHistory(key);
+  if (!history.length) return;
+
+  var rect = inputEl.getBoundingClientRect();
+  var dropdown = document.createElement('div');
+  dropdown.className = 'input-history-dropdown';
+  dropdown.style.cssText = 'position:fixed;left:' + rect.left + 'px;top:' + (rect.bottom + 2) + 'px;width:' + rect.width + 'px;max-height:200px;overflow-y:auto;background:#1e1e2e;border:1px solid #444;border-radius:6px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+
+  // Prevent any mousedown on dropdown from triggering input blur
+  dropdown.addEventListener('mousedown', function(e) {
+    e.preventDefault();
+  });
+
+  history.forEach(function(item) {
+    var opt = document.createElement('div');
+    opt.style.cssText = 'padding:6px 10px;font-size:12px;color:#cdd6f4;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    opt.textContent = item;
+    opt.title = item;
+    opt.onmouseover = function() { this.style.background = '#2a2a4e'; };
+    opt.onmouseout = function() { this.style.background = ''; };
+    opt.onclick = function(e) {
+      e.stopPropagation();
+      inputEl.value = item;
+      _hideHistoryDropdown();
+      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    dropdown.appendChild(opt);
+  });
+
+  document.body.appendChild(dropdown);
+  _activeHistoryDropdown = dropdown;
+}
+
+function _hideHistoryDropdown() {
+  if (_activeHistoryDropdown) {
+    _activeHistoryDropdown.remove();
+    _activeHistoryDropdown = null;
+  }
+}
+
+function _initInputHistoryForEl(inputEl) {
+  if (inputEl._historyInitialized) return;
+  inputEl._historyInitialized = true;
+
+  inputEl.addEventListener('focus', function() {
+    _showHistoryDropdown(inputEl);
+  });
+  inputEl.addEventListener('blur', function() {
+    // Longer delay to allow user to click on dropdown item
+    setTimeout(function() { _hideHistoryDropdown(); }, 300);
+  });
+  inputEl.addEventListener('change', function() {
+    var key = _getInputHistoryKey(inputEl);
+    _saveInputHistory(key, inputEl.value);
+  });
+}
+
+// Batch input classes that need history tracking
+var _batchInputHistoryClasses = [
+  'batch-override-src', 'batch-target-dir', 'batch-exclude-dir',
+  'batch-edit-content', 'batch-edit-target-dir', 'batch-edit-exclude-dir',
+  'batch-up-src-file', 'batch-up-target-dir', 'batch-up-exclude-dir',
+  'batch-dl-target-dir', 'batch-dl-exclude-dir'
+];
+var _batchInputHistoryIds = [
+  'batchEditFileName', 'batchDlFileName'
+];
+
+function _initAllInputHistory() {
+  // Init for class-based inputs
+  _batchInputHistoryClasses.forEach(function(cls) {
+    document.querySelectorAll('.' + cls).forEach(function(el) {
+      _initInputHistoryForEl(el);
+    });
+  });
+  // Init for id-based inputs
+  _batchInputHistoryIds.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) _initInputHistoryForEl(el);
+  });
+}
+
+// Re-init history on dynamically added inputs (MutationObserver)
+var _historyObserver = new MutationObserver(function(mutations) {
+  mutations.forEach(function(mutation) {
+    mutation.addedNodes.forEach(function(node) {
+      if (node.nodeType !== 1) return;
+      // Check if the node itself is an input
+      if (node.tagName === 'INPUT') {
+        _batchInputHistoryClasses.forEach(function(cls) {
+          if (node.classList.contains(cls)) _initInputHistoryForEl(node);
+        });
+      }
+      // Check children
+      _batchInputHistoryClasses.forEach(function(cls) {
+        var inputs = node.querySelectorAll ? node.querySelectorAll('.' + cls) : [];
+        inputs.forEach(function(el) { _initInputHistoryForEl(el); });
+      });
+    });
+  });
+});
+
+// Also save history when user clicks action buttons (captures values before submit)
+function _saveAllBatchInputHistory() {
+  _batchInputHistoryClasses.forEach(function(cls) {
+    document.querySelectorAll('.' + cls).forEach(function(el) {
+      if (el.value.trim()) {
+        var key = _getInputHistoryKey(el);
+        _saveInputHistory(key, el.value);
+      }
+    });
+  });
+  _batchInputHistoryIds.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el && el.value.trim()) {
+      var key = _getInputHistoryKey(el);
+      _saveInputHistory(key, el.value);
+    }
+  });
+}
+
+// Initialize on DOM ready
+document.addEventListener('DOMContentLoaded', function() {
+  _initAllInputHistory();
+  // Observe for dynamically added inputs
+  var mainContent = document.querySelector('.main-content') || document.body;
+  _historyObserver.observe(mainContent, { childList: true, subtree: true });
+});
+
+// Also init after a short delay (in case DOMContentLoaded already fired)
+setTimeout(function() { _initAllInputHistory(); }, 500);
+
+
+// ---------------------------------------------------------------------------
 // Format Time
 // ---------------------------------------------------------------------------
 function doFormatTime() {
@@ -65,11 +237,29 @@ function copyFormatTimeResult() {
 // ---------------------------------------------------------------------------
 // Batch Override File
 // ---------------------------------------------------------------------------
+var _batchOverrideFoundFiles = [];
+
+function getBatchOverrideSrcFiles() {
+  var inputs = document.querySelectorAll('#batchOverrideSrcFiles .batch-override-src');
+  var files = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) files.push(v); });
+  return files;
+}
+
+function addBatchOverrideSrc() {
+  var container = document.getElementById('batchOverrideSrcFiles');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-override-src" placeholder="e.g. D:\\path\\to\\file.jar" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+
 async function doBatchCheckFiles() {
-  var src = document.getElementById('batchOverrideSrc').value.trim();
+  _saveAllBatchInputHistory();
+  var sources = getBatchOverrideSrcFiles();
   var dirs = getBatchTargetDirs();
   var excludes = getBatchExcludeDirs();
-  if (!src) { showAlert('Please enter the source file path'); return; }
+  if (!sources.length) { showAlert('Please enter at least one source file path'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
   var resultEl = document.getElementById('batchOverrideResult');
   resultEl.innerHTML = '<div style="color:#888;">Searching for matching files...</div>';
@@ -77,27 +267,60 @@ async function doBatchCheckFiles() {
   var res = await fetch('/files/batch-check', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({source: src, target_dirs: dirs, exclude_dirs: excludes})
+    body: JSON.stringify({sources: sources, target_dirs: dirs, exclude_dirs: excludes})
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
   var found = data.found || [];
+  _batchOverrideFoundFiles = found;
+
   var html = '<div style="color:#4a90d9;font-weight:600;margin-bottom:8px;">🔍 Found ' + found.length + ' matching file(s):</div>';
   if (found.length === 0) {
     html += '<div style="color:#888;">No matching files found in the target directories.</div>';
   } else {
-    html += '<div style="background:#1e1e2e;color:#cdd6f4;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:300px;overflow-y:auto;">';
-    found.forEach(function(p) { html += p + '\n'; });
+    html += '<div style="margin-bottom:8px;">';
+    html += '<button class="btn-primary btn-sm" onclick="batchOverrideSelectAll()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select All</button>';
+    html += '<button class="btn-primary btn-sm" onclick="batchOverrideSelectNone()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select None</button>';
+    html += '<button class="btn-primary btn-sm" onclick="batchOverrideSelectInverse()" style="font-size:11px;padding:3px 8px;">Inverse</button>';
+    html += '</div>';
+    html += '<div id="batchOverrideFileList" style="background:#1e1e2e;color:#cdd6f4;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:350px;overflow-y:auto;">';
+    found.forEach(function(p, idx) {
+      html += '<label style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;">';
+      html += '<input type="checkbox" class="batch-override-file-cb" value="' + idx + '" checked>';
+      html += '<span>' + p + '</span></label>';
+    });
     html += '</div>';
   }
   resultEl.innerHTML = html;
 }
 
+function batchOverrideSelectAll() {
+  document.querySelectorAll('.batch-override-file-cb').forEach(function(cb) { cb.checked = true; });
+}
+function batchOverrideSelectNone() {
+  document.querySelectorAll('.batch-override-file-cb').forEach(function(cb) { cb.checked = false; });
+}
+function batchOverrideSelectInverse() {
+  document.querySelectorAll('.batch-override-file-cb').forEach(function(cb) { cb.checked = !cb.checked; });
+}
+
+function getSelectedBatchOverrideFiles() {
+  var selected = [];
+  document.querySelectorAll('.batch-override-file-cb').forEach(function(cb) {
+    if (cb.checked) {
+      var idx = parseInt(cb.value);
+      if (_batchOverrideFoundFiles[idx]) selected.push(_batchOverrideFoundFiles[idx]);
+    }
+  });
+  return selected;
+}
+
 async function doBatchOverride() {
-  var src = document.getElementById('batchOverrideSrc').value.trim();
+  _saveAllBatchInputHistory();
+  var sources = getBatchOverrideSrcFiles();
   var dirs = getBatchTargetDirs();
   var excludes = getBatchExcludeDirs();
-  if (!src) { showAlert('Please enter the source file path'); return; }
+  if (!sources.length) { showAlert('Please enter at least one source file path'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
   var resultEl = document.getElementById('batchOverrideResult');
   resultEl.innerHTML = '<div style="color:#888;">Searching and overriding...</div>';
@@ -105,7 +328,7 @@ async function doBatchOverride() {
   var res = await fetch('/files/batch-override', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({source: src, target_dirs: dirs, exclude_dirs: excludes})
+    body: JSON.stringify({sources: sources, target_dirs: dirs, exclude_dirs: excludes})
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
@@ -117,15 +340,50 @@ async function doBatchOverride() {
   } else {
     if (replaced.length > 0) {
       html += '<div style="background:#1e1e2e;color:#a6e3a1;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:300px;overflow-y:auto;margin-bottom:8px;">';
-      replaced.forEach(function(p) { html += p + '\n'; });
+      replaced.forEach(function(p) { html += '<div>' + p + '</div>'; });
       html += '</div>';
     }
     if (errors.length > 0) {
       html += '<div style="color:#e74c3c;font-weight:600;margin-bottom:4px;">❌ Failed (' + errors.length + '):</div>';
       html += '<div style="background:#1e1e2e;color:#f38ba8;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:150px;overflow-y:auto;">';
-      errors.forEach(function(p) { html += p + '\n'; });
+      errors.forEach(function(p) { html += '<div>' + p + '</div>'; });
       html += '</div>';
     }
+  }
+  resultEl.innerHTML = html;
+}
+
+async function doBatchDelete() {
+  var selected = getSelectedBatchOverrideFiles();
+  if (!selected.length) { showAlert('No files selected for deletion. Please run Check All Files first.'); return; }
+  if (!confirm('⚠️ Are you sure you want to DELETE ' + selected.length + ' file(s)?\n\nThis operation cannot be undone!')) return;
+
+  var resultEl = document.getElementById('batchOverrideResult');
+  resultEl.innerHTML = '<div style="color:#888;">Deleting selected files...</div>';
+
+  var res = await fetch('/files/batch-delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({files: selected})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  var deleted = data.deleted || [];
+  var errors = data.errors || [];
+  var html = '<div style="color:#27ae60;font-weight:600;margin-bottom:8px;">🗑️ Deleted ' + deleted.length + ' file(s):</div>';
+  if (deleted.length > 0) {
+    html += '<div style="background:#1e1e2e;color:#a6e3a1;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:300px;overflow-y:auto;margin-bottom:8px;">';
+    deleted.forEach(function(p) { html += '<div>' + p + '</div>'; });
+    html += '</div>';
+  }
+  if (errors.length > 0) {
+    html += '<div style="color:#e74c3c;font-weight:600;margin-bottom:4px;">❌ Failed (' + errors.length + '):</div>';
+    html += '<div style="background:#1e1e2e;color:#f38ba8;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:150px;overflow-y:auto;">';
+    errors.forEach(function(p) { html += '<div>' + p + '</div>'; });
+    html += '</div>';
+  }
+  if (deleted.length === 0 && errors.length === 0) {
+    html += '<div style="color:#888;">No files were deleted.</div>';
   }
   resultEl.innerHTML = html;
 }
@@ -160,8 +418,699 @@ function addBatchExcludeDir() {
   container.appendChild(row);
 }
 
+// ---------------------------------------------------------------------------
+// Batch Edit File
+// ---------------------------------------------------------------------------
+function getBatchEditContents() {
+  var inputs = document.querySelectorAll('#batchEditContents .batch-edit-content');
+  var items = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) items.push(v); });
+  return items;
+}
+function getBatchEditTargetDirs() {
+  var inputs = document.querySelectorAll('#batchEditTargetDirs .batch-edit-target-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function getBatchEditExcludeDirs() {
+  var inputs = document.querySelectorAll('#batchEditExcludeDirs .batch-edit-exclude-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function addBatchEditContent() {
+  var container = document.getElementById('batchEditContents');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-edit-content" placeholder="e.g. openCardAmount=1" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+function addBatchEditTargetDir() {
+  var container = document.getElementById('batchEditTargetDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-edit-target-dir" placeholder="e.g. D:\\tools2" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+function addBatchEditExcludeDir() {
+  var container = document.getElementById('batchEditExcludeDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-edit-exclude-dir" placeholder="e.g. D:\\tools2\\archive" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+
+async function doBatchEditCheck() {
+  _saveAllBatchInputHistory();
+  var filename = document.getElementById('batchEditFileName').value.trim();
+  var dirs = getBatchEditTargetDirs();
+  var excludes = getBatchEditExcludeDirs();
+  if (!filename) { showAlert('Please enter a source file name'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var resultEl = document.getElementById('batchEditResult');
+  resultEl.innerHTML = '<div style="color:#888;">Searching for matching files...</div>';
+
+  var res = await fetch('/files/batch-edit-check', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filename: filename, target_dirs: dirs, exclude_dirs: excludes})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  var found = data.found || [];
+  var html = '<div style="color:#4a90d9;font-weight:600;margin-bottom:8px;">🔍 Found ' + found.length + ' matching file(s):</div>';
+  if (found.length === 0) {
+    html += '<div style="color:#888;">No matching files found in the target directories.</div>';
+  } else {
+    html += '<div style="background:#1e1e2e;color:#cdd6f4;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:300px;overflow-y:auto;">';
+    found.forEach(function(p) { html += '<div>' + p + '</div>'; });
+    html += '</div>';
+  }
+  resultEl.innerHTML = html;
+}
+
+async function doBatchEditApply() {
+  _saveAllBatchInputHistory();
+  var filename = document.getElementById('batchEditFileName').value.trim();
+  var contents = getBatchEditContents();
+  var dirs = getBatchEditTargetDirs();
+  var excludes = getBatchEditExcludeDirs();
+  if (!filename) { showAlert('Please enter a source file name'); return; }
+  if (!contents.length) { showAlert('Please enter at least one content entry (key=value)'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  if (!filename.endsWith('.properties')) { showAlert('Batch Edit currently only supports .properties files'); return; }
+  var resultEl = document.getElementById('batchEditResult');
+  resultEl.innerHTML = '<div style="color:#888;">Applying batch edit...</div>';
+
+  var res = await fetch('/files/batch-edit-apply', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filename: filename, contents: contents, target_dirs: dirs, exclude_dirs: excludes})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  var updated = data.updated || [];
+  var errors = data.errors || [];
+  var html = '<div style="color:#27ae60;font-weight:600;margin-bottom:8px;">✅ Updated ' + updated.length + ' file(s):</div>';
+  if (updated.length === 0 && errors.length === 0) {
+    html += '<div style="color:#888;">No matching files found in the target directories.</div>';
+  } else {
+    if (updated.length > 0) {
+      html += '<div style="background:#1e1e2e;color:#a6e3a1;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:300px;overflow-y:auto;margin-bottom:8px;">';
+      updated.forEach(function(p) { html += '<div>' + p + '</div>'; });
+      html += '</div>';
+    }
+    if (errors.length > 0) {
+      html += '<div style="color:#e74c3c;font-weight:600;margin-bottom:4px;">❌ Failed (' + errors.length + '):</div>';
+      html += '<div style="background:#1e1e2e;color:#f38ba8;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:150px;overflow-y:auto;">';
+      errors.forEach(function(p) { html += '<div>' + p + '</div>'; });
+      html += '</div>';
+    }
+  }
+  resultEl.innerHTML = html;
+}
+
+async function doBatchEditViewFiles() {
+  _saveAllBatchInputHistory();
+  var filename = document.getElementById('batchEditFileName').value.trim();
+  var dirs = getBatchEditTargetDirs();
+  var excludes = getBatchEditExcludeDirs();
+  if (!filename) { showAlert('Please enter a source file name'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var resultEl = document.getElementById('batchEditResult');
+  resultEl.innerHTML = '<div style="color:#888;">Loading file previews...</div>';
+
+  var res = await fetch('/files/batch-edit-check', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filename: filename, target_dirs: dirs, exclude_dirs: excludes})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  var found = data.found || [];
+  if (found.length === 0) {
+    resultEl.innerHTML = '<div style="color:#888;">No matching files found in the target directories.</div>';
+    return;
+  }
+
+  // Fetch preview content for each file
+  var html = '<div style="color:#4a90d9;font-weight:600;margin-bottom:8px;">👁️ Viewing ' + found.length + ' file(s):</div>';
+  html += '<div id="batchEditFileCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px;">';
+
+  for (var i = 0; i < found.length; i++) {
+    var fp = found[i];
+    html += '<div class="batch-edit-file-card" style="background:#1e1e2e;border:1px solid #333;border-radius:8px;padding:12px;position:relative;">';
+    html += '<div style="font-size:11px;color:#888;margin-bottom:6px;word-break:break-all;" title="' + fp + '">' + fp + '</div>';
+    html += '<pre id="batchEditPreview_' + i + '" style="background:#0d1117;color:#cdd6f4;padding:8px;border-radius:4px;font-size:11px;max-height:150px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin:0;">Loading...</pre>';
+    html += '<div style="margin-top:8px;text-align:right;">';
+    html += '<button class="btn-primary btn-sm" onclick="batchEditExpand(' + i + ',\'' + fp.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" style="font-size:11px;padding:3px 8px;">🔍 Expand & Edit</button>';
+    html += '</div></div>';
+  }
+  html += '</div>';
+  resultEl.innerHTML = html;
+
+  // Load previews asynchronously
+  for (var j = 0; j < found.length; j++) {
+    (function(idx, filePath) {
+      fetch('/files/batch-edit-read', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path: filePath})
+      }).then(function(r) { return r.json(); }).then(function(d) {
+        var el = document.getElementById('batchEditPreview_' + idx);
+        if (el) {
+          if (d.error) { el.textContent = 'Error: ' + d.error; }
+          else {
+            var content = d.content || '';
+            // Show truncated preview (first 20 lines)
+            var lines = content.split('\n');
+            var preview = lines.slice(0, 20).join('\n');
+            if (lines.length > 20) preview += '\n... (' + lines.length + ' lines total)';
+            el.textContent = preview;
+          }
+        }
+      });
+    })(j, found[j]);
+  }
+}
+
+function batchEditExpand(idx, filePath) {
+  // Create a modal for full editing
+  var modal = document.createElement('div');
+  modal.id = 'batchEditModal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = '<div style="background:#1e1e2e;border-radius:10px;padding:20px;width:80%;max-width:900px;max-height:85vh;display:flex;flex-direction:column;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+    '<div style="font-size:12px;color:#888;word-break:break-all;flex:1;margin-right:12px;">' + filePath + '</div>' +
+    '<button class="btn-danger btn-sm" onclick="document.getElementById(\'batchEditModal\').remove()" style="font-size:14px;padding:4px 10px;">✕</button>' +
+    '</div>' +
+    '<textarea id="batchEditModalContent" style="flex:1;background:#0d1117;color:#cdd6f4;border:1px solid #444;border-radius:6px;padding:12px;font-family:monospace;font-size:12px;resize:none;min-height:400px;"></textarea>' +
+    '<div style="margin-top:12px;text-align:right;">' +
+    '<button class="btn-primary" onclick="batchEditSaveFile(\'' + filePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" style="margin-right:8px;">💾 Save</button>' +
+    '<button class="btn-danger btn-sm" onclick="document.getElementById(\'batchEditModal\').remove()" style="padding:6px 12px;">Cancel</button>' +
+    '</div></div>';
+  document.body.appendChild(modal);
+
+  // Load full content
+  fetch('/files/batch-edit-read', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path: filePath})
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    var ta = document.getElementById('batchEditModalContent');
+    if (d.error) { ta.value = 'Error: ' + d.error; }
+    else { ta.value = d.content || ''; }
+  });
+}
+
+async function batchEditSaveFile(filePath) {
+  var content = document.getElementById('batchEditModalContent').value;
+  var res = await fetch('/files/batch-edit-save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path: filePath, content: content})
+  });
+  var data = await res.json();
+  if (data.error) {
+    showAlert('Save failed: ' + data.error);
+  } else {
+    showAlert('File saved successfully!');
+    document.getElementById('batchEditModal').remove();
+    // Refresh the view
+    doBatchEditViewFiles();
+  }
+}
+
 // Play module loaded from /static/js/play.js
 init();
+
+
+// ---------------------------------------------------------------------------
+// Batch Upload File
+// ---------------------------------------------------------------------------
+function getBatchUpSrcFiles() {
+  var inputs = document.querySelectorAll('#batchUpSrcFiles .batch-up-src-file');
+  var files = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) files.push(v); });
+  return files;
+}
+function getBatchUpTargetDirs() {
+  var inputs = document.querySelectorAll('#batchUpTargetDirs .batch-up-target-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function getBatchUpExcludeDirs() {
+  var inputs = document.querySelectorAll('#batchUpExcludeDirs .batch-up-exclude-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function addBatchUpSrcFile() {
+  var container = document.getElementById('batchUpSrcFiles');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-up-src-file" placeholder="e.g. D:\\tools2\\path\\to\\file.jar" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+function addBatchUpTargetDir() {
+  var container = document.getElementById('batchUpTargetDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-up-target-dir" placeholder="e.g. E:/path/*/lib" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+function addBatchUpExcludeDir() {
+  var container = document.getElementById('batchUpExcludeDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-up-exclude-dir" placeholder="e.g. E:/path/to/exclude" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+
+var _batchUpFoundDirs = [];
+
+async function doBatchUpCheck() {
+  _saveAllBatchInputHistory();
+  var srcFiles = getBatchUpSrcFiles();
+  var dirs = getBatchUpTargetDirs();
+  var excludes = getBatchUpExcludeDirs();
+  if (!srcFiles.length) { showAlert('Please enter at least one source file name'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var resultEl = document.getElementById('batchUpResult');
+  resultEl.innerHTML = '<div style="color:#888;">Searching for matching directories...</div>';
+
+  var res = await fetch('/files/batch-up-check', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({src_files: srcFiles, target_dirs: dirs, exclude_dirs: excludes})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  var found = data.found || [];
+  _batchUpFoundDirs = found;
+
+  var html = '<div style="color:#4a90d9;font-weight:600;margin-bottom:8px;">🔍 Found ' + found.length + ' matching directory path(s):</div>';
+  if (found.length === 0) {
+    html += '<div style="color:#888;">No matching directories found.</div>';
+  } else {
+    html += '<div style="margin-bottom:8px;">';
+    html += '<button class="btn-primary btn-sm" onclick="batchUpSelectAll()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select All</button>';
+    html += '<button class="btn-primary btn-sm" onclick="batchUpSelectNone()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select None</button>';
+    html += '<button class="btn-primary btn-sm" onclick="batchUpSelectInverse()" style="font-size:11px;padding:3px 8px;">Inverse</button>';
+    html += '</div>';
+    html += '<div id="batchUpDirList" style="background:#1e1e2e;color:#cdd6f4;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:350px;overflow-y:auto;">';
+    found.forEach(function(p, idx) {
+      html += '<label style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;">';
+      html += '<input type="checkbox" class="batch-up-dir-cb" value="' + idx + '" checked>';
+      html += '<span>' + p + '</span></label>';
+    });
+    html += '</div>';
+  }
+  resultEl.innerHTML = html;
+}
+
+function batchUpSelectAll() {
+  document.querySelectorAll('.batch-up-dir-cb').forEach(function(cb) { cb.checked = true; });
+}
+function batchUpSelectNone() {
+  document.querySelectorAll('.batch-up-dir-cb').forEach(function(cb) { cb.checked = false; });
+}
+function batchUpSelectInverse() {
+  document.querySelectorAll('.batch-up-dir-cb').forEach(function(cb) { cb.checked = !cb.checked; });
+}
+
+function getSelectedBatchUpDirs() {
+  var selected = [];
+  document.querySelectorAll('.batch-up-dir-cb').forEach(function(cb) {
+    if (cb.checked) {
+      var idx = parseInt(cb.value);
+      if (_batchUpFoundDirs[idx]) selected.push(_batchUpFoundDirs[idx]);
+    }
+  });
+  return selected;
+}
+
+// Progress bar helpers
+var _batchUpProgressTimer = null;
+
+function showBatchUpProgress() {
+  var mask = document.getElementById('batchUpProgressMask');
+  var bar = document.getElementById('batchUpProgressBar');
+  var text = document.getElementById('batchUpProgressText');
+  bar.style.transition = 'none';
+  bar.style.width = '0%';
+  text.textContent = 'Uploading...';
+  mask.style.display = 'block';
+  var progress = 0;
+  if (_batchUpProgressTimer) clearInterval(_batchUpProgressTimer);
+  _batchUpProgressTimer = setInterval(function() {
+    var remaining = 90 - progress;
+    var step = Math.max(0.5, remaining * 0.08);
+    progress = Math.min(90, progress + step);
+    bar.style.transition = 'width 0.3s ease';
+    bar.style.width = progress.toFixed(1) + '%';
+    text.textContent = Math.round(progress) + '%';
+    if (progress >= 89.9) {
+      clearInterval(_batchUpProgressTimer);
+      _batchUpProgressTimer = null;
+    }
+  }, 200);
+}
+
+function hideBatchUpProgress() {
+  if (_batchUpProgressTimer) {
+    clearInterval(_batchUpProgressTimer);
+    _batchUpProgressTimer = null;
+  }
+  var mask = document.getElementById('batchUpProgressMask');
+  var bar = document.getElementById('batchUpProgressBar');
+  var text = document.getElementById('batchUpProgressText');
+  bar.style.transition = 'width 0.3s ease';
+  bar.style.width = '100%';
+  text.textContent = '100%';
+  setTimeout(function() {
+    mask.style.display = 'none';
+    bar.style.transition = 'none';
+    bar.style.width = '0%';
+  }, 800);
+}
+
+async function doBatchUpUpload() {
+  _saveAllBatchInputHistory();
+  var srcFiles = getBatchUpSrcFiles();
+  var selectedDirs = getSelectedBatchUpDirs();
+  if (!srcFiles.length) { showAlert('Please enter at least one source file name'); return; }
+  if (!selectedDirs.length) { showAlert('No directories selected for upload'); return; }
+
+  showBatchUpProgress();
+  var resultEl = document.getElementById('batchUpResult');
+
+  try {
+    var res = await fetch('/files/batch-up-upload', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({src_files: srcFiles, target_dirs: selectedDirs})
+    });
+    var data = await res.json();
+    hideBatchUpProgress();
+    if (data.error) {
+      resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>';
+      return;
+    }
+    var copied = data.copied || [];
+    var errors = data.errors || [];
+    var html = '<div style="color:#27ae60;font-weight:600;margin-bottom:8px;">✅ Uploaded ' + copied.length + ' file(s) successfully:</div>';
+    if (copied.length > 0) {
+      html += '<div style="background:#1e1e2e;color:#a6e3a1;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:300px;overflow-y:auto;margin-bottom:8px;">';
+      copied.forEach(function(p) { html += '<div>' + p + '</div>'; });
+      html += '</div>';
+    }
+    if (errors.length > 0) {
+      html += '<div style="color:#e74c3c;font-weight:600;margin-bottom:4px;">❌ Failed (' + errors.length + '):</div>';
+      html += '<div style="background:#1e1e2e;color:#f38ba8;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:150px;overflow-y:auto;">';
+      errors.forEach(function(p) { html += '<div>' + p + '</div>'; });
+      html += '</div>';
+    }
+    if (copied.length === 0 && errors.length === 0) {
+      html += '<div style="color:#888;">No files were uploaded.</div>';
+    }
+    resultEl.innerHTML = html;
+  } catch (e) {
+    hideBatchUpProgress();
+    resultEl.innerHTML = '<div style="color:#e74c3c;">❌ Upload failed: ' + e.message + '</div>';
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Batch Download File
+// ---------------------------------------------------------------------------
+function getBatchDlTargetDirs() {
+  var inputs = document.querySelectorAll('#batchDlTargetDirs .batch-dl-target-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function getBatchDlExcludeDirs() {
+  var inputs = document.querySelectorAll('#batchDlExcludeDirs .batch-dl-exclude-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function addBatchDlTargetDir() {
+  var container = document.getElementById('batchDlTargetDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-dl-target-dir" placeholder="e.g. E:/path/to/dir" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+function addBatchDlExcludeDir() {
+  var container = document.getElementById('batchDlExcludeDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-dl-exclude-dir" placeholder="e.g. E:/path/to/exclude" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+
+// Store found files for selection
+var _batchDlFoundFiles = [];
+
+async function doBatchDlCheck() {
+  _saveAllBatchInputHistory();
+  var filename = document.getElementById('batchDlFileName').value.trim();
+  var dirs = getBatchDlTargetDirs();
+  var excludes = getBatchDlExcludeDirs();
+  if (!filename) { showAlert('Please enter a source file name'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var resultEl = document.getElementById('batchDlResult');
+  resultEl.innerHTML = '<div style="color:#888;">Searching for matching files...</div>';
+
+  var res = await fetch('/files/batch-dl-check', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filename: filename, target_dirs: dirs, exclude_dirs: excludes})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  var found = data.found || [];
+  _batchDlFoundFiles = found;
+
+  var html = '<div style="color:#4a90d9;font-weight:600;margin-bottom:8px;">🔍 Found ' + found.length + ' matching file(s):</div>';
+  if (found.length === 0) {
+    html += '<div style="color:#888;">No matching files found in the target directories.</div>';
+  } else {
+    // Selection controls
+    html += '<div style="margin-bottom:8px;">';
+    html += '<button class="btn-primary btn-sm" onclick="batchDlSelectAll()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select All</button>';
+    html += '<button class="btn-primary btn-sm" onclick="batchDlSelectNone()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select None</button>';
+    html += '<button class="btn-primary btn-sm" onclick="batchDlSelectInverse()" style="font-size:11px;padding:3px 8px;">Inverse</button>';
+    html += '</div>';
+    html += '<div id="batchDlFileList" style="background:#1e1e2e;color:#cdd6f4;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:350px;overflow-y:auto;">';
+    found.forEach(function(p, idx) {
+      html += '<label style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;">';
+      html += '<input type="checkbox" class="batch-dl-file-cb" value="' + idx + '" checked>';
+      html += '<span>' + p + '</span></label>';
+    });
+    html += '</div>';
+  }
+  resultEl.innerHTML = html;
+}
+
+function batchDlSelectAll() {
+  document.querySelectorAll('.batch-dl-file-cb').forEach(function(cb) { cb.checked = true; });
+}
+function batchDlSelectNone() {
+  document.querySelectorAll('.batch-dl-file-cb').forEach(function(cb) { cb.checked = false; });
+}
+function batchDlSelectInverse() {
+  document.querySelectorAll('.batch-dl-file-cb').forEach(function(cb) { cb.checked = !cb.checked; });
+}
+
+function getSelectedBatchDlFiles() {
+  var selected = [];
+  document.querySelectorAll('.batch-dl-file-cb').forEach(function(cb) {
+    if (cb.checked) {
+      var idx = parseInt(cb.value);
+      if (_batchDlFoundFiles[idx]) selected.push(_batchDlFoundFiles[idx]);
+    }
+  });
+  return selected;
+}
+
+// Progress bar helpers (same pattern as File Sync)
+var _batchDlProgressTimer = null;
+
+function showBatchDlProgress() {
+  var mask = document.getElementById('batchDlProgressMask');
+  var bar = document.getElementById('batchDlProgressBar');
+  var text = document.getElementById('batchDlProgressText');
+  bar.style.transition = 'none';
+  bar.style.width = '0%';
+  text.textContent = 'Preparing...';
+  mask.style.display = 'block';
+  var progress = 0;
+  if (_batchDlProgressTimer) clearInterval(_batchDlProgressTimer);
+  _batchDlProgressTimer = setInterval(function() {
+    var remaining = 90 - progress;
+    var step = Math.max(0.5, remaining * 0.08);
+    progress = Math.min(90, progress + step);
+    bar.style.transition = 'width 0.3s ease';
+    bar.style.width = progress.toFixed(1) + '%';
+    text.textContent = Math.round(progress) + '%';
+    if (progress >= 89.9) {
+      clearInterval(_batchDlProgressTimer);
+      _batchDlProgressTimer = null;
+    }
+  }, 200);
+}
+
+function hideBatchDlProgress() {
+  if (_batchDlProgressTimer) {
+    clearInterval(_batchDlProgressTimer);
+    _batchDlProgressTimer = null;
+  }
+  var mask = document.getElementById('batchDlProgressMask');
+  var bar = document.getElementById('batchDlProgressBar');
+  var text = document.getElementById('batchDlProgressText');
+  bar.style.transition = 'width 0.3s ease';
+  bar.style.width = '100%';
+  text.textContent = '100%';
+  setTimeout(function() {
+    mask.style.display = 'none';
+    bar.style.transition = 'none';
+    bar.style.width = '0%';
+  }, 800);
+}
+
+async function doBatchDlDownload() {
+  _saveAllBatchInputHistory();
+  var selected = getSelectedBatchDlFiles();
+  var dirs = getBatchDlTargetDirs();
+  if (!selected.length) { showAlert('No files selected for download'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+
+  showBatchDlProgress();
+
+  try {
+    var res = await fetch('/files/batch-dl-download', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({files: selected, target_dirs: dirs})
+    });
+    if (!res.ok) {
+      var errData = await res.json();
+      hideBatchDlProgress();
+      showAlert('Download failed: ' + (errData.error || 'Unknown error'));
+      return;
+    }
+    // Download the zip file
+    var blob = await res.blob();
+    hideBatchDlProgress();
+    var url = window.URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'temp.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  } catch (e) {
+    hideBatchDlProgress();
+    showAlert('Download failed: ' + e.message);
+  }
+}
+
+async function doBatchDlView() {
+  _saveAllBatchInputHistory();
+  var filename = document.getElementById('batchDlFileName').value.trim();
+  var dirs = getBatchDlTargetDirs();
+  var excludes = getBatchDlExcludeDirs();
+  if (!filename) { showAlert('Please enter a source file name'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var resultEl = document.getElementById('batchDlResult');
+  resultEl.innerHTML = '<div style="color:#888;">Loading file previews...</div>';
+
+  var res = await fetch('/files/batch-dl-check', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filename: filename, target_dirs: dirs, exclude_dirs: excludes})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  var found = data.found || [];
+  if (found.length === 0) {
+    resultEl.innerHTML = '<div style="color:#888;">No matching files found in the target directories.</div>';
+    return;
+  }
+
+  var html = '<div style="color:#4a90d9;font-weight:600;margin-bottom:8px;">👁️ Viewing ' + found.length + ' file(s):</div>';
+  html += '<div id="batchDlFileCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px;">';
+
+  for (var i = 0; i < found.length; i++) {
+    var fp = found[i];
+    html += '<div style="background:#1e1e2e;border:1px solid #333;border-radius:8px;padding:12px;position:relative;">';
+    html += '<div style="font-size:11px;color:#888;margin-bottom:6px;word-break:break-all;" title="' + fp + '">' + fp + '</div>';
+    html += '<pre id="batchDlPreview_' + i + '" style="background:#0d1117;color:#cdd6f4;padding:8px;border-radius:4px;font-size:11px;max-height:150px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin:0;">Loading...</pre>';
+    html += '<div style="margin-top:8px;text-align:right;">';
+    html += '<button class="btn-primary btn-sm" onclick="batchDlExpand(\'' + fp.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" style="font-size:11px;padding:3px 8px;">🔍 Expand</button>';
+    html += '</div></div>';
+  }
+  html += '</div>';
+  resultEl.innerHTML = html;
+
+  // Load previews asynchronously
+  for (var j = 0; j < found.length; j++) {
+    (function(idx, filePath) {
+      fetch('/files/batch-edit-read', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path: filePath})
+      }).then(function(r) { return r.json(); }).then(function(d) {
+        var el = document.getElementById('batchDlPreview_' + idx);
+        if (el) {
+          if (d.error) { el.textContent = 'Error: ' + d.error; }
+          else {
+            var content = d.content || '';
+            var lines = content.split('\n');
+            var preview = lines.slice(0, 20).join('\n');
+            if (lines.length > 20) preview += '\n... (' + lines.length + ' lines total)';
+            el.textContent = preview;
+          }
+        }
+      });
+    })(j, found[j]);
+  }
+}
+
+function batchDlExpand(filePath) {
+  // Create a read-only modal for viewing
+  var modal = document.createElement('div');
+  modal.id = 'batchDlModal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = '<div style="background:#1e1e2e;border-radius:10px;padding:20px;width:80%;max-width:900px;max-height:85vh;display:flex;flex-direction:column;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+    '<div style="font-size:12px;color:#888;word-break:break-all;flex:1;margin-right:12px;">' + filePath + '</div>' +
+    '<button class="btn-danger btn-sm" onclick="document.getElementById(\'batchDlModal\').remove()" style="font-size:14px;padding:4px 10px;">✕</button>' +
+    '</div>' +
+    '<pre id="batchDlModalContent" style="flex:1;background:#0d1117;color:#cdd6f4;border:1px solid #444;border-radius:6px;padding:12px;font-family:monospace;font-size:12px;overflow:auto;min-height:400px;white-space:pre-wrap;word-break:break-all;margin:0;">Loading...</pre>' +
+    '<div style="margin-top:12px;text-align:right;">' +
+    '<button class="btn-danger btn-sm" onclick="document.getElementById(\'batchDlModal\').remove()" style="padding:6px 12px;">Close</button>' +
+    '</div></div>';
+  document.body.appendChild(modal);
+
+  // Load full content
+  fetch('/files/batch-edit-read', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path: filePath})
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    var el = document.getElementById('batchDlModalContent');
+    if (d.error) { el.textContent = 'Error: ' + d.error; }
+    else { el.textContent = d.content || ''; }
+  });
+}
 
 
 

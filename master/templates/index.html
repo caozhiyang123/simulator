@@ -56,6 +56,9 @@
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('compare');hidePluginMenu()">🔍 Compare</div>
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('formatjson');hidePluginMenu()">📋 Format JSON</div>
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('batchoverride');hidePluginMenu()">📦 Batch Override File</div>
+        <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('batchedit');hidePluginMenu()">✏️ Batch Edit File</div>
+        <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('batchupload');hidePluginMenu()">⬆️ Batch Upload File</div>
+        <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('batchdownload');hidePluginMenu()">⬇️ Batch Download File</div>
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('formattime');hidePluginMenu()">🕐 Format Time</div>
         <div style="padding:4px 12px;font-size:11px;color:#888;border-top:1px solid #444;margin-top:2px;padding-top:6px;">🎰 Bingo</div>
         <div style="padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('cardgen');hidePluginMenu()">🃏 Card Generation</div>
@@ -482,9 +485,14 @@
         <h2>📦 Batch Override File</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Replace a file across multiple subdirectories by matching the filename recursively.</p>
         <label>Source File (full path of the file to use as replacement)</label>
-        <input type="text" id="batchOverrideSrc" placeholder="e.g. D:\tools2\b2b\B2BBMM\B2BSimulator\simulator\B2BGameSimulator\lib\VBWildBallLogic.jar" style="margin-bottom:12px;">
+        <div id="batchOverrideSrcFiles">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-override-src" placeholder="e.g. D:\tools2\b2b\B2BBMM\B2BSimulator\simulator\B2BGameSimulator\lib\VBWildBallLogic.jar" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchOverrideSrc()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
 
-        <label>Target Directories (directories to recursively search in)</label>
+        <label style="margin-top:8px;">Target Directories (directories to recursively search in)</label>
         <div id="batchTargetDirs">
           <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
             <input type="text" class="batch-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim" style="flex:1;margin-bottom:0;">
@@ -502,11 +510,218 @@
 
         <div style="margin-top:12px;">
           <button class="btn-primary" onclick="doBatchCheckFiles()" style="margin-right:8px;">🔍 Check All Files</button>
-          <button class="btn-primary" onclick="doBatchOverride()">📦 Batch Override</button>
+          <button class="btn-primary" onclick="doBatchOverride()" style="margin-right:8px;">📦 Batch Override</button>
+          <button class="btn-danger" onclick="doBatchDelete()">🗑️ Batch Delete</button>
         </div>
         <div id="batchOverrideResult" style="margin-top:16px;font-size:12px;"></div>
+
+        <!-- Documentation -->
+        <details style="margin-top:24px;border-top:1px solid #eee;padding-top:12px;">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#4a90d9;">📖 Usage Guide</summary>
+          <div style="font-size:12px;color:#555;margin-top:8px;line-height:1.8;">
+            <p><strong>Purpose:</strong> Replace/override files across multiple subdirectories by matching filename recursively.</p>
+            <p><strong>Steps:</strong></p>
+            <ol>
+              <li>Enter one or more source file full paths (click + to add more). These files will be used as the replacement content.</li>
+              <li>Enter target directories to search in (supports multiple).</li>
+              <li>Optionally enter directories to exclude from search.</li>
+              <li>Click <b>Check All Files</b> to preview all matching files found (with select all/none/inverse).</li>
+              <li>Click <b>Batch Override</b> to replace all matching files with the source files.</li>
+              <li>Click <b>Batch Delete</b> to delete selected files (requires confirmation).</li>
+            </ol>
+            <p><strong>Note:</strong> Override matches files by filename. Source file must exist locally. The source file itself is skipped during override.</p>
+          </div>
+        </details>
       </div>
     </div><!-- end pageBatchoverride -->
+
+    <!-- BATCH EDIT FILE PAGE -->
+    <div class="page-panel" id="pageBatchedit">
+      <div class="card full-width">
+        <h2>✏️ Batch Edit File</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:16px;">Batch append/replace key=value entries in .properties files across multiple directories. View Files supports all file types.</p>
+
+        <label>Source File Name (the full file name to search)</label>
+        <input type="text" id="batchEditFileName" placeholder="e.g. stresstest.properties" style="margin-bottom:12px;">
+
+        <label>Append/Replace Content (key=value per line)</label>
+        <div id="batchEditContents">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-edit-content" placeholder="e.g. WildEastGameIds=200" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchEditContent()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Target Directories (directories to recursively search in)</label>
+        <div id="batchEditTargetDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-edit-target-dir" placeholder="e.g. D:\tools2" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchEditTargetDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Exclude Directories (skip these directories during search)</label>
+        <div id="batchEditExcludeDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-edit-exclude-dir" placeholder="e.g. D:\tools2\archive" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchEditExcludeDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <button class="btn-primary" onclick="doBatchEditCheck()" style="margin-right:8px;">🔍 Check All Files</button>
+          <button class="btn-primary" onclick="doBatchEditApply()" style="margin-right:8px;">✏️ Batch Edit</button>
+          <button class="btn-primary" onclick="doBatchEditViewFiles()">👁️ View Files</button>
+        </div>
+        <div id="batchEditResult" style="margin-top:16px;font-size:12px;"></div>
+
+        <!-- Documentation -->
+        <details style="margin-top:24px;border-top:1px solid #eee;padding-top:12px;">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#4a90d9;">📖 Usage Guide</summary>
+          <div style="font-size:12px;color:#555;margin-top:8px;line-height:1.8;">
+            <p><strong>Purpose:</strong> Batch append or replace key=value entries in .properties files across multiple directories.</p>
+            <p><strong>Steps:</strong></p>
+            <ol>
+              <li>Enter the properties file name to search (e.g. <code>stresstest.properties</code>).</li>
+              <li>Enter key=value content entries (click + to add more, e.g. <code>WildEastGameIds=200</code>).</li>
+              <li>Enter target directories to search in.</li>
+              <li>Optionally enter directories to exclude.</li>
+              <li>Click <b>Check All Files</b> to preview matching files.</li>
+              <li>Click <b>Batch Edit</b> to apply changes: existing keys get updated, missing keys get appended at end of file.</li>
+              <li>Click <b>View Files</b> to browse file contents with preview cards. Click Expand to edit and save individual files.</li>
+            </ol>
+            <p><strong>Note:</strong> Batch Edit currently only supports <code>.properties</code> files. View Files supports all file types.</p>
+          </div>
+        </details>
+      </div>
+    </div><!-- end pageBatchedit -->
+
+    <!-- BATCH UPLOAD FILE PAGE -->
+    <div class="page-panel" id="pageBatchupload">
+      <div class="card full-width">
+        <h2>⬆️ Batch Upload File</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:16px;">Upload source files to matching directories found via glob pattern search.</p>
+
+        <label>Source File (full path of the file to upload)</label>
+        <div id="batchUpSrcFiles">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-up-src-file" placeholder="e.g. D:\tools2\b2b\B2BBMM\B2BSimulator\simulator\B2BGameSimulator\lib\VBWildBallLogic.jar" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchUpSrcFile()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Target Directories (directories to recursively search in, supports * wildcard)</label>
+        <div id="batchUpTargetDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-up-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim/*/simulator/B2BGameSimulator/lib" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchUpTargetDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Exclude Directories (skip these directories during search)</label>
+        <div id="batchUpExcludeDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-up-exclude-dir" placeholder="e.g. E:/path/to/exclude" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchUpExcludeDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <button class="btn-primary" onclick="doBatchUpCheck()" style="margin-right:8px;">🔍 Check All Files</button>
+          <button class="btn-primary" onclick="doBatchUpUpload()">⬆️ Batch Upload</button>
+        </div>
+
+        <!-- Upload progress bar -->
+        <div id="batchUpProgressMask" style="display:none;margin-top:12px;">
+          <div style="font-size:13px;font-weight:600;color:#333;margin-bottom:8px;">⬆️ Uploading...</div>
+          <div style="width:100%;height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;">
+            <div id="batchUpProgressBar" style="width:0%;height:100%;background:linear-gradient(90deg,#4a90d9,#67b26f);border-radius:4px;transition:width 0.3s ease;"></div>
+          </div>
+          <div id="batchUpProgressText" style="font-size:11px;color:#666;margin-top:4px;">0%</div>
+        </div>
+
+        <div id="batchUpResult" style="margin-top:16px;font-size:12px;"></div>
+
+        <!-- Documentation -->
+        <details style="margin-top:24px;border-top:1px solid #eee;padding-top:12px;">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#4a90d9;">📖 Usage Guide</summary>
+          <div style="font-size:12px;color:#555;margin-top:8px;line-height:1.8;">
+            <p><strong>Purpose:</strong> Upload (copy) source files to multiple target directories found via glob pattern matching.</p>
+            <p><strong>Steps:</strong></p>
+            <ol>
+              <li>Enter one or more source file full paths (click + to add more).</li>
+              <li>Enter target directory patterns (supports <code>*</code> wildcard for glob matching, e.g. <code>E:/path/*/simulator/lib</code>).</li>
+              <li>Optionally enter directories to exclude.</li>
+              <li>Click <b>Check All Files</b> to preview all matching directories (with select all/none/inverse).</li>
+              <li>Click <b>Batch Upload</b> to copy source files into all selected target directories.</li>
+            </ol>
+            <p><strong>Example:</strong> Source: <code>D:\tools2\b2b\B2BBMM\B2BSimulator\simulator\B2BGameSimulator\lib\VBWildBallLogic.jar</code>, Target: <code>E:/temp/ShowBingoSim/*/simulator/B2BGameSimulator/lib</code> will copy VBWildBallLogic.jar to all matching lib directories.</p>
+          </div>
+        </details>
+      </div>
+    </div><!-- end pageBatchupload -->
+
+    <!-- BATCH DOWNLOAD FILE PAGE -->
+    <div class="page-panel" id="pageBatchdownload">
+      <div class="card full-width">
+        <h2>⬇️ Batch Download File</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:16px;">Search files by name (supports wildcard *) across directories, then batch download as zip or view contents.</p>
+
+        <label>Source File Name (the file name to search, supports * wildcard)</label>
+        <input type="text" id="batchDlFileName" placeholder="e.g. CalacaBingo*.txt or config.json" style="margin-bottom:12px;">
+
+        <label>Target Directories (directories to recursively search in)</label>
+        <div id="batchDlTargetDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-dl-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchDlTargetDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Exclude Directories (skip these directories during search)</label>
+        <div id="batchDlExcludeDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-dl-exclude-dir" placeholder="e.g. E:/path/to/exclude" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchDlExcludeDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <button class="btn-primary" onclick="doBatchDlCheck()" style="margin-right:8px;">🔍 Check All Files</button>
+          <button class="btn-primary" onclick="doBatchDlDownload()" style="margin-right:8px;">⬇️ Batch Download</button>
+          <button class="btn-primary" onclick="doBatchDlView()">👁️ Batch View</button>
+        </div>
+
+        <!-- Download progress bar -->
+        <div id="batchDlProgressMask" style="display:none;margin-top:12px;">
+          <div style="font-size:13px;font-weight:600;color:#333;margin-bottom:8px;">⬇️ Preparing download...</div>
+          <div style="width:100%;height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;">
+            <div id="batchDlProgressBar" style="width:0%;height:100%;background:linear-gradient(90deg,#4a90d9,#67b26f);border-radius:4px;transition:width 0.3s ease;"></div>
+          </div>
+          <div id="batchDlProgressText" style="font-size:11px;color:#666;margin-top:4px;">0%</div>
+        </div>
+
+        <div id="batchDlResult" style="margin-top:16px;font-size:12px;"></div>
+
+        <!-- Documentation -->
+        <details style="margin-top:24px;border-top:1px solid #eee;padding-top:12px;">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#4a90d9;">📖 Usage Guide</summary>
+          <div style="font-size:12px;color:#555;margin-top:8px;line-height:1.8;">
+            <p><strong>Purpose:</strong> Search files by name (supports wildcard) across directories, then batch download as zip or view contents.</p>
+            <p><strong>Steps:</strong></p>
+            <ol>
+              <li>Enter a file name to search (supports <code>*</code> wildcard, e.g. <code>CalacaBingo*.txt</code>).</li>
+              <li>Enter target directories to search in.</li>
+              <li>Optionally enter directories to exclude.</li>
+              <li>Click <b>Check All Files</b> to preview matching files (with select all/none/inverse).</li>
+              <li>Click <b>Batch Download</b> to download selected files as a zip (preserving relative directory structure).</li>
+              <li>Click <b>Batch View</b> to browse file contents with preview cards. Click Expand to view full content.</li>
+            </ol>
+            <p><strong>Download structure:</strong> A <code>temp</code> folder is created in the first target directory, files are copied preserving their relative paths, then compressed as <code>temp.zip</code> for download.</p>
+          </div>
+        </details>
+      </div>
+    </div><!-- end pageBatchdownload -->
 
     <!-- FORMAT TIME PAGE -->
     <div class="page-panel" id="pageFormattime">
@@ -3139,7 +3354,7 @@ function switchPage(page) {
   var navId = 'nav' + page.charAt(0).toUpperCase() + page.slice(1);
   var navEl = document.getElementById(navId);
   if (navEl) { navEl.classList.add('active'); }
-  else if (page === 'compare' || page === 'formatjson' || page === 'batchoverride' || page === 'formattime' || page === 'cardgen' || page === 'patterncomb' || page === 'patterncalc' || page === 'repeatnumpos') {
+  else if (page === 'compare' || page === 'formatjson' || page === 'batchoverride' || page === 'batchedit' || page === 'batchupload' || page === 'batchdownload' || page === 'formattime' || page === 'cardgen' || page === 'patterncomb' || page === 'patterncalc' || page === 'repeatnumpos') {
     document.getElementById('navPlugin').classList.add('active');
   }
   if (page === 'history') histLoadAll();
