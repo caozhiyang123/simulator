@@ -4241,7 +4241,7 @@ def iam_menus():
                 break
 
     # Maintain a stable order based on the full menu list
-    all_menus_order = ["Home", "Workers", "Config", "History", "MD5", "SHA1", "Plugin", "CICD", "Play", "IAM", "Family"]
+    all_menus_order = ["Home", "Workers", "Config", "History", "MD5", "SHA1", "Plugin", "CICD", "Play", "IAM", "Family", "Settings"]
     menus = [m for m in all_menus_order if m in menus_set]
     # Add any custom menus not in the predefined order
     for m in menus_set:

@@ -651,6 +651,14 @@ function applyMenuFiltering() {
     if (guideFloat) guideFloat.style.display = 'none';
     if (guideShowBtn) guideShowBtn.style.display = 'none';
   }
+  var settingsIcon = document.getElementById('headerSettingsIcon');
+  if (settingsIcon) {
+    if (_userAllowedMenus.indexOf('Settings') >= 0) {
+      settingsIcon.style.display = '';
+    } else {
+      settingsIcon.style.display = 'none';
+    }
+  }
   var activePage = '';
   document.querySelectorAll('.page-panel').forEach(function(el) {
     if (el.classList.contains('active')) { activePage = el.id.replace('page', '').toLowerCase(); }
@@ -660,12 +668,12 @@ function applyMenuFiltering() {
     'history': 'History', 'md5': 'MD5', 'sha1': 'SHA1',
     'compare': 'Plugin', 'formatjson': 'Plugin', 'batchoverride': 'Plugin',
     'formattime': 'Plugin', 'cardgen': 'Plugin', 'patterncomb': 'Plugin', 'patterncalc': 'Plugin',
-    'cicd': 'CICD', 'cicdsettings': 'CICD', 'play': 'Play', 'iam': 'IAM', 'family': 'Family'
+    'cicd': 'CICD', 'cicdsettings': 'Settings', 'play': 'Play', 'iam': 'IAM', 'family': 'Family'
   };
   var currentMenu = pageToMenu[activePage] || '';
   if (currentMenu && _userAllowedMenus.indexOf(currentMenu) < 0) {
     var firstMenu = _userAllowedMenus[0] || 'Play';
-    var pageMap = { 'Home': 'home', 'Workers': 'workers', 'Config': 'config', 'History': 'history', 'MD5': 'md5', 'SHA1': 'sha1', 'Plugin': 'compare', 'CICD': 'cicd', 'Play': 'play', 'IAM': 'iam', 'Family': 'family' };
+    var pageMap = { 'Home': 'home', 'Workers': 'workers', 'Config': 'config', 'History': 'history', 'MD5': 'md5', 'SHA1': 'sha1', 'Plugin': 'compare', 'CICD': 'cicd', 'Play': 'play', 'IAM': 'iam', 'Family': 'family', 'Settings': 'cicdsettings' };
     switchPage(pageMap[firstMenu] || 'play');
   }
 }

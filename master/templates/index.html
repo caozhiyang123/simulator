@@ -25,7 +25,7 @@
   <h1 style="margin:0;font-size:20px;display:inline-block;">🎰 Distributed Simulator Control Panel</h1>
   <div style="position:absolute;right:20px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:12px;font-size:13px;">
     <span id="userInfo" style="color:#666;">👤 Loading...</span>
-    <span style="cursor:pointer;font-size:16px;" onclick="switchPage('cicdsettings')" title="Settings">⚙️</span>
+    <span id="headerSettingsIcon" style="cursor:pointer;font-size:16px;" onclick="switchPage('cicdsettings')" title="Settings">⚙️</span>
     <button onclick="doLogout()" style="background:#e74c3c;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;">Logout</button>
     <select id="bgSelect" onchange="changeBg(this.value)" style="padding:4px 8px;border-radius:4px;border:1px solid #ccc;font-size:12px;">
       <option value="gray">Gray</option>
