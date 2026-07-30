@@ -96,6 +96,11 @@ function wildWestUpdateBonusState(resp) {
   // Check golden_badge for wheel trigger (can co-exist with bonus_slot)
   if (resp.golden_badge) {
     wildWestUpdateGoldenBadge(resp.golden_badge);
+  } else if (resp.extra === undefined) {
+    // No golden_badge in a spin response (not EB) means new round — reset stars
+    _wwGoldenBadges = 0;
+    var badgeEl = document.getElementById('wwGoldenBadgeCount');
+    if (badgeEl) badgeEl.textContent = '';
   }
 
   // Set _playBonusPending based on either bonus being active
@@ -598,7 +603,7 @@ function wildWestRenderBadgeDisplay(resp) {
   var bar = document.createElement('div');
   bar.id = 'wwGoldenBadgeBar';
   bar.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 8px;background:#1a1a2e;border-radius:4px;margin-bottom:4px;font-size:12px;color:#ffd700;font-weight:700;';
-  bar.innerHTML = '<span>⭐</span><span id="wwGoldenBadgeCount">⭐ x0</span>';
+  bar.innerHTML = '<span id="wwGoldenBadgeCount" style="letter-spacing:2px;"></span>';
   ballArea.parentNode.insertBefore(bar, ballArea);
 
   // Parse initial golden_badge from login if available
@@ -619,12 +624,12 @@ function wildWestUpdateGoldenBadge(badgeData) {
     return;
   }
 
-  _wwGoldenBadges = data.golden_badge_count || _wwGoldenBadges;
+  _wwGoldenBadges = (data.golden_badge_count !== undefined) ? data.golden_badge_count : _wwGoldenBadges;
   playLog('⭐ [WW GOLDEN BADGE] count: ' + _wwGoldenBadges);
 
   // Update badge display
   var badgeEl = document.getElementById('wwGoldenBadgeCount');
-  if (badgeEl) badgeEl.textContent = '⭐ x' + _wwGoldenBadges;
+  if (badgeEl) badgeEl.textContent = '⭐'.repeat(_wwGoldenBadges);
 
   // Check if wheel is triggered (multiplier + wheel present)
   if (data.multiplier && data.wheel) {
@@ -850,7 +855,7 @@ function wildWestAnimateGoldenWheels(value1, value2, prize, balance) {
   setTimeout(function() {
     var resultEl = document.getElementById('wwGoldenWheelResult');
     if (resultEl) {
-      resultEl.innerHTML = '<span style="color:#ffd700;">' + value1 + ' × ' + value2 + ' = ' + prize.toFixed(2) + '</span>';
+      resultEl.innerHTML = '<span style="color:#ffd700;font-size:20px;">🎉 WIN: ' + prize.toFixed(2) + '</span>';
     }
 
     // Update balance
