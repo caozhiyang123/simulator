@@ -99,10 +99,11 @@ var _batchInputHistoryClasses = [
   'batch-override-src', 'batch-target-dir', 'batch-exclude-dir',
   'batch-edit-content', 'batch-edit-target-dir', 'batch-edit-exclude-dir',
   'batch-up-src-file', 'batch-up-target-dir', 'batch-up-exclude-dir',
-  'batch-dl-target-dir', 'batch-dl-exclude-dir'
+  'batch-dl-target-dir', 'batch-dl-exclude-dir',
+  'batch-del-pattern', 'batch-del-target-dir', 'batch-del-exclude-dir'
 ];
 var _batchInputHistoryIds = [
-  'batchEditFileName', 'batchDlFileName'
+  'batchEditFileName', 'batchDlFileName', 'batchDelFilePattern'
 ];
 
 function _initAllInputHistory() {
@@ -231,6 +232,138 @@ function copyFormatTimeResult() {
   copyIcon.style.display = 'none';
   checkIcon.style.display = '';
   setTimeout(function() { copyIcon.style.display = ''; checkIcon.style.display = 'none'; }, 2000);
+}
+
+
+// ---------------------------------------------------------------------------
+// Batch Delete File (glob/wildcard pattern matching)
+// ---------------------------------------------------------------------------
+var _batchDelFileFoundFiles = [];
+
+function getBatchDelTargetDirs() {
+  var inputs = document.querySelectorAll('#batchDelTargetDirs .batch-del-target-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+
+function getBatchDelExcludeDirs() {
+  var inputs = document.querySelectorAll('#batchDelExcludeDirs .batch-del-exclude-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+
+function addBatchDelTargetDir() {
+  var container = document.getElementById('batchDelTargetDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-del-target-dir" placeholder="e.g. E:/path/to/dir" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+
+function addBatchDelExcludeDir() {
+  var container = document.getElementById('batchDelExcludeDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-del-exclude-dir" placeholder="e.g. E:/path/to/exclude" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+
+async function doBatchDelFileCheck() {
+  _saveAllBatchInputHistory();
+  var pattern = document.getElementById('batchDelFilePattern').value.trim();
+  var dirs = getBatchDelTargetDirs();
+  var excludes = getBatchDelExcludeDirs();
+  if (!pattern) { showAlert('Please enter a file pattern (e.g. CalacaBingo*.txt)'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var resultEl = document.getElementById('batchDelFileResult');
+  resultEl.innerHTML = '<div style="color:#888;">Searching for matching files...</div>';
+
+  var res = await fetch('/files/batch-delete-file-check', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({pattern: pattern, target_dirs: dirs, exclude_dirs: excludes})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  var found = data.found || [];
+  _batchDelFileFoundFiles = found;
+
+  var html = '<div style="color:#4a90d9;font-weight:600;margin-bottom:8px;">🔍 Found ' + found.length + ' matching file(s):</div>';
+  if (found.length === 0) {
+    html += '<div style="color:#888;">No matching files found in the target directories.</div>';
+  } else {
+    html += '<div style="margin-bottom:8px;">';
+    html += '<button class="btn-primary btn-sm" onclick="batchDelFileSelectAll()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select All</button>';
+    html += '<button class="btn-primary btn-sm" onclick="batchDelFileSelectNone()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select None</button>';
+    html += '<button class="btn-primary btn-sm" onclick="batchDelFileSelectInverse()" style="font-size:11px;padding:3px 8px;">Inverse</button>';
+    html += '</div>';
+    html += '<div id="batchDelFileList" style="background:#1e1e2e;color:#cdd6f4;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:350px;overflow-y:auto;">';
+    found.forEach(function(p, idx) {
+      html += '<label style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;">';
+      html += '<input type="checkbox" class="batch-del-file-cb" value="' + idx + '" checked>';
+      html += '<span>' + p + '</span></label>';
+    });
+    html += '</div>';
+  }
+  resultEl.innerHTML = html;
+}
+
+function batchDelFileSelectAll() {
+  document.querySelectorAll('.batch-del-file-cb').forEach(function(cb) { cb.checked = true; });
+}
+function batchDelFileSelectNone() {
+  document.querySelectorAll('.batch-del-file-cb').forEach(function(cb) { cb.checked = false; });
+}
+function batchDelFileSelectInverse() {
+  document.querySelectorAll('.batch-del-file-cb').forEach(function(cb) { cb.checked = !cb.checked; });
+}
+
+function getSelectedBatchDelFiles() {
+  var selected = [];
+  document.querySelectorAll('.batch-del-file-cb').forEach(function(cb) {
+    if (cb.checked) {
+      var idx = parseInt(cb.value);
+      if (_batchDelFileFoundFiles[idx]) selected.push(_batchDelFileFoundFiles[idx]);
+    }
+  });
+  return selected;
+}
+
+async function doBatchDelFileDelete() {
+  var selected = getSelectedBatchDelFiles();
+  if (!selected.length) { showAlert('No files selected for deletion. Please run Check All Files first.'); return; }
+  if (!confirm('⚠️ Are you sure you want to DELETE ' + selected.length + ' file(s)?\n\nThis operation cannot be undone!')) return;
+
+  var resultEl = document.getElementById('batchDelFileResult');
+  resultEl.innerHTML = '<div style="color:#888;">Deleting selected files...</div>';
+
+  var res = await fetch('/files/batch-delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({files: selected})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  var deleted = data.deleted || [];
+  var errors = data.errors || [];
+  var html = '<div style="color:#27ae60;font-weight:600;margin-bottom:8px;">🗑️ Deleted ' + deleted.length + ' file(s):</div>';
+  if (deleted.length > 0) {
+    html += '<div style="background:#1e1e2e;color:#a6e3a1;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:300px;overflow-y:auto;margin-bottom:8px;">';
+    deleted.forEach(function(p) { html += '<div>' + p + '</div>'; });
+    html += '</div>';
+  }
+  if (errors.length > 0) {
+    html += '<div style="color:#e74c3c;font-weight:600;margin-bottom:4px;">❌ Failed (' + errors.length + '):</div>';
+    html += '<div style="background:#1e1e2e;color:#f38ba8;padding:12px;border-radius:6px;font-family:monospace;font-size:12px;max-height:150px;overflow-y:auto;">';
+    errors.forEach(function(p) { html += '<div>' + p + '</div>'; });
+    html += '</div>';
+  }
+  if (deleted.length === 0 && errors.length === 0) {
+    html += '<div style="color:#888;">No files were deleted.</div>';
+  }
+  resultEl.innerHTML = html;
 }
 
 

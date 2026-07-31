@@ -48,5 +48,12 @@
   "allocation_mode": "vcpu",
   "progress_save_dir": "./progress_data",
   "simulator_dir": "D:\\tools2\\b2b\\B2BBMM\\B2BSimulator",
-  "production_dir": "E:\\python\\workSpace\\temp\\ShowBingoSim"
+  "production_dir": "E:\\python\\workSpace\\temp\\ShowBingoSim",
+  "quick_access_toolbar": [
+    "Batch Delete File",
+    "Batch Override File",
+    "Batch Edit File",
+    "Batch Upload File",
+    "Batch Download File"
+  ]
 }

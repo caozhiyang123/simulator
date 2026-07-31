@@ -55,6 +55,7 @@
       <div id="pluginSubmenu" style="display:none;position:absolute;left:56px;top:0;background:#1a1a2e;border:1px solid #333;border-radius:6px;padding:4px;z-index:100;white-space:nowrap;">
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('compare');hidePluginMenu()">🔍 Compare</div>
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('formatjson');hidePluginMenu()">📋 Format JSON</div>
+        <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('batchdeletefile');hidePluginMenu()">🗑️ Batch Delete File</div>
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('batchoverride');hidePluginMenu()">📦 Batch Override File</div>
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('batchedit');hidePluginMenu()">✏️ Batch Edit File</div>
         <div style="padding:6px 12px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('batchupload');hidePluginMenu()">⬆️ Batch Upload File</div>
@@ -478,6 +479,57 @@
         <div id="formatJsonError" style="margin-top:8px;font-size:12px;color:#e74c3c;display:none;"></div>
       </div>
     </div><!-- end pageFormatjson -->
+
+    <!-- BATCH DELETE FILE PAGE -->
+    <div class="page-panel" id="pageBatchdeletefile">
+      <div class="card full-width">
+        <h2>🗑️ Batch Delete File</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:16px;">Search and delete files matching a wildcard pattern across multiple directories recursively.</p>
+        <label>Source File (for example CalacaBingo*.txt)</label>
+        <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+          <input type="text" id="batchDelFilePattern" class="batch-del-pattern" placeholder="e.g. CalacaBingo*.txt" style="flex:1;margin-bottom:0;">
+        </div>
+
+        <label style="margin-top:8px;">Target Directories (directories to recursively search in)</label>
+        <div id="batchDelTargetDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-del-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchDelTargetDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Exclude Directories (skip these directories during search)</label>
+        <div id="batchDelExcludeDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-del-exclude-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim/SimC1" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchDelExcludeDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <button class="btn-primary" onclick="doBatchDelFileCheck()" style="margin-right:8px;">🔍 Check All Files</button>
+          <button class="btn-danger" onclick="doBatchDelFileDelete()">🗑️ Batch Delete</button>
+        </div>
+        <div id="batchDelFileResult" style="margin-top:16px;font-size:12px;"></div>
+
+        <!-- Documentation -->
+        <details style="margin-top:24px;border-top:1px solid #eee;padding-top:12px;">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#4a90d9;">📖 Usage Guide</summary>
+          <div style="font-size:12px;color:#555;margin-top:8px;line-height:1.8;">
+            <p><strong>Purpose:</strong> Search and delete files matching a wildcard/glob pattern across multiple directories recursively.</p>
+            <p><strong>Steps:</strong></p>
+            <ol>
+              <li>Enter a filename pattern with wildcards (e.g. <code>CalacaBingo*.txt</code>, <code>*.log</code>, <code>test_??.dat</code>).</li>
+              <li>Enter target directories to search in (supports multiple).</li>
+              <li>Optionally enter directories to exclude from search.</li>
+              <li>Click <b>Check All Files</b> to preview all matching files found (with select all/none/inverse).</li>
+              <li>Select the files you want to delete, then click <b>Batch Delete</b> (a confirmation dialog will appear).</li>
+            </ol>
+            <p><strong>Wildcard support:</strong> <code>*</code> matches any characters, <code>?</code> matches a single character.</p>
+          </div>
+        </details>
+      </div>
+    </div><!-- end pageBatchdeletefile -->
 
     <!-- BATCH OVERRIDE FILE PAGE -->
     <div class="page-panel" id="pageBatchoverride">
@@ -3354,7 +3406,7 @@ function switchPage(page) {
   var navId = 'nav' + page.charAt(0).toUpperCase() + page.slice(1);
   var navEl = document.getElementById(navId);
   if (navEl) { navEl.classList.add('active'); }
-  else if (page === 'compare' || page === 'formatjson' || page === 'batchoverride' || page === 'batchedit' || page === 'batchupload' || page === 'batchdownload' || page === 'formattime' || page === 'cardgen' || page === 'patterncomb' || page === 'patterncalc' || page === 'repeatnumpos') {
+  else if (page === 'compare' || page === 'formatjson' || page === 'batchdeletefile' || page === 'batchoverride' || page === 'batchedit' || page === 'batchupload' || page === 'batchdownload' || page === 'formattime' || page === 'cardgen' || page === 'patterncomb' || page === 'patterncalc' || page === 'repeatnumpos') {
     document.getElementById('navPlugin').classList.add('active');
   }
   if (page === 'history') histLoadAll();

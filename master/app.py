@@ -1565,6 +1565,53 @@ def bingo_generate():
         return jsonify({"status": "ok", "cards": cards, "card_size": card_size, "positions_per_set": total_pos})
 
 
+@app.route("/files/batch-delete-file-check", methods=["POST"])
+def batch_delete_file_check():
+    """Recursively find all files matching a glob/wildcard pattern.
+
+    Request body: {
+        "pattern": "CalacaBingo*.txt",
+        "target_dirs": ["dir1", "dir2"],
+        "exclude_dirs": ["ex1"]
+    }
+    """
+    import fnmatch
+    data = request.get_json(force=True)
+    pattern = data.get("pattern", "").strip()
+    target_dirs = data.get("target_dirs", [])
+    exclude_dirs = data.get("exclude_dirs", [])
+
+    if not pattern:
+        return jsonify({"error": "file pattern is required"}), 400
+    if not target_dirs:
+        return jsonify({"error": "at least one target directory is required"}), 400
+
+    # Normalize exclude dirs for comparison
+    exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
+
+    found = []
+
+    for td in target_dirs:
+        td = os.path.normpath(td.strip())
+        if not os.path.isdir(td):
+            continue
+        for root, dirs, files in os.walk(td, followlinks=True):
+            # Check if current root is under an excluded directory
+            root_norm = os.path.normpath(root).lower()
+            skip = False
+            for ex in exclude_normalized:
+                if root_norm == ex or root_norm.startswith(ex + os.sep):
+                    skip = True
+                    break
+            if skip:
+                continue
+            for f in files:
+                if fnmatch.fnmatch(f, pattern):
+                    found.append(os.path.join(root, f).replace("\\", "/"))
+
+    return jsonify({"status": "ok", "found": found, "count": len(found)})
+
+
 @app.route("/files/batch-check", methods=["POST"])
 def batch_check():
     """Recursively find all files matching the source filename(s).
