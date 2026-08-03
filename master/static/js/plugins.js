@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 var _inputHistoryMax = 20;
 var _activeHistoryDropdown = null;
+var _historyBlurTimeout = null;
 
 function _getInputHistoryKey(inputEl) {
   // Use a combination of class name and placeholder to generate a unique key
@@ -35,6 +36,11 @@ function _saveInputHistory(key, value) {
 
 function _showHistoryDropdown(inputEl) {
   _hideHistoryDropdown();
+  // Cancel any pending blur timeout so it doesn't hide the dropdown we're about to show
+  if (_historyBlurTimeout) {
+    clearTimeout(_historyBlurTimeout);
+    _historyBlurTimeout = null;
+  }
   var key = _getInputHistoryKey(inputEl);
   var history = _getInputHistory(key);
   if (!history.length) return;
@@ -85,8 +91,12 @@ function _initInputHistoryForEl(inputEl) {
     _showHistoryDropdown(inputEl);
   });
   inputEl.addEventListener('blur', function() {
-    // Longer delay to allow user to click on dropdown item
-    setTimeout(function() { _hideHistoryDropdown(); }, 300);
+    // Delay to allow user to click on dropdown item; tracked so it can be cancelled on re-focus
+    if (_historyBlurTimeout) clearTimeout(_historyBlurTimeout);
+    _historyBlurTimeout = setTimeout(function() {
+      _historyBlurTimeout = null;
+      _hideHistoryDropdown();
+    }, 300);
   });
   inputEl.addEventListener('change', function() {
     var key = _getInputHistoryKey(inputEl);
