@@ -82,6 +82,14 @@
 
 <div class="grid">
 
+  <!-- Quick Access Toolbar -->
+  <div class="card full-width" id="sectionQuickAccess">
+    <h2>⚡ Quick Access Toolbar</h2>
+    <div id="quickAccessToolbar" style="display:flex;flex-wrap:wrap;gap:8px;min-height:36px;align-items:center;">
+      <span style="color:#888;font-size:13px;">Loading...</span>
+    </div>
+  </div>
+
   <!-- File Sync -->
   <div class="card full-width" id="sectionFileSync">
     <h2>📂 File Sync</h2>
@@ -4210,6 +4218,57 @@ async function checkWorkersHealth() {
 }
 
 // ---------------------------------------------------------------------------
+// Quick Access Toolbar
+// ---------------------------------------------------------------------------
+var _quickAccessNameToPage = {
+  'Batch Delete File': 'batchdeletefile',
+  'Batch Override File': 'batchoverride',
+  'Batch Edit File': 'batchedit',
+  'Batch Upload File': 'batchupload',
+  'Batch Download File': 'batchdownload',
+  'Compare': 'compare',
+  'Format JSON': 'formatjson',
+  'Format Time': 'formattime',
+  'Card Generation': 'cardgen',
+  'Pattern Combination': 'patterncomb',
+  'Pattern Calculation': 'patterncalc',
+  'Repeat Number Position': 'repeatnumpos'
+};
+
+var _quickAccessNameToIcon = {
+  'Batch Delete File': '🗑️',
+  'Batch Override File': '📦',
+  'Batch Edit File': '✏️',
+  'Batch Upload File': '⬆️',
+  'Batch Download File': '⬇️',
+  'Compare': '🔍',
+  'Format JSON': '📋',
+  'Format Time': '🕐',
+  'Card Generation': '🃏',
+  'Pattern Combination': '🧩',
+  'Pattern Calculation': '🎯',
+  'Repeat Number Position': '🔢'
+};
+
+async function loadQuickAccessToolbar() {
+  var container = document.getElementById('quickAccessToolbar');
+  var r = await api('/config/quick-access-toolbar', 'GET');
+  if (!r.ok || !r.data.items || !r.data.items.length) {
+    container.innerHTML = '<span style="color:#888;font-size:13px;">No quick access items configured.</span>';
+    return;
+  }
+  var html = '';
+  r.data.items.forEach(function(name) {
+    var page = _quickAccessNameToPage[name];
+    var icon = _quickAccessNameToIcon[name] || '🔗';
+    if (page) {
+      html += '<button class="btn-primary" onclick="switchPage(\'' + page + '\')" style="font-size:12px;padding:6px 12px;border-radius:6px;cursor:pointer;">' + icon + ' ' + name + '</button>';
+    }
+  });
+  container.innerHTML = html || '<span style="color:#888;font-size:13px;">No valid quick access items.</span>';
+}
+
+// ---------------------------------------------------------------------------
 // Init: load node list from /config/nodes on page load
 // ---------------------------------------------------------------------------
 async function init() {
@@ -4238,6 +4297,7 @@ async function init() {
   renderPercentageInputs();
   initFileSyncWorkerSelect();
   loadLocalDir('');
+  loadQuickAccessToolbar();
 
   // Load game list
   const gr = await api('/games', 'GET');

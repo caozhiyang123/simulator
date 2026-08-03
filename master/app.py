@@ -801,6 +801,20 @@ def get_nodes():
     })
 
 
+@app.route("/config/quick-access-toolbar", methods=["GET"])
+def get_quick_access_toolbar():
+    """获取 Quick Access Toolbar 配置项。"""
+    # Re-read config to pick up any changes
+    items = []
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = _json.load(f)
+        items = cfg.get("quick_access_toolbar", [])
+    except Exception:
+        items = _raw_config.get("quick_access_toolbar", [])
+    return jsonify({"items": items})
+
+
 @app.route("/logs", methods=["GET"])
 def logs():
     """获取 Master 本地模拟器的 run.bat 输出日志。
