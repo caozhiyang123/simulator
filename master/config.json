@@ -55,5 +55,51 @@
     "Batch Edit File",
     "Batch Upload File",
     "Batch Download File"
+  ],
+  "footer_links": [
+    {
+      "name": "Sandbox Games dev",
+      "url": "https://dev.sandbox.gamesmartasia.com/home"
+    },
+    {
+      "name": "Our Family",
+      "page": "family"
+    },
+    {
+      "name": "VPN Group a",
+      "url": "https://my.zerotier.com/network/363c67c55aab4109"
+    },
+    {
+      "name": "VPN Group b",
+      "url": "https://central.zerotier.com/network/743993800f004a4a"
+    },
+    {
+      "name": "CICD (Jenkins)",
+      "url": "http://54.210.237.121:8081/"
+    },
+    {
+      "name": "ZABBIX",
+      "url": "http://50.17.167.117/zabbix/zabbix.php?action=dashboard.view&ddreset=1"
+    },
+    {
+      "name": "Dr Bingo Unity Web",
+      "url": "https://www.drbingo.com/mobile/"
+    },
+    {
+      "name": "Dr.Bingo FaceBook",
+      "url": "https://apps.facebook.com/doutorbingo/?referrer=utm_source%3Dinvite%26utm_campaign%3Dshare%26share_id%3DeSyFJh1Ycx2rVhyiX52rlokuIQjMoVizMuTOAAypMTAwOTk1NDgyNTk4MjIifQO0O0OO0O0O&fbclid=IwAR2xqAyw26CjV6OyiRtgnyk5IUORrkzmBvUbP9t4eGYGt14vACxUzufdx68"
+    },
+    {
+      "name": "doutorbingo.com",
+      "url": "https://www.doutorbingo.com/"
+    },
+    {
+      "name": "check domain ssl",
+      "url": "https://whois.domaintools.com/drbingo.com"
+    },
+    {
+      "name": "check domain child ssl",
+      "url": "https://cn.lapsezero.com/tools/ssl-certificate-expiry-checker"
+    }
   ]
 }

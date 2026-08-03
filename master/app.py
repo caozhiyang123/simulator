@@ -815,6 +815,18 @@ def get_quick_access_toolbar():
     return jsonify({"items": items})
 
 
+@app.route("/config/footer-links", methods=["GET"])
+def get_footer_links():
+    """获取底部友情链接配置。"""
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = _json.load(f)
+        links = cfg.get("footer_links", [])
+    except Exception:
+        links = _raw_config.get("footer_links", [])
+    return jsonify({"links": links})
+
+
 @app.route("/logs", methods=["GET"])
 def logs():
     """获取 Master 本地模拟器的 run.bat 输出日志。

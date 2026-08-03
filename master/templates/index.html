@@ -1300,20 +1300,7 @@
 </div><!-- end app-layout -->
 
 <!-- FOOTER SECTION (shared) -->
-<div style="margin-top:16px;padding:12px;text-align:center;font-size:18px;color:#888;border-top:1px solid #ddd;">
-  <a href="https://dev.sandbox.gamesmartasia.com/home" target="_blank" style="color:#4a90d9;text-decoration:none;">Sandbox Games dev</a>
-  <span style="margin:0 12px;color:#ddd;">|</span>
-  <a href="javascript:void(0)" onclick="switchPage('family')" style="color:#4a90d9;text-decoration:none;">Our Family</a>
-  <span style="margin:0 12px;color:#ddd;">|</span>
-  <a href="https://my.zerotier.com/network/363c67c55aab4109" target="_blank" style="color:#4a90d9;text-decoration:none;">VPN Group a</a>
-  <span style="margin:0 12px;color:#ddd;">|</span>
-  <a href="https://central.zerotier.com/network/743993800f004a4a" target="_blank" style="color:#4a90d9;text-decoration:none;">VPN Group b</a>
-  <span style="margin:0 12px;color:#ddd;">|</span>
-  <a href="http://54.210.237.121:8081/" target="_blank" style="color:#4a90d9;text-decoration:none;">CICD (Jenkins)</a>
-  <span style="margin:0 12px;color:#ddd;">|</span>
-  <a href="http://50.17.167.117/zabbix/zabbix.php?action=dashboard.view&ddreset=1" target="_blank" style="color:#4a90d9;text-decoration:none;">ZABBIX</a>
-  <span style="margin:0 12px;color:#ddd;">|</span>
-  <a href="https://www.drbingo.com/mobile/" target="_blank" style="color:#4a90d9;text-decoration:none;">Dr Bingo Unity Web</a>
+<div id="footerLinks" style="margin-top:16px;padding:12px;text-align:center;font-size:18px;color:#888;border-top:1px solid #ddd;">
 </div>
 <div style="position:fixed;bottom:0;left:0;width:100%;text-align:center;padding:6px;font-size:11px;color:#999;background:rgba(255,255,255,0.9);border-top:1px solid #eee;z-index:50;">
   © 2026 GameSmart Web Services, Inc. or its affiliates. All rights reserved.
@@ -4268,6 +4255,30 @@ async function loadQuickAccessToolbar() {
   container.innerHTML = html || '<span style="color:#888;font-size:13px;">No valid quick access items.</span>';
 }
 
+async function loadFooterLinks() {
+  var container = document.getElementById('footerLinks');
+  var r = await api('/config/footer-links', 'GET');
+  if (!r.ok || !r.data.links || !r.data.links.length) {
+    container.innerHTML = '<span style="color:#888;">No links configured.</span>';
+    return;
+  }
+  var html = '';
+  var perRow = 6;
+  r.data.links.forEach(function(link, idx) {
+    if (idx > 0 && idx % perRow === 0) {
+      html += '<br style="margin-bottom:6px;">';
+    } else if (idx > 0) {
+      html += '<span style="margin:0 12px;color:#ddd;">|</span>';
+    }
+    if (link.page) {
+      html += '<a href="javascript:void(0)" onclick="switchPage(\'' + link.page + '\')" style="color:#4a90d9;text-decoration:none;">' + link.name + '</a>';
+    } else {
+      html += '<a href="' + link.url + '" target="_blank" style="color:#4a90d9;text-decoration:none;">' + link.name + '</a>';
+    }
+  });
+  container.innerHTML = html;
+}
+
 // ---------------------------------------------------------------------------
 // Init: load node list from /config/nodes on page load
 // ---------------------------------------------------------------------------
@@ -4298,6 +4309,7 @@ async function init() {
   initFileSyncWorkerSelect();
   loadLocalDir('');
   loadQuickAccessToolbar();
+  loadFooterLinks();
 
   // Load game list
   const gr = await api('/games', 'GET');
