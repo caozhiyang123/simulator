@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎰</text></svg>">
 <title>Distributed Simulator Control Panel</title>
-<link rel="stylesheet" href="/static/css/main.css?v=8">
+<link rel="stylesheet" href="/static/css/main.css?v=10">
 </head>
 <body>
 <div id="bgMask"></div>
@@ -152,6 +152,8 @@
     </div>
   </div>
 
+  <div id="startModulesGrid" class="start-modules-grid full-width">
+    <div id="batchStartModules" class="start-module-column">
   <!-- Batch Start -->
   <div class="card" id="sectionBatchStart" style="position:relative;">
     <div id="batchLoadingMask" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.8);z-index:10;display:flex;align-items:center;justify-content:center;border-radius:8px;">
@@ -163,7 +165,7 @@
         <div id="batchCpuText" style="font-size:11px;color:#e74c3c;margin-top:4px;font-weight:600;"></div>
       </div>
     </div>
-    <h2>📦 Batch Start</h2>
+    <h2 class="start-module-title"><span>📦 Batch Start</span><button type="button" class="start-module-add" title="Add Batch/Single Start pair" onclick="createDynamicStartPair()">+</button></h2>
     <label>Type</label>
     <select id="batchSimType">
       <option value="production" selected>Production</option>
@@ -182,6 +184,8 @@
       <button class="btn-danger" id="batchStopBtn" onclick="stopBatchSelected()" disabled>⏹ Stop (batch)</button>
     </div>
   </div>
+    </div>
+    <div id="singleStartModules" class="start-module-column">
 
   <!-- Single Start -->
   <div class="card" id="sectionSingleStart" style="position:relative;">
@@ -191,7 +195,7 @@
         <div id="singleCpuText" style="font-size:11px;color:#e74c3c;margin-top:4px;font-weight:600;"></div>
       </div>
     </div>
-    <h2>🚀 Single Start</h2>
+    <h2 class="start-module-title"><span>🚀 Single Start</span></h2>
     <label>Type</label>
     <select id="singleSimType">
       <option value="production" selected>Production</option>
@@ -214,6 +218,8 @@
     <div style="position:relative;z-index:6;">
       <button class="btn-primary" id="singleStartBtn" onclick="startSingleNode()" disabled>▶ Start</button>
       <button class="btn-danger" id="singleStopBtn" onclick="stopSingleNode()" disabled>⏹ Stop</button>
+    </div>
+  </div>
     </div>
   </div>
 
@@ -1471,6 +1477,11 @@ let activeLogTab = 'master';
 let expandedModels = {};  // {modelId: true} track expanded state
 let expandedCharts = {};  // {chartId: modelName} track open charts
 let expandedHistory = {}; // {historyId: true} track expanded history
+let dynamicStartModules = [];
+let availableGames = [];
+let _dynamicStartSaveTimer = null;
+let _dynamicStartSaveChain = Promise.resolve(true);
+let _startModuleAlignmentFrame = null;
 
 // ---------------------------------------------------------------------------
 // Logging
@@ -1657,6 +1668,7 @@ function deactivateCpuMonitor() {
   if (_cpuMonitorTimer) { clearInterval(_cpuMonitorTimer); _cpuMonitorTimer = null; }
   hideCpuWarn('batchCpuWarn');
   hideCpuWarn('singleCpuWarn');
+  hideDynamicCpuWarnings();
 }
 
 async function cpuMonitorCheck() {
@@ -1680,9 +1692,11 @@ async function cpuMonitorCheck() {
   if (avgCpu < _cpuHealthyThreshold) {
     showCpuWarn('batchCpuWarn', 'batchCpuCanvas', 'batchCpuText', avgCpu, false);
     showCpuWarn('singleCpuWarn', 'singleCpuCanvas', 'singleCpuText', avgCpu, false);
+    updateDynamicCpuWarnings(avgCpu, false);
   } else {
     showCpuWarn('batchCpuWarn', 'batchCpuCanvas', 'batchCpuText', avgCpu, true);
     showCpuWarn('singleCpuWarn', 'singleCpuCanvas', 'singleCpuText', avgCpu, true);
+    updateDynamicCpuWarnings(avgCpu, true);
   }
 }
 
@@ -4280,6 +4294,479 @@ async function loadFooterLinks() {
 }
 
 // ---------------------------------------------------------------------------
+// Dynamic paired Batch / Single Start modules
+// ---------------------------------------------------------------------------
+function escapeDynamicHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function dynamicDomToken(moduleId) {
+  var text = String(moduleId || 'module');
+  var parts = [];
+  for (var i = 0; i < text.length; i++) parts.push(text.charCodeAt(i).toString(16));
+  return parts.join('-');
+}
+
+function makeDynamicModuleId(prefix) {
+  return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+function positiveDynamicNumber(value, fallback) {
+  var parsed = parseInt(value);
+  return parsed > 0 ? parsed : fallback;
+}
+
+function makeDynamicStartModule(type, pairId, source) {
+  source = source || {};
+  var isBatch = type === 'batch';
+  var fallbackSpins = isBatch ? 1000000 : 100000;
+  var module = {
+    id: source.id || makeDynamicModuleId(type + '-start'),
+    pair_id: pairId,
+    type: type,
+    sim_type: source.sim_type === 'test' ? 'test' : 'production',
+    game_name: typeof source.game_name === 'string' ? source.game_name : '',
+    interval_count: positiveDynamicNumber(source.interval_count, fallbackSpins)
+  };
+  if (isBatch) {
+    module.total_spins = positiveDynamicNumber(source.total_spins, fallbackSpins);
+    module.selected_nodes = Array.isArray(source.selected_nodes) ? source.selected_nodes.slice() : [];
+  } else {
+    module.spins = positiveDynamicNumber(source.spins, fallbackSpins);
+    module.selected_node = typeof source.selected_node === 'string' ? source.selected_node : '';
+  }
+  return module;
+}
+
+function normalizeDynamicStartPairs(rawModules) {
+  var raw = Array.isArray(rawModules) ? rawModules : [];
+  var batches = raw.filter(function(m) { return m && m.type === 'batch'; });
+  var singles = raw.filter(function(m) { return m && m.type === 'single'; });
+  var pairCount = Math.max(batches.length, singles.length);
+  var normalized = [];
+  var usedPairIds = {};
+
+  for (var i = 0; i < pairCount; i++) {
+    var batchSource = batches[i] || null;
+    var singleSource = singles[i] || null;
+    var pairId = (batchSource && batchSource.pair_id) ||
+                 (singleSource && singleSource.pair_id) ||
+                 makeDynamicModuleId('start-pair');
+    if (usedPairIds[pairId]) pairId = makeDynamicModuleId('start-pair');
+    usedPairIds[pairId] = true;
+    normalized.push(makeDynamicStartModule('batch', pairId, batchSource || {}));
+    normalized.push(makeDynamicStartModule('single', pairId, singleSource || {}));
+  }
+  return normalized;
+}
+
+function dynamicGameOptions(selectedGame) {
+  var games = availableGames.slice();
+  if (selectedGame && games.indexOf(selectedGame) < 0) games.unshift(selectedGame);
+  var html = '<option value="">-- Select Game --</option>';
+  games.forEach(function(game) {
+    html += '<option value="' + escapeDynamicHtml(game) + '"' +
+            (game === selectedGame ? ' selected' : '') + '>' +
+            escapeDynamicHtml(game) + '</option>';
+  });
+  return html;
+}
+
+function dynamicCpuMarkup(module) {
+  var token = dynamicDomToken(module.id);
+  return '<div id="dynamicCpuWarn-' + token + '" data-role="cpu-warn" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(231,76,60,0.08);z-index:5;border-radius:8px;pointer-events:none;align-items:center;justify-content:center;">' +
+    '<div style="text-align:center;"><canvas id="dynamicCpuCanvas-' + token + '" width="120" height="120"></canvas>' +
+    '<div id="dynamicCpuText-' + token + '" style="font-size:11px;color:#e74c3c;margin-top:4px;font-weight:600;"></div></div></div>';
+}
+
+function renderDynamicStartModule(module) {
+  var column = document.getElementById(module.type === 'batch' ? 'batchStartModules' : 'singleStartModules');
+  if (!column) return;
+  var token = dynamicDomToken(module.id);
+  var card = document.createElement('div');
+  card.className = 'card dynamic-start-module';
+  card.id = 'dynamicStartModule-' + token;
+  card.setAttribute('data-module-id', module.id);
+  card.setAttribute('data-pair-id', module.pair_id);
+  card.setAttribute('data-module-type', module.type);
+  card.style.position = 'relative';
+
+  if (module.type === 'batch') {
+    card.innerHTML = dynamicCpuMarkup(module) +
+      '<h2 class="start-module-title"><span>📦 Batch Start</span><span class="start-module-title-controls">' +
+      '<button type="button" class="start-module-add" data-action="add" title="Add Batch/Single Start pair">+</button>' +
+      '<button type="button" class="start-module-remove" data-action="remove" title="Remove this Batch/Single Start pair">−</button></span></h2>' +
+      '<label>Type</label><select data-role="sim-type"><option value="production"' + (module.sim_type === 'production' ? ' selected' : '') + '>Production</option><option value="test"' + (module.sim_type === 'test' ? ' selected' : '') + '>Test</option></select>' +
+      '<label>Game</label><select data-role="game-name" class="game-select">' + dynamicGameOptions(module.game_name) + '</select>' +
+      '<label>Total Spins</label><input type="number" data-role="spins" value="' + module.total_spins + '" min="1">' +
+      '<label>Interval Count</label><input type="number" data-role="interval-count" value="' + module.interval_count + '" min="1">' +
+      '<label>Select nodes for batch execution</label><div data-role="nodes" style="margin-bottom:8px;"></div>' +
+      '<div style="position:relative;z-index:6;"><button class="btn-success" data-action="start">▶ Start (batch)</button>' +
+      '<button class="btn-danger" data-action="stop" disabled>⏹ Stop (batch)</button></div>';
+  } else {
+    card.innerHTML = dynamicCpuMarkup(module) +
+      '<h2 class="start-module-title"><span>🚀 Single Start</span></h2>' +
+      '<label>Type</label><select data-role="sim-type"><option value="production"' + (module.sim_type === 'production' ? ' selected' : '') + '>Production</option><option value="test"' + (module.sim_type === 'test' ? ' selected' : '') + '>Test</option></select>' +
+      '<label>Game</label><select data-role="game-name" class="game-select">' + dynamicGameOptions(module.game_name) + '</select>' +
+      '<div class="row"><div><label>Spins</label><input type="number" data-role="spins" value="' + module.spins + '" min="1"></div>' +
+      '<div><label>Interval Count</label><input type="number" data-role="interval-count" value="' + module.interval_count + '" min="1"></div></div>' +
+      '<label>Select a node</label><div data-role="nodes" style="margin-bottom:8px;"></div>' +
+      '<div style="position:relative;z-index:6;"><button class="btn-primary" data-action="start" disabled>▶ Start</button>' +
+      '<button class="btn-danger" data-action="stop" disabled>⏹ Stop</button></div>';
+  }
+
+  column.appendChild(card);
+  card.querySelector('[data-action="start"]').addEventListener('click', function() {
+    if (module.type === 'batch') startDynamicBatch(module.id);
+    else startDynamicSingle(module.id);
+  });
+  card.querySelector('[data-action="stop"]').addEventListener('click', function() {
+    if (module.type === 'batch') stopDynamicBatch(module.id);
+    else stopDynamicSingle(module.id);
+  });
+  if (module.type === 'batch') {
+    card.querySelector('[data-action="add"]').addEventListener('click', createDynamicStartPair);
+    card.querySelector('[data-action="remove"]').addEventListener('click', function() {
+      removeDynamicStartPair(module.pair_id);
+    });
+  }
+
+  card.querySelectorAll('select[data-role], input[data-role]').forEach(function(input) {
+    var eventName = input.tagName === 'SELECT' ? 'change' : 'input';
+    input.addEventListener(eventName, function() {
+      if (module.type === 'batch' && input.getAttribute('data-role') === 'spins') {
+        card.querySelector('[data-role="interval-count"]').value = input.value;
+      }
+      syncDynamicStartModuleFromDom(module);
+      scheduleDynamicStartModulesSave();
+      updateDynamicStartModuleState(module.id);
+      scheduleStartModuleAlignment();
+    });
+  });
+  renderDynamicStartModuleNodes(module);
+}
+
+function dynamicNodeLabel(node, inputHtml, isRunning) {
+  var label = node.addr === 'master' ? 'Master' : (node.alias || node.addr);
+  var addrDisplay = node.addr === 'master' ? 'local' : node.addr;
+  var statusText = isRunning ? 'running' : 'stopped';
+  var statusColor = isRunning ? '#27ae60' : '#888';
+  var dotColor = isRunning ? '#27ae60' : '#e74c3c';
+  return '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;">' +
+    inputHtml + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>' +
+    '<span style="flex:1;">' + escapeDynamicHtml(label) + ' <span style="color:#999;font-size:11px;">(' + escapeDynamicHtml(addrDisplay) + ')</span></span>' +
+    '<span style="font-size:11px;color:' + statusColor + ';font-weight:600;">' + statusText + '</span></label>';
+}
+
+function renderDynamicStartModuleNodes(module) {
+  var card = document.getElementById('dynamicStartModule-' + dynamicDomToken(module.id));
+  if (!card) return;
+  var container = card.querySelector('[data-role="nodes"]');
+  if (!container) return;
+  var html = '';
+  if (module.type === 'batch') {
+    var selectedNodes = module.selected_nodes || [];
+    nodes.forEach(function(node) {
+      var selected = selectedNodes.indexOf(node.addr) >= 0;
+      html += dynamicNodeLabel(node,
+        '<input type="checkbox" class="dynamic-batch-node-cb" value="' + escapeDynamicHtml(node.addr) + '"' + (selected ? ' checked' : '') + '>',
+        !!runningNodes[node.addr]);
+    });
+  } else {
+    var radioName = 'dynamic-single-' + dynamicDomToken(module.id);
+    nodes.forEach(function(node) {
+      html += dynamicNodeLabel(node,
+        '<input type="radio" name="' + radioName + '" class="dynamic-single-node-radio" value="' + escapeDynamicHtml(node.addr) + '"' + (module.selected_node === node.addr ? ' checked' : '') + '>',
+        !!runningNodes[node.addr]);
+    });
+  }
+  container.innerHTML = html;
+  container.querySelectorAll('input').forEach(function(input) {
+    input.addEventListener('change', function() {
+      syncDynamicStartModuleFromDom(module);
+      scheduleDynamicStartModulesSave();
+      updateDynamicStartModuleState(module.id);
+    });
+  });
+  updateDynamicStartModuleState(module.id);
+  scheduleStartModuleAlignment();
+}
+
+function syncDynamicStartModuleFromDom(module) {
+  var card = document.getElementById('dynamicStartModule-' + dynamicDomToken(module.id));
+  if (!card) return module;
+  module.sim_type = card.querySelector('[data-role="sim-type"]').value;
+  module.game_name = card.querySelector('[data-role="game-name"]').value;
+  module.interval_count = positiveDynamicNumber(card.querySelector('[data-role="interval-count"]').value, module.interval_count || 1);
+  if (module.type === 'batch') {
+    module.total_spins = positiveDynamicNumber(card.querySelector('[data-role="spins"]').value, module.total_spins || 1);
+    module.selected_nodes = Array.from(card.querySelectorAll('.dynamic-batch-node-cb:checked')).map(function(input) { return input.value; });
+  } else {
+    module.spins = positiveDynamicNumber(card.querySelector('[data-role="spins"]').value, module.spins || 1);
+    var selected = card.querySelector('.dynamic-single-node-radio:checked');
+    module.selected_node = selected ? selected.value : '';
+  }
+  return module;
+}
+
+function serializeDynamicStartModules() {
+  dynamicStartModules.forEach(syncDynamicStartModuleFromDom);
+  return {
+    version: 1,
+    modules: dynamicStartModules.map(function(module) {
+      var clean = {
+        id: module.id, pair_id: module.pair_id, type: module.type,
+        sim_type: module.sim_type, game_name: module.game_name,
+        interval_count: module.interval_count
+      };
+      if (module.type === 'batch') {
+        clean.total_spins = module.total_spins;
+        clean.selected_nodes = (module.selected_nodes || []).slice();
+      } else {
+        clean.spins = module.spins;
+        clean.selected_node = module.selected_node || '';
+      }
+      return clean;
+    })
+  };
+}
+
+function saveDynamicStartModules() {
+  var payload = JSON.parse(JSON.stringify(serializeDynamicStartModules()));
+  var saveOperation = async function() {
+    var result = await api('/config/dynamic-start-modules', 'PUT', payload);
+    return result.ok;
+  };
+  _dynamicStartSaveChain = _dynamicStartSaveChain.catch(function() { return false; }).then(saveOperation);
+  return _dynamicStartSaveChain;
+}
+
+function scheduleDynamicStartModulesSave() {
+  if (_dynamicStartSaveTimer) clearTimeout(_dynamicStartSaveTimer);
+  _dynamicStartSaveTimer = setTimeout(function() {
+    _dynamicStartSaveTimer = null;
+    saveDynamicStartModules();
+  }, 300);
+}
+
+function updateDynamicStartModuleState(moduleId) {
+  var module = dynamicStartModules.find(function(item) { return item.id === moduleId; });
+  var card = document.getElementById('dynamicStartModule-' + dynamicDomToken(moduleId));
+  if (!module || !card) return;
+  var startButton = card.querySelector('[data-action="start"]');
+  var stopButton = card.querySelector('[data-action="stop"]');
+  var selected = module.type === 'batch' ?
+    Array.from(card.querySelectorAll('.dynamic-batch-node-cb:checked')) :
+    Array.from(card.querySelectorAll('.dynamic-single-node-radio:checked'));
+  if (!selected.length) {
+    startButton.disabled = true;
+    stopButton.disabled = true;
+    return;
+  }
+  var hasRunning = selected.some(function(input) { return !!runningNodes[input.value]; });
+  var hasStopped = selected.some(function(input) { return !runningNodes[input.value]; });
+  startButton.disabled = hasRunning;
+  stopButton.disabled = hasStopped;
+}
+
+function updateAllDynamicStartModules() {
+  dynamicStartModules.forEach(function(module) { updateDynamicStartModuleState(module.id); });
+}
+
+async function createDynamicStartPair() {
+  if (_dynamicStartSaveTimer) { clearTimeout(_dynamicStartSaveTimer); _dynamicStartSaveTimer = null; }
+  if (dynamicStartModules.length + 2 > 100) {
+    showAlert('At most 50 dynamic Batch/Single pairs are allowed');
+    return;
+  }
+  var pairId = makeDynamicModuleId('start-pair');
+  var batch = makeDynamicStartModule('batch', pairId, {});
+  var single = makeDynamicStartModule('single', pairId, {});
+  dynamicStartModules.push(batch, single);
+  renderDynamicStartModule(batch);
+  renderDynamicStartModule(single);
+  scheduleStartModuleAlignment();
+
+  if (!await saveDynamicStartModules()) {
+    dynamicStartModules = dynamicStartModules.filter(function(item) { return item.pair_id !== pairId; });
+    [batch, single].forEach(function(item) {
+      var card = document.getElementById('dynamicStartModule-' + dynamicDomToken(item.id));
+      if (card) card.remove();
+    });
+    scheduleStartModuleAlignment();
+    showAlert('Failed to save the new Start module pair');
+  }
+}
+
+async function removeDynamicStartPair(pairId) {
+  if (!confirm('Remove this Batch Start and Single Start pair? Running simulations will not be stopped.')) return;
+  if (_dynamicStartSaveTimer) { clearTimeout(_dynamicStartSaveTimer); _dynamicStartSaveTimer = null; }
+  var previousModules = dynamicStartModules.slice();
+  var removed = dynamicStartModules.filter(function(item) { return item.pair_id === pairId; });
+  if (!removed.length) return;
+  dynamicStartModules = dynamicStartModules.filter(function(item) { return item.pair_id !== pairId; });
+  var batch = removed.find(function(item) { return item.type === 'batch'; });
+  var batchCard = batch && document.getElementById('dynamicStartModule-' + dynamicDomToken(batch.id));
+  var removeButton = batchCard && batchCard.querySelector('[data-action="remove"]');
+  if (removeButton) removeButton.disabled = true;
+
+  if (await saveDynamicStartModules()) {
+    removed.forEach(function(item) {
+      var card = document.getElementById('dynamicStartModule-' + dynamicDomToken(item.id));
+      if (card) card.remove();
+    });
+    scheduleStartModuleAlignment();
+  } else {
+    dynamicStartModules = previousModules;
+    if (removeButton) removeButton.disabled = false;
+    showAlert('Failed to remove the Start module pair');
+  }
+}
+
+async function loadDynamicStartModules() {
+  var result = await api('/config/dynamic-start-modules', 'GET');
+  if (!result.ok) return;
+  var rawModules = Array.isArray(result.data.modules) ? result.data.modules : [];
+  dynamicStartModules = normalizeDynamicStartPairs(rawModules);
+  document.querySelectorAll('.dynamic-start-module').forEach(function(card) { card.remove(); });
+  dynamicStartModules.forEach(renderDynamicStartModule);
+  scheduleStartModuleAlignment();
+
+  var normalizedPayload = serializeDynamicStartModules();
+  if (JSON.stringify(normalizedPayload.modules) !== JSON.stringify(rawModules)) {
+    await saveDynamicStartModules();
+  }
+}
+
+async function startDynamicBatch(moduleId) {
+  var module = dynamicStartModules.find(function(item) { return item.id === moduleId && item.type === 'batch'; });
+  if (!module) return;
+  syncDynamicStartModuleFromDom(module);
+  if (!module.game_name) { showAlert('Please select a game'); return; }
+  if (!module.total_spins || module.total_spins <= 0) { showAlert('Please enter a valid Spins value'); return; }
+  if (!module.selected_nodes.length) { showAlert('Please select at least one simulator'); return; }
+  var previouslyRunning = {};
+  module.selected_nodes.forEach(function(addr) { previouslyRunning[addr] = !!runningNodes[addr]; setNodeRunning(addr, true); });
+  activateCpuMonitor();
+  log('🚀 Dynamic batch start: type=' + module.sim_type + ', game=' + module.game_name + ', spins=' + module.total_spins + ', nodes=' + module.selected_nodes.join(','));
+  var result = await api('/start', 'POST', {
+    total_spins: module.total_spins,
+    interval_count: module.interval_count,
+    mode: document.getElementById('allocationMode').value,
+    game_name: module.game_name,
+    selected_nodes: module.selected_nodes,
+    sim_type: module.sim_type
+  });
+  if (!result.ok) {
+    module.selected_nodes.forEach(function(addr) { if (!previouslyRunning[addr]) setNodeRunning(addr, false); });
+    return;
+  }
+  log('✅ Dynamic batch start completed: ' + result.data.status);
+  if (result.data.results) {
+    result.data.results.forEach(function(item) {
+      if (item.success) setNodeRunning(item.node, true);
+      else if (!previouslyRunning[item.node]) setNodeRunning(item.node, false);
+    });
+  }
+}
+
+async function stopDynamicBatch(moduleId) {
+  var module = dynamicStartModules.find(function(item) { return item.id === moduleId && item.type === 'batch'; });
+  if (!module) return;
+  syncDynamicStartModuleFromDom(module);
+  if (!module.selected_nodes.length) { showAlert('Please select at least one simulator'); return; }
+  for (var i = 0; i < module.selected_nodes.length; i++) {
+    if (module.selected_nodes[i] === 'master') await stopMaster();
+    else await stopWorker(module.selected_nodes[i]);
+  }
+}
+
+async function startDynamicSingle(moduleId) {
+  var module = dynamicStartModules.find(function(item) { return item.id === moduleId && item.type === 'single'; });
+  if (!module) return;
+  syncDynamicStartModuleFromDom(module);
+  if (!module.selected_node) { showAlert('Please select a node'); return; }
+  if (!module.game_name) { showAlert('Please select a game'); return; }
+  var addr = module.selected_node;
+  var endpoint = addr === 'master' ? '/start-master' : '/start-worker';
+  var body = {spins: module.spins, game_name: module.game_name, interval_count: module.interval_count, sim_type: module.sim_type};
+  if (addr !== 'master') body.worker_addr = addr;
+  var wasRunning = !!runningNodes[addr];
+  setNodeRunning(addr, true);
+  activateCpuMonitor();
+  log('▶ Dynamic single start: ' + addr + ', game=' + module.game_name + ', spins=' + module.spins);
+  var result = await api(endpoint, 'POST', body);
+  if (!result.ok && !wasRunning) setNodeRunning(addr, false);
+  else if (result.ok) log('✅ Dynamic single start request sent: ' + addr);
+}
+
+async function stopDynamicSingle(moduleId) {
+  var module = dynamicStartModules.find(function(item) { return item.id === moduleId && item.type === 'single'; });
+  if (!module) return;
+  syncDynamicStartModuleFromDom(module);
+  if (!module.selected_node) { showAlert('Please select a node'); return; }
+  if (module.selected_node === 'master') await stopMaster();
+  else await stopWorker(module.selected_node);
+}
+
+function hideDynamicCpuWarnings() {
+  dynamicStartModules.forEach(function(module) {
+    hideCpuWarn('dynamicCpuWarn-' + dynamicDomToken(module.id));
+  });
+}
+
+function updateDynamicCpuWarnings(avgCpu, healthy) {
+  dynamicStartModules.forEach(function(module) {
+    var token = dynamicDomToken(module.id);
+    showCpuWarn('dynamicCpuWarn-' + token, 'dynamicCpuCanvas-' + token, 'dynamicCpuText-' + token, avgCpu, healthy);
+  });
+}
+
+function alignStartModuleRows() {
+  var batchColumn = document.getElementById('batchStartModules');
+  var singleColumn = document.getElementById('singleStartModules');
+  if (!batchColumn || !singleColumn) return;
+  var batchCards = Array.from(batchColumn.children);
+  var singleCards = Array.from(singleColumn.children);
+  batchCards.concat(singleCards).forEach(function(card) { card.style.minHeight = ''; });
+  if (window.innerWidth <= 800) return;
+  var pairCount = Math.min(batchCards.length, singleCards.length);
+  for (var i = 0; i < pairCount; i++) {
+    var height = Math.max(batchCards[i].offsetHeight, singleCards[i].offsetHeight);
+    batchCards[i].style.minHeight = height + 'px';
+    singleCards[i].style.minHeight = height + 'px';
+  }
+}
+
+function scheduleStartModuleAlignment() {
+  if (_startModuleAlignmentFrame) cancelAnimationFrame(_startModuleAlignmentFrame);
+  _startModuleAlignmentFrame = requestAnimationFrame(function() {
+    _startModuleAlignmentFrame = null;
+    alignStartModuleRows();
+  });
+}
+
+var _staticRenderWorkers = renderWorkers;
+renderWorkers = function() {
+  _staticRenderWorkers();
+  dynamicStartModules.forEach(renderDynamicStartModuleNodes);
+  scheduleStartModuleAlignment();
+};
+var _staticSetNodeRunning = setNodeRunning;
+setNodeRunning = function(addr, running) {
+  _staticSetNodeRunning(addr, running);
+  updateAllDynamicStartModules();
+};
+var _staticUpdateButtonStates = updateButtonStates;
+updateButtonStates = function() {
+  _staticUpdateButtonStates();
+  updateAllDynamicStartModules();
+};
+window.addEventListener('resize', scheduleStartModuleAlignment);
+
+// ---------------------------------------------------------------------------
 // Init: load node list from /config/nodes on page load
 // ---------------------------------------------------------------------------
 async function init() {
@@ -4314,16 +4801,18 @@ async function init() {
   // Load game list
   const gr = await api('/games', 'GET');
   if (gr.ok && gr.data.games) {
+    availableGames = gr.data.games.slice();
     const selects = document.querySelectorAll('.game-select');
     selects.forEach(function(sel) {
       sel.innerHTML = '<option value="">-- Select Game --</option>';
-      gr.data.games.forEach(function(g) {
-        sel.innerHTML += '<option value="' + g + '">' + g + '</option>';
+      availableGames.forEach(function(g) {
+        sel.innerHTML += '<option value="' + escapeDynamicHtml(g) + '">' + escapeDynamicHtml(g) + '</option>';
       });
     });
-    log('✅ Loaded ' + gr.data.games.length + ' games');
+    log('✅ Loaded ' + availableGames.length + ' games');
   }
 
+  await loadDynamicStartModules();
   log('✅ Page loaded, ' + nodes.length + ' nodes');
   await checkWorkersHealth();
   loadUserInfo();

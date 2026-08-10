@@ -8,6 +8,7 @@ import logging
 import math
 import os
 import sys
+import threading
 import time
 import uuid
 
@@ -38,6 +39,10 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 CONFIG_PATH = os.environ.get("CONFIG_PATH", os.path.join(_base_dir, "config.json"))
+MACHINE_DATA_DIR = os.path.join(_bundle_dir, "data", "machine")
+DYNAMIC_START_MODULES_PATH = os.path.join(
+    _base_dir, "out", "batch_start", "dynamic_create_batch_start.json"
+)
 
 # Read port from config.json, fallback to env var, then default 5000
 import json as _json
@@ -70,6 +75,124 @@ poller = ProgressPoller(
     master_status_fn=sim_runner.get_status,
     progress_store=progress_store,
 )
+
+_dynamic_start_modules_lock = threading.Lock()
+
+
+def _positive_int(value, field_name: str) -> int:
+    """Validate a positive integer while rejecting booleans."""
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{field_name} must be a positive integer")
+    return value
+
+
+def _bounded_string(value, field_name: str, max_length: int, *, required: bool = False) -> str:
+    """Validate and normalize a bounded string field."""
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
+    value = value.strip()
+    if required and not value:
+        raise ValueError(f"{field_name} is required")
+    if len(value) > max_length:
+        raise ValueError(f"{field_name} is too long")
+    return value
+
+
+def _sanitize_dynamic_start_modules(payload) -> dict:
+    """Validate dynamic Batch/Single Start configuration for persistence."""
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be an object")
+    if payload.get("version", 1) != 1:
+        raise ValueError("unsupported version")
+
+    modules = payload.get("modules", [])
+    if not isinstance(modules, list):
+        raise ValueError("modules must be an array")
+    if len(modules) > 100:
+        raise ValueError("at most 100 modules are allowed")
+
+    clean_modules = []
+    seen_ids = set()
+    for index, raw in enumerate(modules):
+        if not isinstance(raw, dict):
+            raise ValueError(f"modules[{index}] must be an object")
+
+        module_id = _bounded_string(raw.get("id", ""), f"modules[{index}].id", 128, required=True)
+        if module_id in seen_ids:
+            raise ValueError(f"duplicate module id: {module_id}")
+        seen_ids.add(module_id)
+
+        # Old persisted records did not contain pair_id.  Treat their id as
+        # the pair id so clients can migrate them without losing data.
+        pair_id = _bounded_string(raw.get("pair_id", module_id), f"modules[{index}].pair_id", 128, required=True)
+        module_type = raw.get("type")
+        if module_type not in ("batch", "single"):
+            raise ValueError(f"modules[{index}].type must be batch or single")
+        sim_type = raw.get("sim_type", "production")
+        if sim_type not in ("production", "test"):
+            raise ValueError(f"modules[{index}].sim_type must be production or test")
+
+        clean = {
+            "id": module_id,
+            "pair_id": pair_id,
+            "type": module_type,
+            "sim_type": sim_type,
+            "game_name": _bounded_string(raw.get("game_name", ""), f"modules[{index}].game_name", 256),
+            "interval_count": _positive_int(raw.get("interval_count"), f"modules[{index}].interval_count"),
+        }
+        if module_type == "batch":
+            clean["total_spins"] = _positive_int(raw.get("total_spins"), f"modules[{index}].total_spins")
+            selected_nodes = raw.get("selected_nodes", [])
+            if not isinstance(selected_nodes, list) or len(selected_nodes) > 100:
+                raise ValueError(f"modules[{index}].selected_nodes must be an array with at most 100 entries")
+            clean["selected_nodes"] = [
+                _bounded_string(addr, f"modules[{index}].selected_nodes", 256, required=True)
+                for addr in selected_nodes
+            ]
+        else:
+            clean["spins"] = _positive_int(raw.get("spins"), f"modules[{index}].spins")
+            clean["selected_node"] = _bounded_string(
+                raw.get("selected_node", ""), f"modules[{index}].selected_node", 256
+            )
+        clean_modules.append(clean)
+
+    return {"version": 1, "modules": clean_modules}
+
+
+def _write_dynamic_start_modules(payload: dict) -> None:
+    """Atomically replace the dynamic module JSON file. Caller holds lock."""
+    directory = os.path.dirname(DYNAMIC_START_MODULES_PATH)
+    os.makedirs(directory, exist_ok=True)
+    temp_path = f"{DYNAMIC_START_MODULES_PATH}.{uuid.uuid4().hex}.tmp"
+    try:
+        with open(temp_path, "w", encoding="utf-8") as stream:
+            _json.dump(payload, stream, ensure_ascii=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_path, DYNAMIC_START_MODULES_PATH)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+
+def _load_dynamic_start_modules() -> dict:
+    """Load and validate persisted dynamic modules, creating an empty file."""
+    with _dynamic_start_modules_lock:
+        if not os.path.isfile(DYNAMIC_START_MODULES_PATH):
+            payload = {"version": 1, "modules": []}
+            _write_dynamic_start_modules(payload)
+            return payload
+        with open(DYNAMIC_START_MODULES_PATH, "r", encoding="utf-8") as stream:
+            return _sanitize_dynamic_start_modules(_json.load(stream))
+
+
+def _save_dynamic_start_modules(payload) -> dict:
+    """Validate and atomically persist dynamic module configuration."""
+    clean_payload = _sanitize_dynamic_start_modules(payload)
+    with _dynamic_start_modules_lock:
+        _write_dynamic_start_modules(clean_payload)
+    return clean_payload
+
 
 # ---------------------------------------------------------------------------
 # Retry helper
@@ -289,15 +412,26 @@ def index():
 
 @app.route("/games", methods=["GET"])
 def list_games():
-    """列出可用的游戏列表（扫描 simulator_dir/math/ 下的子目录）。"""
-    math_dir = os.path.join(config.simulator_dir, "math")
-    if not os.path.isdir(math_dir):
+    """List games from JSON filenames in ``data/machine``.
+
+    JSON contents are intentionally not opened or parsed.  For example,
+    ``BingoSeven.json`` is exposed as ``BingoSeven``.
+    """
+    if not os.path.isdir(MACHINE_DATA_DIR):
         return jsonify({"games": []})
-    games = [
-        d for d in os.listdir(math_dir)
-        if os.path.isdir(os.path.join(math_dir, d))
-    ]
-    return jsonify({"games": sorted(games)})
+
+    try:
+        with os.scandir(MACHINE_DATA_DIR) as entries:
+            games = [
+                os.path.splitext(entry.name)[0]
+                for entry in entries
+                if entry.is_file() and entry.name.lower().endswith(".json")
+            ]
+    except OSError as exc:
+        logger.warning("Unable to scan machine data directory %s: %s", MACHINE_DATA_DIR, exc)
+        return jsonify({"games": []})
+
+    return jsonify({"games": sorted(games, key=str.casefold)})
 
 
 @app.route("/start", methods=["POST"])
@@ -799,6 +933,29 @@ def get_nodes():
         "sysinfo_refresh_interval": _raw_config.get("sysinfo_refresh_interval", 5),
         "cpu_healthy_threshold": _raw_config.get("cpu_healthy_threshold", 90),
     })
+
+
+@app.route("/config/dynamic-start-modules", methods=["GET"])
+def get_dynamic_start_modules():
+    """Return persisted dynamic Batch/Single Start module pairs."""
+    try:
+        return jsonify(_load_dynamic_start_modules())
+    except (OSError, ValueError, _json.JSONDecodeError) as exc:
+        logger.exception("Unable to load dynamic start modules")
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/config/dynamic-start-modules", methods=["PUT"])
+def put_dynamic_start_modules():
+    """Validate and atomically persist dynamic Start module pairs."""
+    try:
+        payload = request.get_json(force=True)
+        return jsonify(_save_dynamic_start_modules(payload))
+    except (ValueError, _json.JSONDecodeError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    except OSError as exc:
+        logger.exception("Unable to save dynamic start modules")
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/config/quick-access-toolbar", methods=["GET"])

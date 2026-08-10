@@ -47,6 +47,7 @@ class ProgressPoller:
         self._wake_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._nodes: list[str] = []
+        self._nodes_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Public API
@@ -60,10 +61,15 @@ class ProgressPoller:
         nodes:
             List of worker addresses in ``"ip:port"`` format.
         """
+        incoming = list(dict.fromkeys(nodes))
         if self._thread is not None and self._thread.is_alive():
+            with self._nodes_lock:
+                self._nodes = list(dict.fromkeys(self._nodes + incoming))
+            self._wake_event.set()
             return
 
-        self._nodes = list(nodes)
+        with self._nodes_lock:
+            self._nodes = incoming
         self._stop_event.clear()
         self._wake_event.clear()
 
@@ -134,8 +140,11 @@ class ProgressPoller:
 
         nodes_data["master(local)"] = master_status
 
-        # Worker statuses
-        for addr in self._nodes:
+        # Worker statuses.  Copy under lock so later start() calls can safely
+        # merge newly selected workers while this poll cycle is running.
+        with self._nodes_lock:
+            worker_nodes = list(self._nodes)
+        for addr in worker_nodes:
             nodes_data[f"worker({addr})"] = self._fetch_worker_status(addr)
 
         return {

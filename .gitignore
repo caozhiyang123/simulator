@@ -12,3 +12,4 @@ windows
 ubuntu
 master/sha1
 master/cicd/logs
+__pycache__

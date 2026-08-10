@@ -9,6 +9,7 @@ a = Analysis(
         ('static', 'static'),
         ('config.json', '.'),
         ('iam', 'iam'),
+        ('data/machine', 'data/machine'),
         ('config.py', '.'),
         ('task_splitter.py', '.'),
         ('poller.py', '.'),
