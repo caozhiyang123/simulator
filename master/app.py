@@ -146,7 +146,7 @@ def _sanitize_dynamic_start_modules(payload) -> dict:
             "sim_type": sim_type,
             "game_name": _bounded_string(raw.get("game_name", ""), f"modules[{index}].game_name", 256),
             "override_spin_settings": _boolean_value(
-                raw.get("override_spin_settings", True),
+                raw.get("override_spin_settings", False),
                 f"modules[{index}].override_spin_settings",
             ),
             "interval_count": _positive_int(raw.get("interval_count"), f"modules[{index}].interval_count"),
