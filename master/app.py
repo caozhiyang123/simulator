@@ -86,6 +86,13 @@ def _positive_int(value, field_name: str) -> int:
     return value
 
 
+def _boolean_value(value, field_name: str) -> bool:
+    """Validate a strict JSON boolean without truthy coercion."""
+    if not isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a boolean")
+    return value
+
+
 def _bounded_string(value, field_name: str, max_length: int, *, required: bool = False) -> str:
     """Validate and normalize a bounded string field."""
     if not isinstance(value, str):
@@ -138,6 +145,10 @@ def _sanitize_dynamic_start_modules(payload) -> dict:
             "type": module_type,
             "sim_type": sim_type,
             "game_name": _bounded_string(raw.get("game_name", ""), f"modules[{index}].game_name", 256),
+            "override_spin_settings": _boolean_value(
+                raw.get("override_spin_settings", True),
+                f"modules[{index}].override_spin_settings",
+            ),
             "interval_count": _positive_int(raw.get("interval_count"), f"modules[{index}].interval_count"),
         }
         if module_type == "batch":
@@ -183,7 +194,11 @@ def _load_dynamic_start_modules() -> dict:
             _write_dynamic_start_modules(payload)
             return payload
         with open(DYNAMIC_START_MODULES_PATH, "r", encoding="utf-8") as stream:
-            return _sanitize_dynamic_start_modules(_json.load(stream))
+            raw_payload = _json.load(stream)
+        clean_payload = _sanitize_dynamic_start_modules(raw_payload)
+        if clean_payload != raw_payload:
+            _write_dynamic_start_modules(clean_payload)
+        return clean_payload
 
 
 def _save_dynamic_start_modules(payload) -> dict:
@@ -204,7 +219,15 @@ _has_been_running = False
 _saved_model_keys: set = set()
 
 
-def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name: str = "", interval_count: int | None = None, sim_type: str = "production") -> dict:
+def start_worker_with_retry(
+    worker_addr: str,
+    spins: int,
+    job_id: str,
+    game_name: str = "",
+    interval_count: int | None = None,
+    sim_type: str = "production",
+    override_spin_settings: bool = True,
+) -> dict:
     """Send POST /start to a worker with retry logic.
 
     Returns dict with keys: node, success, retries, error (optional).
@@ -213,7 +236,14 @@ def start_worker_with_retry(worker_addr: str, spins: int, job_id: str, game_name
         try:
             response = http_requests.post(
                 f"http://{worker_addr}/start",
-                json={"spins": spins, "job_id": job_id, "game_name": game_name, "interval_count": interval_count, "sim_type": sim_type},
+                json={
+                    "spins": spins,
+                    "job_id": job_id,
+                    "game_name": game_name,
+                    "interval_count": interval_count,
+                    "sim_type": sim_type,
+                    "override_spin_settings": override_spin_settings,
+                },
                 timeout=10,
             )
             if response.status_code == 200:
@@ -447,6 +477,12 @@ def start():
     interval_count = data.get("interval_count")
     sim_type = data.get("sim_type", "production")
     selected_nodes = data.get("selected_nodes")  # None means all
+    try:
+        override_spin_settings = _boolean_value(
+            data.get("override_spin_settings", True), "override_spin_settings"
+        )
+    except ValueError as exc:
+        return jsonify({"status": "error", "error": str(exc)}), 400
 
     if not game_name:
         return jsonify({"status": "error", "error": "game_name is required"}), 400
@@ -484,7 +520,14 @@ def start():
     master_spins = allocation.get("master", 0)
     if master_spins > 0:
         try:
-            started = sim_runner.start(master_spins, job_id, game_name, interval_count, sim_type)
+            started = sim_runner.start(
+                master_spins,
+                job_id,
+                game_name,
+                interval_count,
+                sim_type,
+                override_spin_settings,
+            )
             results.append({
                 "node": "master",
                 "success": started,
@@ -503,7 +546,15 @@ def start():
     for addr in worker_addrs:
         spins = allocation.get(addr, 0)
         if spins > 0:
-            result = start_worker_with_retry(addr, spins, job_id, game_name, interval_count, sim_type)
+            result = start_worker_with_retry(
+                addr,
+                spins,
+                job_id,
+                game_name,
+                interval_count,
+                sim_type,
+                override_spin_settings,
+            )
             results.append(result)
 
     # Start poller
@@ -698,13 +749,26 @@ def start_master():
     game_name = data.get("game_name", "")
     interval_count = data.get("interval_count")
     sim_type = data.get("sim_type", "production")
+    try:
+        override_spin_settings = _boolean_value(
+            data.get("override_spin_settings", True), "override_spin_settings"
+        )
+    except ValueError as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
     job_id = str(uuid.uuid4())
 
     if not game_name:
         return jsonify({"status": "error", "message": "game_name is required"}), 400
 
     try:
-        started = sim_runner.start(spins, job_id, game_name, interval_count, sim_type)
+        started = sim_runner.start(
+            spins,
+            job_id,
+            game_name,
+            interval_count,
+            sim_type,
+            override_spin_settings,
+        )
     except RuntimeError as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
 
@@ -739,6 +803,12 @@ def start_worker():
     game_name = data.get("game_name", "")
     interval_count = data.get("interval_count")
     sim_type = data.get("sim_type", "production")
+    try:
+        override_spin_settings = _boolean_value(
+            data.get("override_spin_settings", True), "override_spin_settings"
+        )
+    except ValueError as exc:
+        return jsonify({"status": "error", "error": str(exc)}), 400
     job_id = str(uuid.uuid4())
 
     # Check worker exists in config
@@ -749,7 +819,15 @@ def start_worker():
             "addr": worker_addr,
         }), 404
 
-    result = start_worker_with_retry(worker_addr, spins, job_id, game_name, interval_count, sim_type)
+    result = start_worker_with_retry(
+        worker_addr,
+        spins,
+        job_id,
+        game_name,
+        interval_count,
+        sim_type,
+        override_spin_settings,
+    )
 
     # Ensure poller is running to collect status
     poller.start([w["addr"] for w in config.workers])

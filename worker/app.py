@@ -57,9 +57,19 @@ def start():
     game_name = data.get("game_name", "")
     interval_count = data.get("interval_count")
     sim_type = data.get("sim_type", "production")
+    override_spin_settings = data.get("override_spin_settings", True)
+    if not isinstance(override_spin_settings, bool):
+        return jsonify({"error": "override_spin_settings must be a boolean"}), 400
 
     try:
-        started = runner.start(spins, job_id, game_name, interval_count, sim_type)
+        started = runner.start(
+            spins,
+            job_id,
+            game_name,
+            interval_count,
+            sim_type,
+            override_spin_settings,
+        )
     except RuntimeError as exc:
         return jsonify({
             "error": "Failed to start simulator",

@@ -173,7 +173,7 @@
     </select>
     <label>Game</label>
     <select id="batchGameName" class="game-select"></select>
-    <label>Total Spins</label>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="batchOverrideSpinSettings" checked style="width:auto;margin:0;"> Total Spins (override stresstest.properties)</label>
     <input type="number" id="totalSpins" value="1000000" min="1" oninput="document.getElementById('batchIntervalCount').value=this.value">
     <label>Interval Count</label>
     <input type="number" id="batchIntervalCount" value="1000000" min="1">
@@ -205,7 +205,7 @@
     <select id="singleGameName" class="game-select"></select>
     <div class="row">
       <div>
-        <label>Spins</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="singleOverrideSpinSettings" checked style="width:auto;margin:0;"> Spins (override stresstest.properties)</label>
         <input type="number" id="singleSpins" value="100000" min="1" oninput="document.getElementById('singleIntervalCount').value=this.value">
       </div>
       <div>
@@ -1766,17 +1766,18 @@ async function startSingleNode() {
   var gameName = document.getElementById('singleGameName').value;
   var intervalCount = parseInt(document.getElementById('singleIntervalCount').value);
   var simType = document.getElementById('singleSimType').value;
+  var overrideSpinSettings = document.getElementById('singleOverrideSpinSettings').checked;
 
   if (!gameName) { showAlert('Please select a game'); return; }
 
   if (addr === 'master') {
     log('▶ Starting Master with ' + spins + ' spins...');
-    var r = await api('/start-master', 'POST', {spins: spins, game_name: gameName, interval_count: intervalCount, sim_type: simType});
+    var r = await api('/start-master', 'POST', {spins: spins, game_name: gameName, interval_count: intervalCount, sim_type: simType, override_spin_settings: overrideSpinSettings});
     if (r.ok) { log('✅ Master started'); setNodeRunning('master', true); activateCpuMonitor(); }
     else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
   } else {
     log('▶ Starting Worker(' + addr + ') with ' + spins + ' spins...');
-    var r = await api('/start-worker', 'POST', {worker_addr: addr, spins: spins, game_name: gameName, interval_count: intervalCount, sim_type: simType});
+    var r = await api('/start-worker', 'POST', {worker_addr: addr, spins: spins, game_name: gameName, interval_count: intervalCount, sim_type: simType, override_spin_settings: overrideSpinSettings});
     if (r.ok) { log('✅ Worker started'); setNodeRunning(addr, true); activateCpuMonitor(); }
     else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
   }
@@ -1833,6 +1834,7 @@ async function startBatch() {
   if (selectedNodes.length === 0) { showAlert('Please select at least one simulator'); return; }
   var intervalCount = parseInt(document.getElementById('batchIntervalCount').value) || spins;
   var simType = document.getElementById('batchSimType').value;
+  var overrideSpinSettings = document.getElementById('batchOverrideSpinSettings').checked;
 
   // Clear old status & results
   document.getElementById('statusArea').innerHTML = '';
@@ -1853,7 +1855,7 @@ async function startBatch() {
   activateCpuMonitor();
 
   log('🚀 Batch start: type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount + ', mode=' + mode + ', nodes=' + selectedNodes.join(','));
-  const r = await api('/start', 'POST', { total_spins: spins, interval_count: intervalCount, mode, game_name: gameName, selected_nodes: selectedNodes, sim_type: simType });
+  const r = await api('/start', 'POST', { total_spins: spins, interval_count: intervalCount, mode, game_name: gameName, selected_nodes: selectedNodes, sim_type: simType, override_spin_settings: overrideSpinSettings });
   if (r.ok) {
     log('✅ Batch start completed: ' + r.data.status);
     if (r.data.results) {
@@ -1883,9 +1885,10 @@ async function startMaster() {
   if (!gameName) { showAlert('Please select a game'); return; }
   var intervalCount = parseInt(document.getElementById('singleIntervalCount').value) || spins;
   var simType = document.getElementById('singleSimType').value;
+  var overrideSpinSettings = document.getElementById('singleOverrideSpinSettings').checked;
   log('🚀 Start Master: type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount);
   setNodeRunning('master', true);
-  const r = await api('/start-master', 'POST', { spins, interval_count: intervalCount, game_name: gameName, sim_type: simType });
+  const r = await api('/start-master', 'POST', { spins, interval_count: intervalCount, game_name: gameName, sim_type: simType, override_spin_settings: overrideSpinSettings });
   if (r.ok) { log('✅ ' + r.data.message); }
   else { setNodeRunning('master', false); }
 }
@@ -1900,9 +1903,10 @@ async function startWorker(addr) {
   if (!gameName) { showAlert('Please select a game'); return; }
   var intervalCount = parseInt(document.getElementById('singleIntervalCount').value) || spins;
   var simType = document.getElementById('singleSimType').value;
+  var overrideSpinSettings = document.getElementById('singleOverrideSpinSettings').checked;
   log('🚀 Start Worker ' + addr + ': type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount);
   setNodeRunning(addr, true);
-  const r = await api('/start-worker', 'POST', { worker_addr: addr, spins, interval_count: intervalCount, game_name: gameName, sim_type: simType });
+  const r = await api('/start-worker', 'POST', { worker_addr: addr, spins, interval_count: intervalCount, game_name: gameName, sim_type: simType, override_spin_settings: overrideSpinSettings });
   if (r.ok) { log('✅ Worker ' + addr + ' start request sent'); }
   else { setNodeRunning(addr, false); }
 }
@@ -4328,6 +4332,7 @@ function makeDynamicStartModule(type, pairId, source) {
     type: type,
     sim_type: source.sim_type === 'test' ? 'test' : 'production',
     game_name: typeof source.game_name === 'string' ? source.game_name : '',
+    override_spin_settings: source.override_spin_settings !== false,
     interval_count: positiveDynamicNumber(source.interval_count, fallbackSpins)
   };
   if (isBatch) {
@@ -4400,7 +4405,7 @@ function renderDynamicStartModule(module) {
       '<button type="button" class="start-module-remove" data-action="remove" title="Remove this Batch/Single Start pair">−</button></span></h2>' +
       '<label>Type</label><select data-role="sim-type"><option value="production"' + (module.sim_type === 'production' ? ' selected' : '') + '>Production</option><option value="test"' + (module.sim_type === 'test' ? ' selected' : '') + '>Test</option></select>' +
       '<label>Game</label><select data-role="game-name" class="game-select">' + dynamicGameOptions(module.game_name) + '</select>' +
-      '<label>Total Spins</label><input type="number" data-role="spins" value="' + module.total_spins + '" min="1">' +
+      '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-role="override-spin-settings"' + (module.override_spin_settings ? ' checked' : '') + ' style="width:auto;margin:0;"> Total Spins (override stresstest.properties)</label><input type="number" data-role="spins" value="' + module.total_spins + '" min="1">' +
       '<label>Interval Count</label><input type="number" data-role="interval-count" value="' + module.interval_count + '" min="1">' +
       '<label>Select nodes for batch execution</label><div data-role="nodes" style="margin-bottom:8px;"></div>' +
       '<div style="position:relative;z-index:6;"><button class="btn-success" data-action="start">▶ Start (batch)</button>' +
@@ -4410,7 +4415,7 @@ function renderDynamicStartModule(module) {
       '<h2 class="start-module-title"><span>🚀 Single Start</span></h2>' +
       '<label>Type</label><select data-role="sim-type"><option value="production"' + (module.sim_type === 'production' ? ' selected' : '') + '>Production</option><option value="test"' + (module.sim_type === 'test' ? ' selected' : '') + '>Test</option></select>' +
       '<label>Game</label><select data-role="game-name" class="game-select">' + dynamicGameOptions(module.game_name) + '</select>' +
-      '<div class="row"><div><label>Spins</label><input type="number" data-role="spins" value="' + module.spins + '" min="1"></div>' +
+      '<div class="row"><div><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-role="override-spin-settings"' + (module.override_spin_settings ? ' checked' : '') + ' style="width:auto;margin:0;"> Spins (override stresstest.properties)</label><input type="number" data-role="spins" value="' + module.spins + '" min="1"></div>' +
       '<div><label>Interval Count</label><input type="number" data-role="interval-count" value="' + module.interval_count + '" min="1"></div></div>' +
       '<label>Select a node</label><div data-role="nodes" style="margin-bottom:8px;"></div>' +
       '<div style="position:relative;z-index:6;"><button class="btn-primary" data-action="start" disabled>▶ Start</button>' +
@@ -4434,7 +4439,7 @@ function renderDynamicStartModule(module) {
   }
 
   card.querySelectorAll('select[data-role], input[data-role]').forEach(function(input) {
-    var eventName = input.tagName === 'SELECT' ? 'change' : 'input';
+    var eventName = input.tagName === 'SELECT' || input.type === 'checkbox' ? 'change' : 'input';
     input.addEventListener(eventName, function() {
       if (module.type === 'batch' && input.getAttribute('data-role') === 'spins') {
         card.querySelector('[data-role="interval-count"]').value = input.value;
@@ -4499,6 +4504,7 @@ function syncDynamicStartModuleFromDom(module) {
   if (!card) return module;
   module.sim_type = card.querySelector('[data-role="sim-type"]').value;
   module.game_name = card.querySelector('[data-role="game-name"]').value;
+  module.override_spin_settings = card.querySelector('[data-role="override-spin-settings"]').checked;
   module.interval_count = positiveDynamicNumber(card.querySelector('[data-role="interval-count"]').value, module.interval_count || 1);
   if (module.type === 'batch') {
     module.total_spins = positiveDynamicNumber(card.querySelector('[data-role="spins"]').value, module.total_spins || 1);
@@ -4519,6 +4525,7 @@ function serializeDynamicStartModules() {
       var clean = {
         id: module.id, pair_id: module.pair_id, type: module.type,
         sim_type: module.sim_type, game_name: module.game_name,
+        override_spin_settings: module.override_spin_settings,
         interval_count: module.interval_count
       };
       if (module.type === 'batch') {
@@ -4657,7 +4664,8 @@ async function startDynamicBatch(moduleId) {
     mode: document.getElementById('allocationMode').value,
     game_name: module.game_name,
     selected_nodes: module.selected_nodes,
-    sim_type: module.sim_type
+    sim_type: module.sim_type,
+    override_spin_settings: module.override_spin_settings
   });
   if (!result.ok) {
     module.selected_nodes.forEach(function(addr) { if (!previouslyRunning[addr]) setNodeRunning(addr, false); });
@@ -4691,7 +4699,7 @@ async function startDynamicSingle(moduleId) {
   if (!module.game_name) { showAlert('Please select a game'); return; }
   var addr = module.selected_node;
   var endpoint = addr === 'master' ? '/start-master' : '/start-worker';
-  var body = {spins: module.spins, game_name: module.game_name, interval_count: module.interval_count, sim_type: module.sim_type};
+  var body = {spins: module.spins, game_name: module.game_name, interval_count: module.interval_count, sim_type: module.sim_type, override_spin_settings: module.override_spin_settings};
   if (addr !== 'master') body.worker_addr = addr;
   var wasRunning = !!runningNodes[addr];
   setNodeRunning(addr, true);

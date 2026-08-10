@@ -139,7 +139,15 @@ class SimulatorRunner:
             self._simulator_dir, "simulator", "B2BGameSimulator"
         )
 
-    def start(self, spins: int, job_id: str, game_name: str = "", interval_count: int | None = None, sim_type: str = "production") -> bool:
+    def start(
+        self,
+        spins: int,
+        job_id: str,
+        game_name: str = "",
+        interval_count: int | None = None,
+        sim_type: str = "production",
+        override_spin_settings: bool = True,
+    ) -> bool:
         """在独立线程中启动模拟器子进程。
 
         自动检测 OS 选择 run.bat 或 run.sh。
@@ -149,6 +157,8 @@ class SimulatorRunner:
             spins: 模拟旋转次数。
             job_id: 任务唯一标识。
             game_name: 游戏名称，用于定位 simulationResult 目录。
+            override_spin_settings: 是否覆盖 stresstest.properties 中的
+                spinTimes 和 intervalCount；False 时保留机器自定义值。
 
         Returns:
             True 表示成功启动，False 表示已有任务在运行。
@@ -163,13 +173,14 @@ class SimulatorRunner:
             self._sim_type = sim_type
             self._game_name = game_name
 
-            # 覆盖 spinTimes
-            try:
-                self._write_spin_times(spins, interval_count)
-            except OSError as exc:
-                self._status = "error"
-                self._error = f"Failed to write properties: {exc}"
-                raise RuntimeError(self._error) from exc
+            # Keep custom stresstest.properties values when override is disabled.
+            if override_spin_settings:
+                try:
+                    self._write_spin_times(spins, interval_count)
+                except OSError as exc:
+                    self._status = "error"
+                    self._error = f"Failed to write properties: {exc}"
+                    raise RuntimeError(self._error) from exc
 
             # 重置状态
             self._status = "running"
