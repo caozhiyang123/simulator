@@ -499,6 +499,8 @@
       <div class="card full-width">
         <h2>🗑️ Batch Delete File</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Search and delete files matching a wildcard pattern across multiple directories recursively.</p>
+        <label>Node (file system to operate on)</label>
+        <select id="batchDelNodeSelect" style="margin-bottom:12px;"></select>
         <label>Source File (for example CalacaBingo*.txt)</label>
         <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
           <input type="text" id="batchDelFilePattern" class="batch-del-pattern" placeholder="e.g. CalacaBingo*.txt" style="flex:1;margin-bottom:0;">
@@ -550,6 +552,8 @@
       <div class="card full-width">
         <h2>📦 Batch Override File</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Replace a file across multiple subdirectories by matching the filename recursively.</p>
+        <label>Node (file system to operate on)</label>
+        <select id="batchOverrideNodeSelect" style="margin-bottom:12px;"></select>
         <label>Source File (full path of the file to use as replacement)</label>
         <div id="batchOverrideSrcFiles">
           <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
@@ -606,6 +610,9 @@
       <div class="card full-width">
         <h2>✏️ Batch Edit File</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Batch append/replace key=value entries in .properties files across multiple directories. View Files supports all file types.</p>
+
+        <label>Node (file system to operate on)</label>
+        <select id="batchEditNodeSelect" style="margin-bottom:12px;"></select>
 
         <label>Source File Name (the full file name to search)</label>
         <input type="text" id="batchEditFileName" placeholder="e.g. stresstest.properties" style="margin-bottom:12px;">
@@ -668,7 +675,10 @@
         <h2>⬆️ Batch Upload File</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Upload source files to matching directories found via glob pattern search.</p>
 
-        <label>Source File (full path of the file to upload)</label>
+        <label>Node (destination file system)</label>
+        <select id="batchUpNodeSelect" style="margin-bottom:12px;"></select>
+
+        <label>Source File (full path of the file to upload, always read from Master)</label>
         <div id="batchUpSrcFiles">
           <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
             <input type="text" class="batch-up-src-file" placeholder="e.g. D:\tools2\b2b\B2BBMM\B2BSimulator\simulator\B2BGameSimulator\lib\VBWildBallLogic.jar" style="flex:1;margin-bottom:0;">
@@ -732,6 +742,9 @@
       <div class="card full-width">
         <h2>⬇️ Batch Download File</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Search files by name (supports wildcard *) across directories, then batch download as zip or view contents.</p>
+
+        <label>Node (file system to search on)</label>
+        <select id="batchDlNodeSelect" style="margin-bottom:12px;"></select>
 
         <label>Source File Name (the file name to search, supports * wildcard)</label>
         <input type="text" id="batchDlFileName" placeholder="e.g. CalacaBingo*.txt or config.json" style="margin-bottom:12px;">
@@ -2605,6 +2618,7 @@ function renderWorkers() {
   // Refresh log tabs
   renderLogTabs();
   initFileSyncWorkerSelect();
+  initBatchPluginNodeSelects();
 }
 
 // ---------------------------------------------------------------------------
@@ -3253,6 +3267,40 @@ function initFileSyncWorkerSelect() {
     html += '<option value="' + n.addr + '">' + label + '</option>';
   });
   sel.innerHTML = html;
+}
+
+// ---------------------------------------------------------------------------
+// Batch plugin node selectors (Batch Delete/Override/Edit/Upload/Download File)
+// Each dropdown includes Master (local) plus all configured worker nodes.
+// ---------------------------------------------------------------------------
+var _batchPluginNodeSelectIds = [
+  'batchDelNodeSelect', 'batchOverrideNodeSelect', 'batchEditNodeSelect',
+  'batchUpNodeSelect', 'batchDlNodeSelect'
+];
+
+function initBatchPluginNodeSelects() {
+  _batchPluginNodeSelectIds.forEach(function(id) {
+    var sel = document.getElementById(id);
+    if (!sel) return;
+    var prevValue = sel.value || 'master';
+    var html = '';
+    nodes.forEach(function(n) {
+      var label = n.addr === 'master' ? 'Master (local)' : (n.addr + ' [' + (n.alias || 'unknown') + ']');
+      html += '<option value="' + n.addr + '">' + label + '</option>';
+    });
+    sel.innerHTML = html || '<option value="master">Master (local)</option>';
+    // Restore previous selection if still valid, else default to master
+    if (sel.querySelector('option[value="' + prevValue + '"]')) {
+      sel.value = prevValue;
+    } else {
+      sel.value = 'master';
+    }
+  });
+}
+
+function getBatchPluginNodeAddr(selectId) {
+  var sel = document.getElementById(selectId);
+  return (sel && sel.value) ? sel.value : 'master';
 }
 
 // ---------------------------------------------------------------------------
@@ -4802,6 +4850,7 @@ async function init() {
   renderWorkers();
   renderPercentageInputs();
   initFileSyncWorkerSelect();
+  initBatchPluginNodeSelects();
   loadLocalDir('');
   loadQuickAccessToolbar();
   loadFooterLinks();

@@ -1826,6 +1826,29 @@ def bingo_generate():
         return jsonify({"status": "ok", "cards": cards, "card_size": card_size, "positions_per_set": total_pos})
 
 
+def _is_remote_addr(addr):
+    """True if addr refers to a remote worker node (not master/local)."""
+    return bool(addr) and addr != "master"
+
+
+def _worker_proxy_post(addr, path, json_body=None, timeout=30, stream=False):
+    """POST to a worker's Flask app and return its (data_or_response, status).
+
+    When stream=True, returns the raw requests.Response for streaming binary
+    content (e.g. zip download) back to the browser.
+    """
+    try:
+        r = http_requests.post(f"http://{addr}{path}", json=json_body, timeout=timeout, stream=stream)
+        if stream:
+            return r, r.status_code
+        try:
+            return r.json(), r.status_code
+        except ValueError:
+            return {"error": f"Worker returned non-JSON (status {r.status_code})"}, 500
+    except http_requests.RequestException as exc:
+        return {"error": str(exc)}, 500
+
+
 @app.route("/files/batch-delete-file-check", methods=["POST"])
 def batch_delete_file_check():
     """Recursively find all files matching a glob/wildcard pattern.
@@ -1833,11 +1856,13 @@ def batch_delete_file_check():
     Request body: {
         "pattern": "CalacaBingo*.txt",
         "target_dirs": ["dir1", "dir2"],
-        "exclude_dirs": ["ex1"]
+        "exclude_dirs": ["ex1"],
+        "addr": "master" | "ip:port"
     }
     """
     import fnmatch
     data = request.get_json(force=True)
+    addr = data.get("addr", "master").strip() or "master"
     pattern = data.get("pattern", "").strip()
     target_dirs = data.get("target_dirs", [])
     exclude_dirs = data.get("exclude_dirs", [])
@@ -1846,6 +1871,12 @@ def batch_delete_file_check():
         return jsonify({"error": "file pattern is required"}), 400
     if not target_dirs:
         return jsonify({"error": "at least one target directory is required"}), 400
+
+    if _is_remote_addr(addr):
+        body, status = _worker_proxy_post(addr, "/files/batch-search", {
+            "mode": "glob", "pattern": pattern, "target_dirs": target_dirs, "exclude_dirs": exclude_dirs
+        })
+        return jsonify(body), status
 
     # Normalize exclude dirs for comparison
     exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
@@ -1881,10 +1912,12 @@ def batch_check():
         "sources": ["path1", "path2"],  // multiple sources (new)
         "source": "path",               // single source (backward compat)
         "target_dirs": ["dir1", "dir2"],
-        "exclude_dirs": ["ex1"]
+        "exclude_dirs": ["ex1"],
+        "addr": "master" | "ip:port"
     }
     """
     data = request.get_json(force=True)
+    addr = data.get("addr", "master").strip() or "master"
     sources = data.get("sources", [])
     source = data.get("source", "").strip()
     target_dirs = data.get("target_dirs", [])
@@ -1901,10 +1934,9 @@ def batch_check():
     if not target_dirs:
         return jsonify({"error": "at least one target directory is required"}), 400
 
-    # Normalize exclude dirs for comparison
-    exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
-
-    # Get all filenames to search for
+    # Get all filenames to search for. Source files always live on the master
+    # (that's where the user picked them from); only the basename is searched
+    # for on the target node's filesystem.
     filenames = set()
     for s in sources:
         s = s.strip()
@@ -1913,6 +1945,15 @@ def batch_check():
 
     if not filenames:
         return jsonify({"error": "no valid source files provided"}), 400
+
+    if _is_remote_addr(addr):
+        body, status = _worker_proxy_post(addr, "/files/batch-search", {
+            "mode": "exact", "names": list(filenames), "target_dirs": target_dirs, "exclude_dirs": exclude_dirs
+        })
+        return jsonify(body), status
+
+    # Normalize exclude dirs for comparison
+    exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
 
     found = []
 
@@ -1942,14 +1983,16 @@ def batch_override():
     """Recursively find and replace files matching the source filename(s).
 
     Request body: {
-        "sources": ["path1", "path2"],  // multiple sources (new)
+        "sources": ["path1", "path2"],  // multiple sources (new), always local to master
         "source": "path",               // single source (backward compat)
         "target_dirs": ["dir1"],
-        "exclude_dirs": ["ex1"]
+        "exclude_dirs": ["ex1"],
+        "addr": "master" | "ip:port"
     }
     """
     import shutil
     data = request.get_json(force=True)
+    addr = data.get("addr", "master").strip() or "master"
     sources = data.get("sources", [])
     source = data.get("source", "").strip()
     target_dirs = data.get("target_dirs", [])
@@ -1965,6 +2008,56 @@ def batch_override():
         return jsonify({"error": "source file path is required"}), 400
     if not target_dirs:
         return jsonify({"error": "at least one target directory is required"}), 400
+
+    if _is_remote_addr(addr):
+        # Source files are picked from the master's filesystem; upload each
+        # one to the worker first (into a scratch dir under the worker's temp),
+        # then ask the worker to run the override using those uploaded copies.
+        import tempfile
+        source_map = {}
+        source_errors = []
+        for s in sources:
+            s = s.strip()
+            if not s:
+                continue
+            s_norm = os.path.normpath(s)
+            if not os.path.isfile(s_norm):
+                source_errors.append(f"Source file not found: {s}")
+                continue
+            source_map[os.path.basename(s_norm)] = s_norm
+        if not source_map:
+            error_msg = "; ".join(source_errors) if source_errors else "no valid source files provided"
+            return jsonify({"error": error_msg}), 400
+
+        remote_scratch = f"__kirobatch_override_{uuid.uuid4().hex[:8]}"
+        remote_sources = []
+        upload_errors = list(source_errors)
+        for basename, local_path in source_map.items():
+            try:
+                with open(local_path, "rb") as f:
+                    files = {"file": (basename, f)}
+                    r = http_requests.post(
+                        f"http://{addr}/files/upload",
+                        data={"path": remote_scratch},
+                        files=files,
+                        timeout=30,
+                    )
+                if r.ok:
+                    remote_sources.append(r.json().get("path", ""))
+                else:
+                    upload_errors.append(f"{basename} - upload failed ({r.status_code})")
+            except http_requests.RequestException as exc:
+                upload_errors.append(f"{basename} - {str(exc)}")
+
+        if not remote_sources:
+            return jsonify({"error": "; ".join(upload_errors) or "failed to stage source files on worker"}), 500
+
+        body, status = _worker_proxy_post(addr, "/files/batch-override", {
+            "sources": remote_sources, "target_dirs": target_dirs, "exclude_dirs": exclude_dirs
+        })
+        if isinstance(body, dict):
+            body["errors"] = upload_errors + (body.get("errors") or [])
+        return jsonify(body), status
 
     # Validate and build source map: filename -> full path
     source_map = {}
@@ -2022,13 +2115,18 @@ def batch_override():
 def batch_delete():
     """Delete a list of files.
 
-    Request body: {"files": ["/full/path/to/file1", "/full/path/to/file2"]}
+    Request body: {"files": ["/full/path/to/file1", ...], "addr": "master" | "ip:port"}
     """
     data = request.get_json(force=True)
+    addr = data.get("addr", "master").strip() or "master"
     files = data.get("files", [])
 
     if not files:
         return jsonify({"error": "no files provided for deletion"}), 400
+
+    if _is_remote_addr(addr):
+        body, status = _worker_proxy_post(addr, "/files/batch-delete-files", {"files": files})
+        return jsonify(body), status
 
     deleted = []
     errors = []
@@ -2058,9 +2156,10 @@ def batch_delete():
 def batch_edit_check():
     """Recursively find all files matching the given filename.
 
-    Request body: {"filename": "name.ext", "target_dirs": ["dir1"], "exclude_dirs": ["ex1"]}
+    Request body: {"filename": "name.ext", "target_dirs": ["dir1"], "exclude_dirs": ["ex1"], "addr": "master" | "ip:port"}
     """
     data = request.get_json(force=True)
+    addr = data.get("addr", "master").strip() or "master"
     filename = data.get("filename", "").strip()
     target_dirs = data.get("target_dirs", [])
     exclude_dirs = data.get("exclude_dirs", [])
@@ -2069,6 +2168,12 @@ def batch_edit_check():
         return jsonify({"error": "filename is required"}), 400
     if not target_dirs:
         return jsonify({"error": "at least one target directory is required"}), 400
+
+    if _is_remote_addr(addr):
+        body, status = _worker_proxy_post(addr, "/files/batch-search", {
+            "mode": "exact", "names": [filename], "target_dirs": target_dirs, "exclude_dirs": exclude_dirs
+        })
+        return jsonify(body), status
 
     exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
     found = []
@@ -2101,10 +2206,12 @@ def batch_edit_apply():
         "filename": "stresstest.properties",
         "contents": ["WildEastGameIds=200", "openCardAmount=1"],
         "target_dirs": ["D:\\tools2"],
-        "exclude_dirs": []
+        "exclude_dirs": [],
+        "addr": "master" | "ip:port"
     }
     """
     data = request.get_json(force=True)
+    addr = data.get("addr", "master").strip() or "master"
     filename = data.get("filename", "").strip()
     contents = data.get("contents", [])
     target_dirs = data.get("target_dirs", [])
@@ -2118,6 +2225,12 @@ def batch_edit_apply():
         return jsonify({"error": "at least one target directory is required"}), 400
     if not filename.endswith(".properties"):
         return jsonify({"error": "Batch Edit currently only supports .properties files"}), 400
+
+    if _is_remote_addr(addr):
+        body, status = _worker_proxy_post(addr, "/files/batch-edit-apply", {
+            "filename": filename, "contents": contents, "target_dirs": target_dirs, "exclude_dirs": exclude_dirs
+        })
+        return jsonify(body), status
 
     # Parse contents into key=value pairs
     kv_pairs = []
@@ -2205,13 +2318,25 @@ def batch_edit_apply():
 def batch_edit_read():
     """Read the content of a file for preview/editing.
 
-    Request body: {"path": "/full/path/to/file"}
+    Request body: {"path": "/full/path/to/file", "addr": "master" | "ip:port"}
     """
     data = request.get_json(force=True)
+    addr = data.get("addr", "master").strip() or "master"
     file_path = data.get("path", "").strip()
 
     if not file_path:
         return jsonify({"error": "path is required"}), 400
+
+    if _is_remote_addr(addr):
+        # /files/read on the worker is a GET endpoint; proxy via query params.
+        try:
+            r = http_requests.get(f"http://{addr}/files/read", params={"path": file_path}, timeout=10)
+            try:
+                return jsonify(r.json()), r.status_code
+            except ValueError:
+                return jsonify({"error": "Worker returned non-JSON"}), 500
+        except http_requests.RequestException as exc:
+            return jsonify({"error": str(exc)}), 500
 
     file_path = os.path.normpath(file_path)
     if not os.path.isfile(file_path):
@@ -2237,14 +2362,19 @@ def batch_edit_read():
 def batch_edit_save():
     """Save edited content back to a file.
 
-    Request body: {"path": "/full/path/to/file", "content": "new content"}
+    Request body: {"path": "/full/path/to/file", "content": "new content", "addr": "master" | "ip:port"}
     """
     data = request.get_json(force=True)
+    addr = data.get("addr", "master").strip() or "master"
     file_path = data.get("path", "").strip()
     content = data.get("content", "")
 
     if not file_path:
         return jsonify({"error": "path is required"}), 400
+
+    if _is_remote_addr(addr):
+        body, status = _worker_proxy_post(addr, "/files/write", {"path": file_path, "content": content})
+        return jsonify(body), status
 
     file_path = os.path.normpath(file_path)
     if not os.path.isfile(file_path):
@@ -2270,12 +2400,14 @@ def batch_up_check():
     Request body: {
         "src_files": ["VBWildBallLogic.jar", "VBWildEastBingoLogic.jar"],
         "target_dirs": ["E:/python/workSpace/temp/ShowBingoSim/*/simulator/B2BGameSimulator/lib"],
-        "exclude_dirs": []
+        "exclude_dirs": [],
+        "addr": "master" | "ip:port"
     }
     """
     import glob
 
     data = request.get_json(force=True)
+    addr = data.get("addr", "master").strip() or "master"
     src_files = data.get("src_files", [])
     target_dirs = data.get("target_dirs", [])
     exclude_dirs = data.get("exclude_dirs", [])
@@ -2284,6 +2416,13 @@ def batch_up_check():
         return jsonify({"error": "at least one source file is required"}), 400
     if not target_dirs:
         return jsonify({"error": "at least one target directory is required"}), 400
+
+    if _is_remote_addr(addr):
+        # Target directories (with glob patterns) are searched on the worker.
+        body, status = _worker_proxy_post(addr, "/files/batch-search", {
+            "mode": "dir_glob", "dir_patterns": target_dirs, "exclude_dirs": exclude_dirs
+        })
+        return jsonify(body), status
 
     exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
     found = []
@@ -2326,13 +2465,15 @@ def batch_up_upload():
     selected target directory.
 
     Request body: {
-        "src_files": ["VBWildBallLogic.jar", "VBWildEastBingoLogic.jar"],
-        "target_dirs": ["E:/path/to/dir1", "E:/path/to/dir2"]
+        "src_files": ["VBWildBallLogic.jar", "VBWildEastBingoLogic.jar"],  // always local to master
+        "target_dirs": ["E:/path/to/dir1", "E:/path/to/dir2"],
+        "addr": "master" | "ip:port"
     }
     """
     import shutil
 
     data = request.get_json(force=True)
+    addr = data.get("addr", "master").strip() or "master"
     src_files = data.get("src_files", [])
     target_dirs = data.get("target_dirs", [])
 
@@ -2340,6 +2481,46 @@ def batch_up_upload():
         return jsonify({"error": "at least one source file is required"}), 400
     if not target_dirs:
         return jsonify({"error": "at least one target directory is required"}), 400
+
+    if _is_remote_addr(addr):
+        # Upload each source file to a scratch dir on the worker first, then
+        # ask the worker to copy those uploaded files into each target dir.
+        remote_scratch = f"__kirobatch_upload_{uuid.uuid4().hex[:8]}"
+        remote_sources = []
+        errors = []
+        for src in src_files:
+            src = src.strip()
+            if not src:
+                continue
+            src_path = os.path.normpath(src)
+            if not os.path.isfile(src_path):
+                errors.append(f"Source file not found: {src}")
+                continue
+            try:
+                with open(src_path, "rb") as f:
+                    files = {"file": (os.path.basename(src_path), f)}
+                    r = http_requests.post(
+                        f"http://{addr}/files/upload",
+                        data={"path": remote_scratch},
+                        files=files,
+                        timeout=30,
+                    )
+                if r.ok:
+                    remote_sources.append(r.json().get("path", ""))
+                else:
+                    errors.append(f"{os.path.basename(src_path)} - upload failed ({r.status_code})")
+            except http_requests.RequestException as exc:
+                errors.append(f"{os.path.basename(src_path)} - {str(exc)}")
+
+        if not remote_sources:
+            return jsonify({"error": "; ".join(errors) or "failed to stage source files on worker"}), 500
+
+        body, status = _worker_proxy_post(addr, "/files/batch-up-upload", {
+            "src_files": remote_sources, "target_dirs": target_dirs
+        })
+        if isinstance(body, dict):
+            body["errors"] = errors + (body.get("errors") or [])
+        return jsonify(body), status
 
     copied = []
     errors = []
@@ -2380,11 +2561,12 @@ def batch_up_upload():
 def batch_dl_check():
     """Recursively find files matching the given filename (supports * wildcard).
 
-    Request body: {"filename": "CalacaBingo*.txt", "target_dirs": ["dir1"], "exclude_dirs": ["ex1"]}
+    Request body: {"filename": "CalacaBingo*.txt", "target_dirs": ["dir1"], "exclude_dirs": ["ex1"], "addr": "master" | "ip:port"}
     """
     import fnmatch
 
     data = request.get_json(force=True)
+    addr = data.get("addr", "master").strip() or "master"
     filename = data.get("filename", "").strip()
     target_dirs = data.get("target_dirs", [])
     exclude_dirs = data.get("exclude_dirs", [])
@@ -2394,11 +2576,19 @@ def batch_dl_check():
     if not target_dirs:
         return jsonify({"error": "at least one target directory is required"}), 400
 
+    use_wildcard = "*" in filename or "?" in filename
+
+    if _is_remote_addr(addr):
+        body, status = _worker_proxy_post(addr, "/files/batch-search", {
+            "mode": "glob" if use_wildcard else "exact",
+            "pattern": filename,
+            "names": [filename],
+            "target_dirs": target_dirs, "exclude_dirs": exclude_dirs
+        })
+        return jsonify(body), status
+
     exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
     found = []
-
-    # Determine if wildcard matching is needed
-    use_wildcard = "*" in filename or "?" in filename
 
     for td in target_dirs:
         td = os.path.normpath(td.strip())
@@ -2431,13 +2621,14 @@ def batch_dl_download():
     The zip is created under a 'temp' folder in the first target directory,
     preserving the relative paths from that target directory.
 
-    Request body: {"files": ["/full/path/to/file1", ...], "target_dirs": ["dir1"]}
+    Request body: {"files": ["/full/path/to/file1", ...], "target_dirs": ["dir1"], "addr": "master" | "ip:port"}
     """
     import shutil
     import zipfile
-    from flask import send_file
+    from flask import send_file, Response
 
     data = request.get_json(force=True)
+    addr = data.get("addr", "master").strip() or "master"
     files = data.get("files", [])
     target_dirs = data.get("target_dirs", [])
 
@@ -2445,6 +2636,21 @@ def batch_dl_download():
         return jsonify({"error": "no files selected"}), 400
     if not target_dirs:
         return jsonify({"error": "at least one target directory is required"}), 400
+
+    if _is_remote_addr(addr):
+        r, status = _worker_proxy_post(addr, "/files/batch-dl-download", {
+            "files": files, "target_dirs": target_dirs
+        }, timeout=60, stream=True)
+        if status != 200:
+            try:
+                return jsonify(r.json()), status
+            except Exception:
+                return jsonify({"error": f"Worker returned {status}"}), status
+        return Response(
+            r.iter_content(chunk_size=8192),
+            headers={"Content-Disposition": "attachment; filename=temp.zip",
+                     "Content-Type": r.headers.get("Content-Type", "application/zip")}
+        )
 
     # Use the first target directory as the base for temp folder
     base_dir = os.path.normpath(target_dirs[0].strip())

@@ -285,6 +285,7 @@ async function doBatchDelFileCheck() {
   var pattern = document.getElementById('batchDelFilePattern').value.trim();
   var dirs = getBatchDelTargetDirs();
   var excludes = getBatchDelExcludeDirs();
+  var addr = getBatchPluginNodeAddr('batchDelNodeSelect');
   if (!pattern) { showAlert('Please enter a file pattern (e.g. CalacaBingo*.txt)'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
   var resultEl = document.getElementById('batchDelFileResult');
@@ -293,7 +294,7 @@ async function doBatchDelFileCheck() {
   var res = await fetch('/files/batch-delete-file-check', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({pattern: pattern, target_dirs: dirs, exclude_dirs: excludes})
+    body: JSON.stringify({pattern: pattern, target_dirs: dirs, exclude_dirs: excludes, addr: addr})
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
@@ -343,6 +344,7 @@ function getSelectedBatchDelFiles() {
 
 async function doBatchDelFileDelete() {
   var selected = getSelectedBatchDelFiles();
+  var addr = getBatchPluginNodeAddr('batchDelNodeSelect');
   if (!selected.length) { showAlert('No files selected for deletion. Please run Check All Files first.'); return; }
   if (!confirm('⚠️ Are you sure you want to DELETE ' + selected.length + ' file(s)?\n\nThis operation cannot be undone!')) return;
 
@@ -352,7 +354,7 @@ async function doBatchDelFileDelete() {
   var res = await fetch('/files/batch-delete', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({files: selected})
+    body: JSON.stringify({files: selected, addr: addr})
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
@@ -402,6 +404,7 @@ async function doBatchCheckFiles() {
   var sources = getBatchOverrideSrcFiles();
   var dirs = getBatchTargetDirs();
   var excludes = getBatchExcludeDirs();
+  var addr = getBatchPluginNodeAddr('batchOverrideNodeSelect');
   if (!sources.length) { showAlert('Please enter at least one source file path'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
   var resultEl = document.getElementById('batchOverrideResult');
@@ -410,7 +413,7 @@ async function doBatchCheckFiles() {
   var res = await fetch('/files/batch-check', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({sources: sources, target_dirs: dirs, exclude_dirs: excludes})
+    body: JSON.stringify({sources: sources, target_dirs: dirs, exclude_dirs: excludes, addr: addr})
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
@@ -463,6 +466,7 @@ async function doBatchOverride() {
   var sources = getBatchOverrideSrcFiles();
   var dirs = getBatchTargetDirs();
   var excludes = getBatchExcludeDirs();
+  var addr = getBatchPluginNodeAddr('batchOverrideNodeSelect');
   if (!sources.length) { showAlert('Please enter at least one source file path'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
   var resultEl = document.getElementById('batchOverrideResult');
@@ -471,7 +475,7 @@ async function doBatchOverride() {
   var res = await fetch('/files/batch-override', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({sources: sources, target_dirs: dirs, exclude_dirs: excludes})
+    body: JSON.stringify({sources: sources, target_dirs: dirs, exclude_dirs: excludes, addr: addr})
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
@@ -498,6 +502,7 @@ async function doBatchOverride() {
 
 async function doBatchDelete() {
   var selected = getSelectedBatchOverrideFiles();
+  var addr = getBatchPluginNodeAddr('batchOverrideNodeSelect');
   if (!selected.length) { showAlert('No files selected for deletion. Please run Check All Files first.'); return; }
   if (!confirm('⚠️ Are you sure you want to DELETE ' + selected.length + ' file(s)?\n\nThis operation cannot be undone!')) return;
 
@@ -507,7 +512,7 @@ async function doBatchDelete() {
   var res = await fetch('/files/batch-delete', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({files: selected})
+    body: JSON.stringify({files: selected, addr: addr})
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
@@ -609,6 +614,7 @@ async function doBatchEditCheck() {
   var filename = document.getElementById('batchEditFileName').value.trim();
   var dirs = getBatchEditTargetDirs();
   var excludes = getBatchEditExcludeDirs();
+  var addr = getBatchPluginNodeAddr('batchEditNodeSelect');
   if (!filename) { showAlert('Please enter a source file name'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
   var resultEl = document.getElementById('batchEditResult');
@@ -617,7 +623,7 @@ async function doBatchEditCheck() {
   var res = await fetch('/files/batch-edit-check', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({filename: filename, target_dirs: dirs, exclude_dirs: excludes})
+    body: JSON.stringify({filename: filename, target_dirs: dirs, exclude_dirs: excludes, addr: addr})
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
@@ -639,6 +645,7 @@ async function doBatchEditApply() {
   var contents = getBatchEditContents();
   var dirs = getBatchEditTargetDirs();
   var excludes = getBatchEditExcludeDirs();
+  var addr = getBatchPluginNodeAddr('batchEditNodeSelect');
   if (!filename) { showAlert('Please enter a source file name'); return; }
   if (!contents.length) { showAlert('Please enter at least one content entry (key=value)'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
@@ -649,7 +656,7 @@ async function doBatchEditApply() {
   var res = await fetch('/files/batch-edit-apply', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({filename: filename, contents: contents, target_dirs: dirs, exclude_dirs: excludes})
+    body: JSON.stringify({filename: filename, contents: contents, target_dirs: dirs, exclude_dirs: excludes, addr: addr})
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
@@ -679,6 +686,7 @@ async function doBatchEditViewFiles() {
   var filename = document.getElementById('batchEditFileName').value.trim();
   var dirs = getBatchEditTargetDirs();
   var excludes = getBatchEditExcludeDirs();
+  var addr = getBatchPluginNodeAddr('batchEditNodeSelect');
   if (!filename) { showAlert('Please enter a source file name'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
   var resultEl = document.getElementById('batchEditResult');
@@ -687,7 +695,7 @@ async function doBatchEditViewFiles() {
   var res = await fetch('/files/batch-edit-check', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({filename: filename, target_dirs: dirs, exclude_dirs: excludes})
+    body: JSON.stringify({filename: filename, target_dirs: dirs, exclude_dirs: excludes, addr: addr})
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
@@ -707,7 +715,7 @@ async function doBatchEditViewFiles() {
     html += '<div style="font-size:11px;color:#888;margin-bottom:6px;word-break:break-all;" title="' + fp + '">' + fp + '</div>';
     html += '<pre id="batchEditPreview_' + i + '" style="background:#0d1117;color:#cdd6f4;padding:8px;border-radius:4px;font-size:11px;max-height:150px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin:0;">Loading...</pre>';
     html += '<div style="margin-top:8px;text-align:right;">';
-    html += '<button class="btn-primary btn-sm" onclick="batchEditExpand(' + i + ',\'' + fp.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" style="font-size:11px;padding:3px 8px;">🔍 Expand & Edit</button>';
+    html += '<button class="btn-primary btn-sm" onclick="batchEditExpand(' + i + ',\'' + fp.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\',\'' + addr + '\')" style="font-size:11px;padding:3px 8px;">🔍 Expand & Edit</button>';
     html += '</div></div>';
   }
   html += '</div>';
@@ -719,7 +727,7 @@ async function doBatchEditViewFiles() {
       fetch('/files/batch-edit-read', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({path: filePath})
+        body: JSON.stringify({path: filePath, addr: addr})
       }).then(function(r) { return r.json(); }).then(function(d) {
         var el = document.getElementById('batchEditPreview_' + idx);
         if (el) {
@@ -738,10 +746,11 @@ async function doBatchEditViewFiles() {
   }
 }
 
-function batchEditExpand(idx, filePath) {
+function batchEditExpand(idx, filePath, addr) {
   // Create a modal for full editing
   var modal = document.createElement('div');
   modal.id = 'batchEditModal';
+  modal.dataset.addr = addr || 'master';
   modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
   modal.innerHTML = '<div style="background:#1e1e2e;border-radius:10px;padding:20px;width:80%;max-width:900px;max-height:85vh;display:flex;flex-direction:column;">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
@@ -759,7 +768,7 @@ function batchEditExpand(idx, filePath) {
   fetch('/files/batch-edit-read', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({path: filePath})
+    body: JSON.stringify({path: filePath, addr: addr})
   }).then(function(r) { return r.json(); }).then(function(d) {
     var ta = document.getElementById('batchEditModalContent');
     if (d.error) { ta.value = 'Error: ' + d.error; }
@@ -769,10 +778,12 @@ function batchEditExpand(idx, filePath) {
 
 async function batchEditSaveFile(filePath) {
   var content = document.getElementById('batchEditModalContent').value;
+  var modal = document.getElementById('batchEditModal');
+  var addr = (modal && modal.dataset.addr) ? modal.dataset.addr : 'master';
   var res = await fetch('/files/batch-edit-save', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({path: filePath, content: content})
+    body: JSON.stringify({path: filePath, content: content, addr: addr})
   });
   var data = await res.json();
   if (data.error) {
@@ -839,6 +850,7 @@ async function doBatchUpCheck() {
   var srcFiles = getBatchUpSrcFiles();
   var dirs = getBatchUpTargetDirs();
   var excludes = getBatchUpExcludeDirs();
+  var addr = getBatchPluginNodeAddr('batchUpNodeSelect');
   if (!srcFiles.length) { showAlert('Please enter at least one source file name'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
   var resultEl = document.getElementById('batchUpResult');
@@ -847,7 +859,7 @@ async function doBatchUpCheck() {
   var res = await fetch('/files/batch-up-check', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({src_files: srcFiles, target_dirs: dirs, exclude_dirs: excludes})
+    body: JSON.stringify({src_files: srcFiles, target_dirs: dirs, exclude_dirs: excludes, addr: addr})
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
@@ -944,6 +956,7 @@ async function doBatchUpUpload() {
   _saveAllBatchInputHistory();
   var srcFiles = getBatchUpSrcFiles();
   var selectedDirs = getSelectedBatchUpDirs();
+  var addr = getBatchPluginNodeAddr('batchUpNodeSelect');
   if (!srcFiles.length) { showAlert('Please enter at least one source file name'); return; }
   if (!selectedDirs.length) { showAlert('No directories selected for upload'); return; }
 
@@ -954,7 +967,7 @@ async function doBatchUpUpload() {
     var res = await fetch('/files/batch-up-upload', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({src_files: srcFiles, target_dirs: selectedDirs})
+      body: JSON.stringify({src_files: srcFiles, target_dirs: selectedDirs, addr: addr})
     });
     var data = await res.json();
     hideBatchUpProgress();
@@ -1025,6 +1038,7 @@ async function doBatchDlCheck() {
   var filename = document.getElementById('batchDlFileName').value.trim();
   var dirs = getBatchDlTargetDirs();
   var excludes = getBatchDlExcludeDirs();
+  var addr = getBatchPluginNodeAddr('batchDlNodeSelect');
   if (!filename) { showAlert('Please enter a source file name'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
   var resultEl = document.getElementById('batchDlResult');
@@ -1033,7 +1047,7 @@ async function doBatchDlCheck() {
   var res = await fetch('/files/batch-dl-check', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({filename: filename, target_dirs: dirs, exclude_dirs: excludes})
+    body: JSON.stringify({filename: filename, target_dirs: dirs, exclude_dirs: excludes, addr: addr})
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
@@ -1131,6 +1145,7 @@ async function doBatchDlDownload() {
   _saveAllBatchInputHistory();
   var selected = getSelectedBatchDlFiles();
   var dirs = getBatchDlTargetDirs();
+  var addr = getBatchPluginNodeAddr('batchDlNodeSelect');
   if (!selected.length) { showAlert('No files selected for download'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
 
@@ -1140,7 +1155,7 @@ async function doBatchDlDownload() {
     var res = await fetch('/files/batch-dl-download', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({files: selected, target_dirs: dirs})
+      body: JSON.stringify({files: selected, target_dirs: dirs, addr: addr})
     });
     if (!res.ok) {
       var errData = await res.json();
@@ -1170,6 +1185,7 @@ async function doBatchDlView() {
   var filename = document.getElementById('batchDlFileName').value.trim();
   var dirs = getBatchDlTargetDirs();
   var excludes = getBatchDlExcludeDirs();
+  var addr = getBatchPluginNodeAddr('batchDlNodeSelect');
   if (!filename) { showAlert('Please enter a source file name'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
   var resultEl = document.getElementById('batchDlResult');
@@ -1178,7 +1194,7 @@ async function doBatchDlView() {
   var res = await fetch('/files/batch-dl-check', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({filename: filename, target_dirs: dirs, exclude_dirs: excludes})
+    body: JSON.stringify({filename: filename, target_dirs: dirs, exclude_dirs: excludes, addr: addr})
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
@@ -1197,7 +1213,7 @@ async function doBatchDlView() {
     html += '<div style="font-size:11px;color:#888;margin-bottom:6px;word-break:break-all;" title="' + fp + '">' + fp + '</div>';
     html += '<pre id="batchDlPreview_' + i + '" style="background:#0d1117;color:#cdd6f4;padding:8px;border-radius:4px;font-size:11px;max-height:150px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin:0;">Loading...</pre>';
     html += '<div style="margin-top:8px;text-align:right;">';
-    html += '<button class="btn-primary btn-sm" onclick="batchDlExpand(\'' + fp.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" style="font-size:11px;padding:3px 8px;">🔍 Expand</button>';
+    html += '<button class="btn-primary btn-sm" onclick="batchDlExpand(\'' + fp.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\',\'' + addr + '\')" style="font-size:11px;padding:3px 8px;">🔍 Expand</button>';
     html += '</div></div>';
   }
   html += '</div>';
@@ -1209,7 +1225,7 @@ async function doBatchDlView() {
       fetch('/files/batch-edit-read', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({path: filePath})
+        body: JSON.stringify({path: filePath, addr: addr})
       }).then(function(r) { return r.json(); }).then(function(d) {
         var el = document.getElementById('batchDlPreview_' + idx);
         if (el) {
@@ -1227,7 +1243,7 @@ async function doBatchDlView() {
   }
 }
 
-function batchDlExpand(filePath) {
+function batchDlExpand(filePath, addr) {
   // Create a read-only modal for viewing
   var modal = document.createElement('div');
   modal.id = 'batchDlModal';
@@ -1247,7 +1263,7 @@ function batchDlExpand(filePath) {
   fetch('/files/batch-edit-read', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({path: filePath})
+    body: JSON.stringify({path: filePath, addr: addr})
   }).then(function(r) { return r.json(); }).then(function(d) {
     var el = document.getElementById('batchDlModalContent');
     if (d.error) { el.textContent = 'Error: ' + d.error; }
