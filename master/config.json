@@ -2,6 +2,8 @@
   "port": 5555,
   "sysinfo_refresh_interval": 5,
   "cpu_healthy_threshold": 90,
+  "launcher_port": 5099,
+  "launcher_auth_token": "13b22e836b4f618aebdd40c458ec9300",
   "master": {
     "vcpu": 8,
     "percentage": 100

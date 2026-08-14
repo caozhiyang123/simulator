@@ -1,0 +1,7 @@
+{
+  "worker_exe_path": "E:\\python\\workSpace\\simulator\\worker\\distworker.exe",
+  "worker_process_name": "worker.exe",
+  "worker_cwd": "E:\\python\\workSpace\\simulator\\worker\\dist",
+  "port": 5099,
+  "auth_token": "13b22e836b4f618aebdd40c458ec9300"
+}

@@ -13,3 +13,5 @@ ubuntu
 master/sha1
 master/cicd/logs
 __pycache__
+launcher/build
+launcher/dist

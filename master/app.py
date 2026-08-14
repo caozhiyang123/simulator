@@ -3189,6 +3189,99 @@ def workers_health():
     return jsonify(results)
 
 
+# ---------------------------------------------------------------------------
+# Launcher proxy (start/stop worker.exe on a remote worker machine)
+# ---------------------------------------------------------------------------
+def _launcher_addr(worker_addr: str) -> str:
+    """Derive the launcher's address from a worker's addr (same host, launcher_port)."""
+    host = worker_addr.split(":")[0]
+    launcher_port = _raw_config.get("launcher_port", 5099)
+    return f"{host}:{launcher_port}"
+
+
+def _launcher_headers() -> dict:
+    """Build request headers for calling the launcher, including auth token if configured."""
+    token = _raw_config.get("launcher_auth_token", "")
+    return {"X-Launcher-Token": token} if token else {}
+
+
+@app.route("/workers/launcher-status", methods=["GET"])
+def launcher_status():
+    """Query whether worker.exe is currently running on a remote worker, via its Launcher."""
+    addr = request.args.get("addr", "")
+    if not addr or addr == "master":
+        return jsonify({"error": "addr (worker addr) is required"}), 400
+    launcher_addr = _launcher_addr(addr)
+    try:
+        r = http_requests.get(
+            f"http://{launcher_addr}/launcher/status",
+            headers=_launcher_headers(),
+            timeout=5,
+        )
+        try:
+            return jsonify(r.json()), r.status_code
+        except ValueError:
+            return jsonify({"error": "Launcher returned non-JSON"}), 502
+    except http_requests.ConnectionError:
+        return jsonify({"error": f"Cannot reach launcher at {launcher_addr}. Is it running?"}), 503
+    except http_requests.Timeout:
+        return jsonify({"error": f"Connection to launcher {launcher_addr} timed out"}), 504
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/workers/launcher-start", methods=["POST"])
+def launcher_start_worker():
+    """Ask the Launcher on a remote worker machine to start worker.exe."""
+    data = request.get_json(force=True)
+    addr = data.get("addr", "")
+    if not addr or addr == "master":
+        return jsonify({"error": "addr (worker addr) is required"}), 400
+    launcher_addr = _launcher_addr(addr)
+    try:
+        r = http_requests.post(
+            f"http://{launcher_addr}/launcher/start-worker",
+            headers=_launcher_headers(),
+            timeout=15,
+        )
+        try:
+            return jsonify(r.json()), r.status_code
+        except ValueError:
+            return jsonify({"error": "Launcher returned non-JSON"}), 502
+    except http_requests.ConnectionError:
+        return jsonify({"error": f"Cannot reach launcher at {launcher_addr}. Is it running?"}), 503
+    except http_requests.Timeout:
+        return jsonify({"error": f"Connection to launcher {launcher_addr} timed out"}), 504
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/workers/launcher-stop", methods=["POST"])
+def launcher_stop_worker():
+    """Ask the Launcher on a remote worker machine to stop worker.exe."""
+    data = request.get_json(force=True)
+    addr = data.get("addr", "")
+    if not addr or addr == "master":
+        return jsonify({"error": "addr (worker addr) is required"}), 400
+    launcher_addr = _launcher_addr(addr)
+    try:
+        r = http_requests.post(
+            f"http://{launcher_addr}/launcher/stop-worker",
+            headers=_launcher_headers(),
+            timeout=15,
+        )
+        try:
+            return jsonify(r.json()), r.status_code
+        except ValueError:
+            return jsonify({"error": "Launcher returned non-JSON"}), 502
+    except http_requests.ConnectionError:
+        return jsonify({"error": f"Cannot reach launcher at {launcher_addr}. Is it running?"}), 503
+    except http_requests.Timeout:
+        return jsonify({"error": f"Connection to launcher {launcher_addr} timed out"}), 504
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/sysinfo", methods=["GET"])
 def master_sysinfo():
     """Return master's local system info."""

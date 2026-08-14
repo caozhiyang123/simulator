@@ -2429,6 +2429,87 @@ async function doEditWorker(oldAddr, addr, vcpu, alias) {
 var _wmSysinfoTimer = null;
 var _wmSysinfoInterval = 5; // default 5s, overridden from config
 
+// ---------------------------------------------------------------------------
+// Launcher controls: start/stop worker.exe on a remote worker machine via
+// its Launcher service (see /launcher project). Shared between the Home
+// page Worker Management card ('wm' prefix) and the dedicated Workers page
+// ('pgWm' prefix).
+// ---------------------------------------------------------------------------
+function renderLauncherControls(addr, prefix) {
+  var statusId = prefix + 'LauncherStatus_' + safeId(addr);
+  var html = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px;background:#f8f9fa;border-radius:6px;">';
+  html += '<span style="font-size:12px;font-weight:600;color:#555;">worker.exe:</span>';
+  html += '<span id="' + statusId + '" style="font-size:12px;color:#888;">checking...</span>';
+  html += '<span style="flex:1;"></span>';
+  html += '<button class="btn-success btn-sm" onclick="launcherStartWorker(\'' + addr + '\',\'' + prefix + '\')" style="font-size:11px;padding:4px 10px;">▶ Start worker.exe</button>';
+  html += '<button class="btn-danger btn-sm" onclick="launcherStopWorker(\'' + addr + '\',\'' + prefix + '\')" style="font-size:11px;padding:4px 10px;">⏹ Stop worker.exe</button>';
+  html += '</div>';
+  return html;
+}
+
+async function refreshLauncherStatus(addr, prefix) {
+  var statusId = prefix + 'LauncherStatus_' + safeId(addr);
+  var el = document.getElementById(statusId);
+  if (!el) return;
+  el.style.color = '#888';
+  el.textContent = 'checking...';
+  try {
+    var r = await api('/workers/launcher-status?addr=' + encodeURIComponent(addr), 'GET');
+    el = document.getElementById(statusId); // re-fetch in case DOM was rebuilt while awaiting
+    if (!el) return;
+    if (!r.ok) {
+      el.style.color = '#e74c3c';
+      el.textContent = 'Launcher unreachable (' + (r.data.error || 'unknown error') + ')';
+      return;
+    }
+    if (r.data.running) {
+      el.style.color = '#27ae60';
+      el.textContent = '✓ running (pid' + (r.data.pids.length > 1 ? 's' : '') + ': ' + r.data.pids.join(', ') + ')';
+    } else {
+      el.style.color = '#e74c3c';
+      el.textContent = '✗ not running';
+    }
+  } catch (e) {
+    el = document.getElementById(statusId);
+    if (el) { el.style.color = '#e74c3c'; el.textContent = 'Failed to check: ' + e.message; }
+  }
+}
+
+async function launcherStartWorker(addr, prefix) {
+  log('▶ Requesting worker.exe start on ' + addr + ' via Launcher...');
+  var r = await api('/workers/launcher-start', 'POST', {addr: addr});
+  if (r.ok) {
+    if (r.data.status === 'already_running') {
+      log('ℹ️ worker.exe already running on ' + addr + ' (pids: ' + (r.data.pids||[]).join(', ') + ')');
+    } else {
+      log('✅ worker.exe started on ' + addr + ' (pid: ' + r.data.pid + ')');
+    }
+  } else {
+    log('❌ Failed to start worker.exe on ' + addr + ': ' + (r.data.error || 'unknown error'));
+    showAlert('Failed to start worker.exe: ' + (r.data.error || 'unknown error'));
+  }
+  refreshLauncherStatus(addr, prefix);
+}
+
+async function launcherStopWorker(addr, prefix) {
+  if (!confirm('⚠️ Stop worker.exe on ' + addr + '?\n\nAny simulation currently running on this node will be terminated.')) return;
+  log('⏹ Requesting worker.exe stop on ' + addr + ' via Launcher...');
+  var r = await api('/workers/launcher-stop', 'POST', {addr: addr});
+  if (r.ok) {
+    if (r.data.status === 'not_running') {
+      log('ℹ️ worker.exe was not running on ' + addr);
+    } else if (r.data.status === 'partial') {
+      log('⚠️ worker.exe partially stopped on ' + addr + ': ' + JSON.stringify(r.data.errors));
+    } else {
+      log('✅ worker.exe stopped on ' + addr + ' (pids: ' + (r.data.stopped||[]).join(', ') + ')');
+    }
+  } else {
+    log('❌ Failed to stop worker.exe on ' + addr + ': ' + (r.data.error || 'unknown error'));
+    showAlert('Failed to stop worker.exe: ' + (r.data.error || 'unknown error'));
+  }
+  refreshLauncherStatus(addr, prefix);
+}
+
 function wmOnNodeSelect() {
   // Clear previous auto-refresh
   if (_wmSysinfoTimer) { clearInterval(_wmSysinfoTimer); _wmSysinfoTimer = null; }
@@ -2463,12 +2544,16 @@ function wmOnNodeSelect() {
   html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">networking</span>';
   html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">storage</span>';
   html += '</div>';
+  if (!isMaster) {
+    html += renderLauncherControls(addr, 'wm');
+  }
   html += '<div id="wmTabContent" style="min-height:120px;"><div style="color:#888;font-size:12px;">Loading...</div></div>';
   html += '</div>';
   detailEl.innerHTML = html;
 
   // Auto-load monitor
   wmShowTab(addr, 'monitor');
+  if (!isMaster) refreshLauncherStatus(addr, 'wm');
 }
 
 async function wmShowTab(addr, tab) {
@@ -3546,10 +3631,14 @@ function pgWmOnNodeSelect() {
   html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">networking</span>';
   html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">storage</span>';
   html += '</div>';
+  if (!isMaster) {
+    html += renderLauncherControls(addr, 'pgWm');
+  }
   html += '<div id="pgWmTabContent" style="min-height:120px;"><div style="color:#888;font-size:12px;">Loading...</div></div>';
   html += '</div>';
   detailEl.innerHTML = html;
   pgWmShowTab(addr, 'monitor');
+  if (!isMaster) refreshLauncherStatus(addr, 'pgWm');
 }
 
 async function pgWmShowTab(addr, tab) {
