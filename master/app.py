@@ -53,6 +53,24 @@ if os.path.isfile(CONFIG_PATH):
 PORT = int(os.environ.get("MASTER_PORT", _raw_config.get("port", 5000)))
 
 # ---------------------------------------------------------------------------
+# HTTP session used for all master<->worker/launcher calls.
+#
+# Some LAN setups have a misconfigured system/environment HTTP(S) proxy
+# (common on corporate machines) that causes `requests` to route internal
+# worker calls through the proxy, which then fails to reach the worker's
+# private IP -- surfacing as "Cannot connect to worker ... Is it running?"
+# even though telnet/curl to the worker succeed directly.
+#
+# If your workers are also reachable only through a proxy (e.g. workers on
+# a public/external IP behind a corporate proxy), set
+# "worker_bypass_proxy": false in config.json to keep using the system/
+# environment proxy settings for these calls. Defaults to true (bypass),
+# which is the right choice when master and workers share a LAN.
+_worker_bypass_proxy = _raw_config.get("worker_bypass_proxy", True)
+_worker_session = http_requests.Session()
+_worker_session.trust_env = not _worker_bypass_proxy
+
+# ---------------------------------------------------------------------------
 # Application & component initialisation
 # ---------------------------------------------------------------------------
 app = Flask(__name__,
@@ -234,7 +252,7 @@ def start_worker_with_retry(
     """
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            response = http_requests.post(
+            response = _worker_session.post(
                 f"http://{worker_addr}/start",
                 json={
                     "spins": spins,
@@ -871,7 +889,7 @@ def stop_worker():
         return jsonify({"error": "Worker not found", "addr": worker_addr}), 404
 
     try:
-        r = http_requests.post(f"http://{worker_addr}/stop", timeout=10)
+        r = _worker_session.post(f"http://{worker_addr}/stop", timeout=10)
         return jsonify(r.json()), r.status_code
     except http_requests.RequestException as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
@@ -890,7 +908,7 @@ def worker_logs():
         return jsonify({"error": "addr is required"}), 400
 
     try:
-        r = http_requests.get(f"http://{addr}/logs", params={"since": since}, timeout=5)
+        r = _worker_session.get(f"http://{addr}/logs", params={"since": since}, timeout=5)
         return jsonify(r.json())
     except http_requests.RequestException as exc:
         return jsonify({"lines": [f"[ERROR] 无法连接 {addr}: {exc}"], "total": 0})
@@ -1424,7 +1442,7 @@ def worker_rename():
     if not addr:
         return jsonify({"error": "addr is required"}), 400
     try:
-        r = http_requests.post(f"http://{addr}/files/rename", json={
+        r = _worker_session.post(f"http://{addr}/files/rename", json={
             "old_path": data.get("old_path", ""),
             "new_path": data.get("new_path", "")
         }, timeout=10)
@@ -1444,7 +1462,7 @@ def worker_duplicate():
     if not addr:
         return jsonify({"error": "addr is required"}), 400
     try:
-        r = http_requests.post(f"http://{addr}/files/duplicate", json={
+        r = _worker_session.post(f"http://{addr}/files/duplicate", json={
             "source": data.get("source", ""),
             "dest": data.get("dest", "")
         }, timeout=10)
@@ -1465,7 +1483,7 @@ def worker_mkdir():
     if not addr or not dir_path:
         return jsonify({"error": "addr and path are required"}), 400
     try:
-        r = http_requests.post(f"http://{addr}/files/mkdir", json={"path": dir_path}, timeout=10)
+        r = _worker_session.post(f"http://{addr}/files/mkdir", json={"path": dir_path}, timeout=10)
         return jsonify(r.json()), r.status_code
     except http_requests.RequestException as exc:
         return jsonify({"error": str(exc)}), 500
@@ -1484,7 +1502,7 @@ def worker_create_file():
     if not addr or not file_path:
         return jsonify({"error": "addr and path are required"}), 400
     try:
-        r = http_requests.post(f"http://{addr}/files/write", json={"path": file_path, "content": content}, timeout=10)
+        r = _worker_session.post(f"http://{addr}/files/write", json={"path": file_path, "content": content}, timeout=10)
         return jsonify(r.json()), r.status_code
     except http_requests.RequestException as exc:
         return jsonify({"error": str(exc)}), 500
@@ -1838,7 +1856,7 @@ def _worker_proxy_post(addr, path, json_body=None, timeout=30, stream=False):
     content (e.g. zip download) back to the browser.
     """
     try:
-        r = http_requests.post(f"http://{addr}{path}", json=json_body, timeout=timeout, stream=stream)
+        r = _worker_session.post(f"http://{addr}{path}", json=json_body, timeout=timeout, stream=stream)
         if stream:
             return r, r.status_code
         try:
@@ -2036,7 +2054,7 @@ def batch_override():
             try:
                 with open(local_path, "rb") as f:
                     files = {"file": (basename, f)}
-                    r = http_requests.post(
+                    r = _worker_session.post(
                         f"http://{addr}/files/upload",
                         data={"path": remote_scratch},
                         files=files,
@@ -2330,7 +2348,7 @@ def batch_edit_read():
     if _is_remote_addr(addr):
         # /files/read on the worker is a GET endpoint; proxy via query params.
         try:
-            r = http_requests.get(f"http://{addr}/files/read", params={"path": file_path}, timeout=10)
+            r = _worker_session.get(f"http://{addr}/files/read", params={"path": file_path}, timeout=10)
             try:
                 return jsonify(r.json()), r.status_code
             except ValueError:
@@ -2499,7 +2517,7 @@ def batch_up_upload():
             try:
                 with open(src_path, "rb") as f:
                     files = {"file": (os.path.basename(src_path), f)}
-                    r = http_requests.post(
+                    r = _worker_session.post(
                         f"http://{addr}/files/upload",
                         data={"path": remote_scratch},
                         files=files,
@@ -2737,7 +2755,7 @@ def worker_download():
         return jsonify({"error": "addr and path are required"}), 400
     try:
         # Try /files/download first (new endpoint)
-        r = http_requests.get(f"http://{addr}/files/download", params={"path": file_path}, timeout=30, stream=True)
+        r = _worker_session.get(f"http://{addr}/files/download", params={"path": file_path}, timeout=30, stream=True)
         if r.status_code == 200:
             from flask import Response
             filename = os.path.basename(file_path)
@@ -2746,7 +2764,7 @@ def worker_download():
                 headers["Content-Type"] = r.headers["Content-Type"]
             return Response(r.iter_content(chunk_size=8192), headers=headers)
         # Fallback: use /files/read for text files (older workers)
-        r2 = http_requests.get(f"http://{addr}/files/read", params={"path": file_path}, timeout=30)
+        r2 = _worker_session.get(f"http://{addr}/files/read", params={"path": file_path}, timeout=30)
         if r2.status_code == 200:
             data = r2.json()
             content = data.get("content", "")
@@ -2797,7 +2815,7 @@ def worker_browse():
     if not addr:
         return jsonify({"error": "addr required"}), 400
     try:
-        r = http_requests.get(
+        r = _worker_session.get(
             f"http://{addr}/files/browse",
             params={"path": browse_path}, timeout=10
         )
@@ -2861,7 +2879,7 @@ def remote_upload_browser():
     try:
         files = {"file": (uploaded.filename, uploaded.stream,
                           uploaded.content_type)}
-        r = http_requests.post(
+        r = _worker_session.post(
             f"http://{addr}/files/upload",
             data={"path": target_dir},
             files=files,
@@ -2892,7 +2910,7 @@ def worker_upload():
     try:
         with open(full_local, "rb") as f:
             files = {"file": (os.path.basename(full_local), f)}
-            r = http_requests.post(
+            r = _worker_session.post(
                 f"http://{addr}/files/upload",
                 data={"path": rel_dir},
                 files=files,
@@ -2914,7 +2932,7 @@ def worker_read():
     if not addr or not file_path:
         return jsonify({"error": "addr and path required"}), 400
     try:
-        r = http_requests.get(
+        r = _worker_session.get(
             f"http://{addr}/files/read",
             params={"path": file_path}, timeout=10
         )
@@ -2939,7 +2957,7 @@ def worker_write():
     if not addr or not file_path:
         return jsonify({"error": "addr and path required"}), 400
     try:
-        r = http_requests.post(
+        r = _worker_session.post(
             f"http://{addr}/files/write",
             json={"path": file_path, "content": content},
             timeout=10,
@@ -2961,7 +2979,7 @@ def worker_delete():
     if not addr or not paths:
         return jsonify({"error": "addr and paths required"}), 400
     try:
-        r = http_requests.post(
+        r = _worker_session.post(
             f"http://{addr}/files/delete",
             json={"paths": paths},
             timeout=10,
@@ -3182,7 +3200,7 @@ def workers_health():
     for w in config.workers:
         addr = w["addr"]
         try:
-            r = http_requests.get(f"http://{addr}/status", timeout=2)
+            r = _worker_session.get(f"http://{addr}/status", timeout=2)
             results[addr] = r.status_code == 200
         except Exception:
             results[addr] = False
@@ -3213,7 +3231,7 @@ def launcher_status():
         return jsonify({"error": "addr (worker addr) is required"}), 400
     launcher_addr = _launcher_addr(addr)
     try:
-        r = http_requests.get(
+        r = _worker_session.get(
             f"http://{launcher_addr}/launcher/status",
             headers=_launcher_headers(),
             timeout=5,
@@ -3239,7 +3257,7 @@ def launcher_start_worker():
         return jsonify({"error": "addr (worker addr) is required"}), 400
     launcher_addr = _launcher_addr(addr)
     try:
-        r = http_requests.post(
+        r = _worker_session.post(
             f"http://{launcher_addr}/launcher/start-worker",
             headers=_launcher_headers(),
             timeout=15,
@@ -3265,7 +3283,7 @@ def launcher_stop_worker():
         return jsonify({"error": "addr (worker addr) is required"}), 400
     launcher_addr = _launcher_addr(addr)
     try:
-        r = http_requests.post(
+        r = _worker_session.post(
             f"http://{launcher_addr}/launcher/stop-worker",
             headers=_launcher_headers(),
             timeout=15,
@@ -3307,7 +3325,7 @@ def worker_sysinfo_proxy():
     if not addr:
         return jsonify({"error": "addr is required"}), 400
     try:
-        r = http_requests.get(f"http://{addr}/sysinfo", timeout=5)
+        r = _worker_session.get(f"http://{addr}/sysinfo", timeout=5)
         if r.status_code == 200:
             try:
                 return jsonify(r.json()), 200
@@ -3342,7 +3360,7 @@ def all_sysinfo():
     for w in config.workers:
         addr = w["addr"]
         try:
-            r = http_requests.get(f"http://{addr}/sysinfo", timeout=3)
+            r = _worker_session.get(f"http://{addr}/sysinfo", timeout=3)
             results[addr] = r.json()
         except Exception as exc:
             results[addr] = {"error": str(exc)}
@@ -3977,7 +3995,7 @@ def cicd_nodes_health():
     for w in config.workers:
         addr = w["addr"]
         try:
-            r = http_requests.get(f"http://{addr}/status", timeout=2)
+            r = _worker_session.get(f"http://{addr}/status", timeout=2)
             health[addr] = r.status_code == 200
         except Exception:
             health[addr] = False
