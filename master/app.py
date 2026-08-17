@@ -2028,52 +2028,54 @@ def batch_override():
         return jsonify({"error": "at least one target directory is required"}), 400
 
     if _is_remote_addr(addr):
-        # Source files are picked from the master's filesystem; upload each
-        # one to the worker first (into a scratch dir under the worker's temp),
-        # then ask the worker to run the override using those uploaded copies.
-        import tempfile
-        source_map = {}
-        source_errors = []
+        # Source File paths are interpreted relative to the SELECTED NODE's
+        # filesystem, same as Target/Exclude Directories -- not always the
+        # master. Two cases are supported per source path:
+        #   1. The path exists on the master's local disk: it is uploaded to
+        #      a scratch dir on the worker first, then used as the override
+        #      source (lets you push a file from master onto remote workers).
+        #   2. The path does NOT exist on master (e.g. it is actually a path
+        #      on the worker itself, as when source and target both live on
+        #      the same remote node): it is passed through unchanged and the
+        #      worker validates/uses it directly on its own filesystem.
+        remote_scratch = f"__kirobatch_override_{uuid.uuid4().hex[:8]}"
+        remote_sources = []
+        upload_errors = []
         for s in sources:
             s = s.strip()
             if not s:
                 continue
             s_norm = os.path.normpath(s)
-            if not os.path.isfile(s_norm):
-                source_errors.append(f"Source file not found: {s}")
-                continue
-            source_map[os.path.basename(s_norm)] = s_norm
-        if not source_map:
-            error_msg = "; ".join(source_errors) if source_errors else "no valid source files provided"
-            return jsonify({"error": error_msg}), 400
-
-        remote_scratch = f"__kirobatch_override_{uuid.uuid4().hex[:8]}"
-        remote_sources = []
-        upload_errors = list(source_errors)
-        for basename, local_path in source_map.items():
-            try:
-                with open(local_path, "rb") as f:
-                    files = {"file": (basename, f)}
-                    r = _worker_session.post(
-                        f"http://{addr}/files/upload",
-                        data={"path": remote_scratch},
-                        files=files,
-                        timeout=30,
-                    )
-                if r.ok:
-                    remote_sources.append(r.json().get("path", ""))
-                else:
-                    upload_errors.append(f"{basename} - upload failed ({r.status_code})")
-            except http_requests.RequestException as exc:
-                upload_errors.append(f"{basename} - {str(exc)}")
+            if os.path.isfile(s_norm):
+                # Case 1: exists on master -- stage it onto the worker.
+                basename = os.path.basename(s_norm)
+                try:
+                    with open(s_norm, "rb") as f:
+                        files = {"file": (basename, f)}
+                        r = _worker_session.post(
+                            f"http://{addr}/files/upload",
+                            data={"path": remote_scratch},
+                            files=files,
+                            timeout=30,
+                        )
+                    if r.ok:
+                        remote_sources.append(r.json().get("path", ""))
+                    else:
+                        upload_errors.append(f"{basename} - upload failed ({r.status_code})")
+                except http_requests.RequestException as exc:
+                    upload_errors.append(f"{basename} - {str(exc)}")
+            else:
+                # Case 2: not on master -- assume it is already a valid path
+                # on the worker itself; let the worker validate it.
+                remote_sources.append(s)
 
         if not remote_sources:
-            return jsonify({"error": "; ".join(upload_errors) or "failed to stage source files on worker"}), 500
+            return jsonify({"error": "; ".join(upload_errors) or "no valid source files provided"}), 400
 
         body, status = _worker_proxy_post(addr, "/files/batch-override", {
             "sources": remote_sources, "target_dirs": target_dirs, "exclude_dirs": exclude_dirs
         })
-        if isinstance(body, dict):
+        if isinstance(body, dict) and upload_errors:
             body["errors"] = upload_errors + (body.get("errors") or [])
         return jsonify(body), status
 
@@ -2501,8 +2503,13 @@ def batch_up_upload():
         return jsonify({"error": "at least one target directory is required"}), 400
 
     if _is_remote_addr(addr):
-        # Upload each source file to a scratch dir on the worker first, then
-        # ask the worker to copy those uploaded files into each target dir.
+        # Source File paths are interpreted relative to the SELECTED NODE's
+        # filesystem, same as Target Directories. Two cases per source path:
+        #   1. Exists on master's local disk: stage it onto the worker via
+        #      upload (lets you push a file from master onto a worker).
+        #   2. Does NOT exist on master (e.g. it is actually a path on the
+        #      worker itself, when source and target both live on the same
+        #      remote node): pass it through unchanged, worker validates it.
         remote_scratch = f"__kirobatch_upload_{uuid.uuid4().hex[:8]}"
         remote_sources = []
         errors = []
@@ -2511,32 +2518,32 @@ def batch_up_upload():
             if not src:
                 continue
             src_path = os.path.normpath(src)
-            if not os.path.isfile(src_path):
-                errors.append(f"Source file not found: {src}")
-                continue
-            try:
-                with open(src_path, "rb") as f:
-                    files = {"file": (os.path.basename(src_path), f)}
-                    r = _worker_session.post(
-                        f"http://{addr}/files/upload",
-                        data={"path": remote_scratch},
-                        files=files,
-                        timeout=30,
-                    )
-                if r.ok:
-                    remote_sources.append(r.json().get("path", ""))
-                else:
-                    errors.append(f"{os.path.basename(src_path)} - upload failed ({r.status_code})")
-            except http_requests.RequestException as exc:
-                errors.append(f"{os.path.basename(src_path)} - {str(exc)}")
+            if os.path.isfile(src_path):
+                try:
+                    with open(src_path, "rb") as f:
+                        files = {"file": (os.path.basename(src_path), f)}
+                        r = _worker_session.post(
+                            f"http://{addr}/files/upload",
+                            data={"path": remote_scratch},
+                            files=files,
+                            timeout=30,
+                        )
+                    if r.ok:
+                        remote_sources.append(r.json().get("path", ""))
+                    else:
+                        errors.append(f"{os.path.basename(src_path)} - upload failed ({r.status_code})")
+                except http_requests.RequestException as exc:
+                    errors.append(f"{os.path.basename(src_path)} - {str(exc)}")
+            else:
+                remote_sources.append(src)
 
         if not remote_sources:
-            return jsonify({"error": "; ".join(errors) or "failed to stage source files on worker"}), 500
+            return jsonify({"error": "; ".join(errors) or "no valid source files provided"}), 400
 
         body, status = _worker_proxy_post(addr, "/files/batch-up-upload", {
             "src_files": remote_sources, "target_dirs": target_dirs
         })
-        if isinstance(body, dict):
+        if isinstance(body, dict) and errors:
             body["errors"] = errors + (body.get("errors") or [])
         return jsonify(body), status
 
