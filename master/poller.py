@@ -26,6 +26,15 @@ class ProgressPoller:
         Optional :class:`ProgressStore` used to persist every snapshot.
     request_timeout:
         HTTP timeout (seconds) for each worker ``GET /status`` call.
+    max_consecutive_failures:
+        Number of consecutive poll failures (timeout/connection error) that
+        must occur before a worker's last-known status is actually replaced
+        with "error". This prevents a single slow/transient poll (e.g. a
+        real LAN worker whose CPU is saturated running a heavy simulation)
+        from being misread as the simulation having stopped -- the worker
+        keeps reporting its LAST KNOWN status (e.g. "running") until enough
+        consecutive failures accumulate to conclude it is genuinely
+        unreachable.
     """
 
     def __init__(
@@ -34,11 +43,13 @@ class ProgressPoller:
         master_status_fn: Optional[Callable[[], dict]] = None,
         progress_store: Optional[ProgressStore] = None,
         request_timeout: float = 5.0,
+        max_consecutive_failures: int = 3,
     ):
         self._interval = interval
         self._master_status_fn = master_status_fn
         self._progress_store = progress_store
         self._request_timeout = request_timeout
+        self._max_consecutive_failures = max_consecutive_failures
 
         self._snapshot: dict = {}
         self._snapshot_lock = threading.Lock()
@@ -48,6 +59,11 @@ class ProgressPoller:
         self._thread: Optional[threading.Thread] = None
         self._nodes: list[str] = []
         self._nodes_lock = threading.Lock()
+
+        # Per-worker: last successfully-fetched status dict, and count of
+        # consecutive poll failures since that last success.
+        self._last_known_status: dict[str, dict] = {}
+        self._consecutive_failures: dict[str, int] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -95,9 +111,11 @@ class ProgressPoller:
             return dict(self._snapshot)
 
     def clear_snapshot(self) -> None:
-        """Clear the cached progress snapshot."""
+        """Clear the cached progress snapshot and per-node failure tracking."""
         with self._snapshot_lock:
             self._snapshot = {}
+        self._last_known_status.clear()
+        self._consecutive_failures.clear()
 
     # ------------------------------------------------------------------
     # Internal
@@ -153,13 +171,38 @@ class ProgressPoller:
         }
 
     def _fetch_worker_status(self, addr: str) -> dict:
-        """GET /status from a single worker, returning error on failure."""
+        """GET /status from a single worker.
+
+        On success, remembers the status and resets the failure counter.
+        On failure, does NOT immediately report "error" -- a slow/loaded
+        worker (e.g. one whose CPU is saturated running a heavy simulation)
+        can transiently miss the request_timeout window without actually
+        having stopped. The worker's last known status is returned as-is
+        until max_consecutive_failures is reached, at which point it is
+        treated as genuinely unreachable and reported as "error".
+        """
         try:
             resp = requests.get(
                 f"http://{addr}/status",
                 timeout=self._request_timeout,
             )
             resp.raise_for_status()
-            return resp.json()
+            result = resp.json()
+            self._last_known_status[addr] = result
+            self._consecutive_failures[addr] = 0
+            return result
         except Exception as exc:
+            failures = self._consecutive_failures.get(addr, 0) + 1
+            self._consecutive_failures[addr] = failures
+            last_known = self._last_known_status.get(addr)
+            max_fail = self._max_consecutive_failures
+            if last_known is not None and failures < max_fail:
+                # Return the last known status unchanged (a transient poll
+                # miss must not overwrite a genuinely running simulation),
+                # but surface the poll trouble for visibility/debugging.
+                stale = dict(last_known)
+                stale["_poll_warning"] = (
+                    f"Poll failed ({failures}/{max_fail}): {exc}"
+                )
+                return stale
             return {"status": "error", "error": str(exc)}
