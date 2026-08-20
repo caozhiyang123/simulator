@@ -5,6 +5,7 @@ local simulator status, assembling a unified progress snapshot.
 """
 
 import threading
+from collections import deque
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
@@ -35,6 +36,16 @@ class ProgressPoller:
         keeps reporting its LAST KNOWN status (e.g. "running") until enough
         consecutive failures accumulate to conclude it is genuinely
         unreachable.
+    session:
+        Optional :class:`requests.Session` to use for worker ``/status``
+        calls. Pass the same session used elsewhere for master<->worker
+        traffic (e.g. one with ``trust_env=False``) so LAN workers are not
+        routed through a misconfigured system/environment HTTP(S) proxy,
+        which would otherwise surface as spurious poll failures -- and,
+        after ``max_consecutive_failures`` accumulate, a genuinely running
+        worker being misreported as stopped. Defaults to a plain
+        ``requests`` module-level session (trusts environment proxy) if
+        not provided, for backward compatibility.
     """
 
     def __init__(
@@ -44,12 +55,14 @@ class ProgressPoller:
         progress_store: Optional[ProgressStore] = None,
         request_timeout: float = 5.0,
         max_consecutive_failures: int = 3,
+        session: Optional[requests.Session] = None,
     ):
         self._interval = interval
         self._master_status_fn = master_status_fn
         self._progress_store = progress_store
         self._request_timeout = request_timeout
         self._max_consecutive_failures = max_consecutive_failures
+        self._session = session if session is not None else requests
 
         self._snapshot: dict = {}
         self._snapshot_lock = threading.Lock()
@@ -64,6 +77,15 @@ class ProgressPoller:
         # consecutive poll failures since that last success.
         self._last_known_status: dict[str, dict] = {}
         self._consecutive_failures: dict[str, int] = {}
+
+        # Rolling log of every worker /status request + response/error, so
+        # the master's Operation Log can surface exactly what each poll
+        # cycle sent/received (useful for diagnosing running->stopped
+        # misreports without needing to reproduce the issue with extra
+        # instrumentation each time).
+        self._poll_log: deque = deque(maxlen=500)
+        self._poll_log_lock = threading.Lock()
+        self._poll_log_next_id = 1
 
     # ------------------------------------------------------------------
     # Public API
@@ -116,6 +138,34 @@ class ProgressPoller:
             self._snapshot = {}
         self._last_known_status.clear()
         self._consecutive_failures.clear()
+
+    def get_poll_log(self, since: int = 0) -> dict:
+        """Return poll-request log entries with id > since.
+
+        Each entry records one worker ``GET /status`` attempt: address,
+        the URL requested, the outcome ("ok"/"stale"/"error"), the raw
+        response payload (or error text), and a timestamp. Used to expose
+        exactly what Master sent/received to the Operation Log UI, so a
+        misreported running->stopped transition can be diagnosed from the
+        actual polling traffic rather than guesswork.
+        """
+        with self._poll_log_lock:
+            entries = [e for e in self._poll_log if e["id"] > since]
+            total = self._poll_log_next_id - 1
+        return {"entries": entries, "total": total}
+
+    def _record_poll(self, addr: str, url: str, outcome: str, detail) -> None:
+        with self._poll_log_lock:
+            entry = {
+                "id": self._poll_log_next_id,
+                "time": datetime.now(timezone.utc).isoformat(),
+                "addr": addr,
+                "url": url,
+                "outcome": outcome,
+                "detail": detail,
+            }
+            self._poll_log_next_id += 1
+            self._poll_log.append(entry)
 
     # ------------------------------------------------------------------
     # Internal
@@ -181,15 +231,14 @@ class ProgressPoller:
         until max_consecutive_failures is reached, at which point it is
         treated as genuinely unreachable and reported as "error".
         """
+        url = f"http://{addr}/status"
         try:
-            resp = requests.get(
-                f"http://{addr}/status",
-                timeout=self._request_timeout,
-            )
+            resp = self._session.get(url, timeout=self._request_timeout)
             resp.raise_for_status()
             result = resp.json()
             self._last_known_status[addr] = result
             self._consecutive_failures[addr] = 0
+            self._record_poll(addr, url, "ok", result)
             return result
         except Exception as exc:
             failures = self._consecutive_failures.get(addr, 0) + 1
@@ -204,5 +253,10 @@ class ProgressPoller:
                 stale["_poll_warning"] = (
                     f"Poll failed ({failures}/{max_fail}): {exc}"
                 )
+                self._record_poll(
+                    addr, url, "stale",
+                    f"{exc} (using last known status, {failures}/{max_fail})",
+                )
                 return stale
+            self._record_poll(addr, url, "error", str(exc))
             return {"status": "error", "error": str(exc)}

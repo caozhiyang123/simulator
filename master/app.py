@@ -92,6 +92,7 @@ poller = ProgressPoller(
     interval=config.get_poll_interval(),
     master_status_fn=sim_runner.get_status,
     progress_store=progress_store,
+    session=_worker_session,
 )
 
 _dynamic_start_modules_lock = threading.Lock()
@@ -1088,6 +1089,20 @@ def logs():
     """
     since = request.args.get("since", 0, type=int)
     return jsonify(sim_runner.get_logs(since))
+
+
+@app.route("/poller/log", methods=["GET"])
+def poller_log():
+    """获取 Master 轮询各 Worker /status 的请求/响应记录。
+
+    用于在 Operation Log 中展示 Master 实际发出的轮询请求与收到的
+    原始响应（或错误），便于排查 running->stopped 误判问题是 Worker
+    返回了非 running 状态，还是网络请求本身失败/超时。
+
+    查询参数: ?since=0 (从第几条记录开始，用于增量获取)
+    """
+    since = request.args.get("since", 0, type=int)
+    return jsonify(poller.get_poll_log(since))
 
 
 @app.route("/sync", methods=["POST"])

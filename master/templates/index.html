@@ -1507,6 +1507,43 @@ function log(msg) {
 }
 
 // ---------------------------------------------------------------------------
+// Poller request/response log (Master -> Worker /status polling traffic)
+// ---------------------------------------------------------------------------
+let _pollerLogSince = 0;
+let _pollerLogTimer = null;
+
+function formatPollerLogEntry(e) {
+  var detail = e.detail;
+  if (detail && typeof detail === 'object') {
+    detail = JSON.stringify(detail);
+  }
+  var tag = e.outcome === 'ok' ? 'poll' : (e.outcome === 'stale' ? 'poll-stale' : 'poll-error');
+  return '[' + tag + '] ' + e.addr + ' ' + e.url + ' -> ' + detail;
+}
+
+async function fetchPollerLog() {
+  try {
+    var r = await fetch('/poller/log?since=' + _pollerLogSince);
+    if (!r.ok) return;
+    var data = await r.json();
+    var entries = data.entries || [];
+    for (var i = 0; i < entries.length; i++) {
+      log(formatPollerLogEntry(entries[i]));
+      _pollerLogSince = entries[i].id;
+    }
+  } catch (e) {
+    // ignore transient fetch errors, will retry next tick
+  }
+}
+
+// Poll for master<->worker /status request/response traffic every 2s so the
+// Operation Log shows exactly what each worker returned (or the raw error),
+// making it possible to tell whether a running->stopped misreport comes from
+// the worker itself or from a failed/timed-out request.
+_pollerLogTimer = setInterval(fetchPollerLog, 2000);
+fetchPollerLog();
+
+// ---------------------------------------------------------------------------
 // Alert helper (reusable)
 // ---------------------------------------------------------------------------
 function showAlert(message) {
