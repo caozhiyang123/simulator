@@ -46,6 +46,18 @@ class ProgressPoller:
         worker being misreported as stopped. Defaults to a plain
         ``requests`` module-level session (trusts environment proxy) if
         not provided, for backward compatibility.
+    enable_poll_log:
+        Whether to record every worker ``/status`` request/response into
+        the in-memory poll log surfaced via :meth:`get_poll_log` (and, on
+        the Master side, the Operation Log UI). This log is unbounded in
+        *lifetime* even though each individual deque is capped at 500
+        entries -- during very long-running simulations (hundreds of
+        millions of spins, many hours of 2s-interval polling) keeping
+        this feature always-on adds continuous allocation/GC pressure
+        that has been observed to eventually crash the Master process.
+        Defaults to ``False`` (disabled) so the memory-sensitive path is
+        opt-in; enable via ``"enable_poller_log": true`` in config.json
+        only while actively diagnosing a polling issue.
     """
 
     def __init__(
@@ -56,6 +68,7 @@ class ProgressPoller:
         request_timeout: float = 5.0,
         max_consecutive_failures: int = 3,
         session: Optional[requests.Session] = None,
+        enable_poll_log: bool = False,
     ):
         self._interval = interval
         self._master_status_fn = master_status_fn
@@ -63,6 +76,7 @@ class ProgressPoller:
         self._request_timeout = request_timeout
         self._max_consecutive_failures = max_consecutive_failures
         self._session = session if session is not None else requests
+        self._enable_poll_log = enable_poll_log
 
         self._snapshot: dict = {}
         self._snapshot_lock = threading.Lock()
@@ -148,13 +162,35 @@ class ProgressPoller:
         exactly what Master sent/received to the Operation Log UI, so a
         misreported running->stopped transition can be diagnosed from the
         actual polling traffic rather than guesswork.
+
+        Returns an empty result (with ``"enabled": False``) when the poll
+        log is disabled via config, so callers/UI can distinguish "nothing
+        polled yet" from "logging turned off".
         """
+        if not self._enable_poll_log:
+            return {"entries": [], "total": 0, "enabled": False}
         with self._poll_log_lock:
             entries = [e for e in self._poll_log if e["id"] > since]
             total = self._poll_log_next_id - 1
-        return {"entries": entries, "total": total}
+        return {"entries": entries, "total": total, "enabled": True}
+
+    def set_poll_log_enabled(self, enabled: bool) -> None:
+        """Enable/disable poll-request logging at runtime.
+
+        Disabling also drops any buffered entries immediately to free
+        memory right away rather than waiting for them to age out.
+        """
+        self._enable_poll_log = enabled
+        if not enabled:
+            with self._poll_log_lock:
+                self._poll_log.clear()
 
     def _record_poll(self, addr: str, url: str, outcome: str, detail) -> None:
+        # Skip allocating/storing anything when disabled -- this is the
+        # memory-sensitive path during very long simulations, so avoid any
+        # unnecessary work when the feature is off.
+        if not self._enable_poll_log:
+            return
         with self._poll_log_lock:
             entry = {
                 "id": self._poll_log_next_id,

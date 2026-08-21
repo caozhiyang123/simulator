@@ -1511,6 +1511,7 @@ function log(msg) {
 // ---------------------------------------------------------------------------
 let _pollerLogSince = 0;
 let _pollerLogTimer = null;
+let _pollerLogDisabledNoticeShown = false;
 
 function formatPollerLogEntry(e) {
   var detail = e.detail;
@@ -1526,6 +1527,20 @@ async function fetchPollerLog() {
     var r = await fetch('/poller/log?since=' + _pollerLogSince);
     if (!r.ok) return;
     var data = await r.json();
+    if (data.enabled === false) {
+      // Feature disabled via config.json ("enable_poller_log": false,
+      // the default) to avoid unbounded memory growth during very long
+      // simulations. Stop polling this endpoint entirely and note it once.
+      if (!_pollerLogDisabledNoticeShown) {
+        _pollerLogDisabledNoticeShown = true;
+        log('[poll-log] Poller request/response logging is disabled (set "enable_poller_log": true in config.json to enable)');
+      }
+      if (_pollerLogTimer) {
+        clearInterval(_pollerLogTimer);
+        _pollerLogTimer = null;
+      }
+      return;
+    }
     var entries = data.entries || [];
     for (var i = 0; i < entries.length; i++) {
       log(formatPollerLogEntry(entries[i]));
@@ -1539,7 +1554,11 @@ async function fetchPollerLog() {
 // Poll for master<->worker /status request/response traffic every 2s so the
 // Operation Log shows exactly what each worker returned (or the raw error),
 // making it possible to tell whether a running->stopped misreport comes from
-// the worker itself or from a failed/timed-out request.
+// the worker itself or from a failed/timed-out request. Disabled by default
+// via config.json ("enable_poller_log") since keeping this on for the
+// entire duration of a very long simulation can grow memory enough to
+// crash Master; the server-side check above stops this loop automatically
+// when disabled.
 _pollerLogTimer = setInterval(fetchPollerLog, 2000);
 fetchPollerLog();
 

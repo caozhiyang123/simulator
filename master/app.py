@@ -93,6 +93,7 @@ poller = ProgressPoller(
     master_status_fn=sim_runner.get_status,
     progress_store=progress_store,
     session=_worker_session,
+    enable_poll_log=config.enable_poller_log,
 )
 
 _dynamic_start_modules_lock = threading.Lock()

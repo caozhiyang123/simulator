@@ -34,6 +34,7 @@ class ClusterConfig:
         self._progress_save_dir: str = "./progress_data"
         self._simulator_dir: str = ""
         self._production_dir: str = ""
+        self._enable_poller_log: bool = False
 
         if os.path.exists(config_path):
             self._load(config_path)
@@ -68,6 +69,7 @@ class ClusterConfig:
         self._progress_save_dir = data.get("progress_save_dir", "./progress_data")
         self._simulator_dir = data.get("simulator_dir", "")
         self._production_dir = data.get("production_dir", "")
+        self._enable_poller_log = data.get("enable_poller_log", False)
 
     def _save(self):
         """Persist current config back to config.json, preserving extra keys."""
@@ -185,3 +187,15 @@ class ClusterConfig:
     def workers(self) -> list[dict]:
         """Return raw worker list (includes shared_dir, credentials)."""
         return list(self._workers)
+
+    @property
+    def enable_poller_log(self) -> bool:
+        """Whether Master should cache the 2s worker-poll request/response
+        log for display in the Operation Log.
+
+        Defaults to False. During very long simulations (hundreds of
+        millions of spins) leaving this on for hours has been observed to
+        grow memory usage enough to crash Master; keep it off unless
+        actively diagnosing a polling/status issue.
+        """
+        return self._enable_poller_log
