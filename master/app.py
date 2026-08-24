@@ -238,6 +238,17 @@ _last_saved_status = "idle"
 _has_been_running = False
 _saved_model_keys: set = set()
 
+# Minimum seconds between incremental history saves while a simulation is
+# running. Previously history_store.save_current() was only invoked when a
+# *new* model key first appeared, so an already-running model's progress
+# (e.g. spin_count climbing from 100,000 to 400,000) was never re-saved --
+# History would show a stale snapshot from whenever that model was first
+# seen, not the latest data shown live in Status & Results. Throttling by
+# time (rather than saving on every /status poll) keeps History reasonably
+# fresh without adding disk I/O on every 2s poll tick over a many-hour run.
+HISTORY_SAVE_INTERVAL = 10  # seconds
+_last_history_save_time = 0.0
+
 
 def start_worker_with_retry(
     worker_addr: str,
@@ -731,26 +742,44 @@ def status():
         "model_results": aggregated_models,
     }
 
-    # Persist results incrementally: save when new models complete
+    # Persist results incrementally so History reflects the latest progress,
+    # not just whatever was on disk the first time each model appeared.
     global _last_saved_status, _has_been_running, _saved_model_keys
+    global _last_history_save_time
     if overall_status == "running":
         _has_been_running = True
 
-    # Save whenever new models appear (deduplicated by model key)
     if aggregated_models and _has_been_running:
         current_keys = set(aggregated_models.keys())
         new_keys = current_keys - _saved_model_keys
-        if new_keys:
+        now = time.time()
+        due_for_refresh = (
+            now - _last_history_save_time >= HISTORY_SAVE_INTERVAL
+        )
+        # Save when a new model first appears (so it's captured right
+        # away) OR periodically while running (so spin_count/RTP progress
+        # on already-tracked models is kept up to date on disk).
+        if new_keys or due_for_refresh:
             try:
                 history_store.save_current(aggregated_models)
                 _saved_model_keys = current_keys.copy()
+                _last_history_save_time = now
             except Exception:
                 pass
 
-    # Reset tracking when simulation ends (no save needed, already saved incrementally)
+    # On transition to stopped/completed/idle: write one final snapshot
+    # with the latest aggregated_models (the run may have stopped between
+    # two periodic saves, e.g. user hit Stop right after a save), then
+    # reset tracking for the next run.
     if overall_status in ("completed", "stopped", "idle") and _last_saved_status == "running":
+        if aggregated_models:
+            try:
+                history_store.save_current(aggregated_models)
+            except Exception:
+                pass
         _has_been_running = False
         _saved_model_keys = set()
+        _last_history_save_time = 0.0
         history_store.finalize_current()
 
     _last_saved_status = overall_status
