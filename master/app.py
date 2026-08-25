@@ -2935,6 +2935,40 @@ def _sanitize_node_folder_name(addr: str) -> str:
     return (addr or "master").replace(":", "_").replace("\\", "_").replace("/", "_")
 
 
+def _filter_target_dirs_for_files(target_dirs, files):
+    """Return only the target_dirs that are an ancestor of at least one file.
+
+    In multi-node batch download, `target_dirs` is a COMBINED list covering
+    ALL selected nodes (e.g. Master's "E:/python/.../ShowBingoSim" AND a
+    Linux worker's "/home/ubuntu/temp/sim.../temp"). Forwarding the whole
+    combined list to a single node is wrong: that node's own
+    /files/batch-dl-download endpoint picks target_dirs[0] as its zip
+    staging base directory, and if some OTHER node's path happens to be
+    first, it doesn't exist on this node at all -- causing
+    "Target directory not found" even though this node's own files were
+    found successfully during Check.
+
+    Pure string comparison (no os.path) is used deliberately: `files` are
+    already-found paths using forward slashes, but they may describe a
+    remote Linux filesystem while master itself runs on Windows, so
+    platform-dependent path functions (os.path.normpath/os.sep) would give
+    wrong answers for the other platform's paths.
+    """
+    if not files:
+        return []
+    normalized_files = [f.replace("\\", "/").lower() for f in files]
+    relevant = []
+    for td in target_dirs:
+        td_norm = td.strip().replace("\\", "/").rstrip("/").lower()
+        if not td_norm:
+            continue
+        for f in normalized_files:
+            if f == td_norm or f.startswith(td_norm + "/"):
+                relevant.append(td)
+                break
+    return relevant
+
+
 def _batch_dl_add_node_to_zip(combined_zf, addr, files, target_dirs, errors):
     """Add one node's selected files into an already-open combined zip.
 
@@ -2953,9 +2987,18 @@ def _batch_dl_add_node_to_zip(combined_zf, addr, files, target_dirs, errors):
 
     node_folder = _sanitize_node_folder_name(addr)
 
+    # Only forward the target_dirs that actually apply to THIS node's
+    # files -- the caller's target_dirs is a combined list across all
+    # selected nodes, and forwarding the wrong node's dirs breaks the
+    # zip-staging base-directory lookup on both master and worker.
+    node_target_dirs = _filter_target_dirs_for_files(target_dirs, files)
+    if not node_target_dirs:
+        errors.append(f"{addr}: none of the provided target directories match this node's found files")
+        return
+
     if _is_remote_addr(addr):
         r, status = _worker_proxy_post(addr, "/files/batch-dl-download", {
-            "files": files, "target_dirs": target_dirs
+            "files": files, "target_dirs": node_target_dirs
         }, timeout=60, stream=True)
         if status != 200:
             try:
@@ -2993,7 +3036,7 @@ def _batch_dl_add_node_to_zip(combined_zf, addr, files, target_dirs, errors):
             continue
 
         rel_path = None
-        for td in target_dirs:
+        for td in node_target_dirs:
             td_norm = os.path.normpath(td.strip())
             if file_path_norm.lower().startswith(td_norm.lower() + os.sep):
                 rel_path = os.path.relpath(file_path_norm, td_norm)
