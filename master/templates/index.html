@@ -496,6 +496,9 @@
 
     <!-- BATCH DELETE FILE PAGE -->
     <div class="page-panel" id="pageBatchdeletefile">
+      <div class="batch-quick-access" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;"></div>
+      <div style="display:flex;gap:12px;align-items:stretch;">
+      <div style="flex:1;min-width:0;">
       <div class="card full-width">
         <h2>🗑️ Batch Delete File</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Search and delete files matching a wildcard pattern across multiple directories recursively.</p>
@@ -602,10 +605,16 @@
           </div>
         </details>
       </div>
+      </div><!-- end flex left content -->
+      <div class="batch-file-sync-panel"></div>
+      </div><!-- end flex row -->
     </div><!-- end pageBatchdeletefile -->
 
     <!-- BATCH OVERRIDE FILE PAGE -->
     <div class="page-panel" id="pageBatchoverride">
+      <div class="batch-quick-access" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;"></div>
+      <div style="display:flex;gap:12px;align-items:stretch;">
+      <div style="flex:1;min-width:0;">
       <div class="card full-width">
         <h2>📦 Batch Override File</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Replace a file across multiple subdirectories by matching the filename recursively.</p>
@@ -717,10 +726,16 @@
           </div>
         </details>
       </div>
+      </div><!-- end flex left content -->
+      <div class="batch-file-sync-panel"></div>
+      </div><!-- end flex row -->
     </div><!-- end pageBatchoverride -->
 
     <!-- BATCH EDIT FILE PAGE -->
     <div class="page-panel" id="pageBatchedit">
+      <div class="batch-quick-access" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;"></div>
+      <div style="display:flex;gap:12px;align-items:stretch;">
+      <div style="flex:1;min-width:0;">
       <div class="card full-width">
         <h2>✏️ Batch Edit File</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Batch append/replace key=value entries in .properties files across multiple directories. View Files supports all file types.</p>
@@ -781,10 +796,16 @@
           </div>
         </details>
       </div>
+      </div><!-- end flex left content -->
+      <div class="batch-file-sync-panel"></div>
+      </div><!-- end flex row -->
     </div><!-- end pageBatchedit -->
 
     <!-- BATCH UPLOAD FILE PAGE -->
     <div class="page-panel" id="pageBatchupload">
+      <div class="batch-quick-access" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;"></div>
+      <div style="display:flex;gap:12px;align-items:stretch;">
+      <div style="flex:1;min-width:0;">
       <div class="card full-width">
         <h2>⬆️ Batch Upload File</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Upload source files to matching directories found via glob pattern search.</p>
@@ -915,10 +936,16 @@
           </div>
         </details>
       </div>
+      </div><!-- end flex left content -->
+      <div class="batch-file-sync-panel"></div>
+      </div><!-- end flex row -->
     </div><!-- end pageBatchupload -->
 
     <!-- BATCH DOWNLOAD FILE PAGE -->
     <div class="page-panel" id="pageBatchdownload">
+      <div class="batch-quick-access" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;"></div>
+      <div style="display:flex;gap:12px;align-items:stretch;">
+      <div style="flex:1;min-width:0;">
       <div class="card full-width">
         <h2>⬇️ Batch Download File</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Search files by name (supports wildcard *) across directories, then batch download as zip or view contents.</p>
@@ -1046,6 +1073,9 @@
           </div>
         </details>
       </div>
+      </div><!-- end flex left content -->
+      <div class="batch-file-sync-panel"></div>
+      </div><!-- end flex row -->
     </div><!-- end pageBatchdownload -->
 
     <!-- FORMAT TIME PAGE -->
@@ -3998,6 +4028,8 @@ function switchPage(page) {
   else if (page === 'compare' || page === 'formatjson' || page === 'batchdeletefile' || page === 'batchoverride' || page === 'batchedit' || page === 'batchupload' || page === 'batchdownload' || page === 'formattime' || page === 'cardgen' || page === 'patterncomb' || page === 'patterncalc' || page === 'repeatnumpos') {
     document.getElementById('navPlugin').classList.add('active');
   }
+  // Move File Sync panel into batch pages (reuses existing unique-ID DOM)
+  _relocateFileSyncForPage(page);
   if (page === 'history') histLoadAll();
   if (page === 'workers') pgRenderWorkers();
   if (page === 'config') pgLoadConfig();
@@ -4008,6 +4040,39 @@ function switchPage(page) {
   if (page === 'patterncalc') pcalcLoadMachines();
   if (page === 'play') playLoadMachines();
   if (page === 'iam') iamInit();
+}
+
+var _batchPagesWithFileSync = ['batchdeletefile', 'batchoverride', 'batchedit', 'batchupload', 'batchdownload'];
+var _fileSyncOriginalParent = null;
+var _fileSyncOriginalNextSibling = null;
+
+function _relocateFileSyncForPage(page) {
+  var fileSyncEl = document.getElementById('sectionFileSync');
+  if (!fileSyncEl) return;
+
+  // Remember original position on first call
+  if (!_fileSyncOriginalParent) {
+    _fileSyncOriginalParent = fileSyncEl.parentNode;
+    _fileSyncOriginalNextSibling = fileSyncEl.nextSibling;
+  }
+
+  if (_batchPagesWithFileSync.indexOf(page) >= 0) {
+    // Move File Sync into the active batch page's side panel
+    var pageId = 'page' + page.charAt(0).toUpperCase() + page.slice(1);
+    var panel = document.querySelector('#' + pageId + ' .batch-file-sync-panel');
+    if (panel && fileSyncEl.parentNode !== panel) {
+      panel.appendChild(fileSyncEl);
+    }
+  } else {
+    // Return File Sync to its original Home position
+    if (fileSyncEl.parentNode !== _fileSyncOriginalParent) {
+      if (_fileSyncOriginalNextSibling) {
+        _fileSyncOriginalParent.insertBefore(fileSyncEl, _fileSyncOriginalNextSibling);
+      } else {
+        _fileSyncOriginalParent.appendChild(fileSyncEl);
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -4851,6 +4916,10 @@ async function loadQuickAccessToolbar() {
     }
   });
   container.innerHTML = html || '<span style="color:#888;font-size:13px;">No valid quick access items.</span>';
+  // Also render into batch-page quick access bars
+  document.querySelectorAll('.batch-quick-access').forEach(function(el) {
+    el.innerHTML = html;
+  });
 }
 
 async function loadFooterLinks() {
