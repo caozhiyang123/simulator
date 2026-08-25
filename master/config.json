@@ -58,7 +58,8 @@
     "Batch Override File",
     "Batch Edit File",
     "Batch Upload File",
-    "Batch Download File"
+    "Batch Download File",
+    "Statistic Analysis"
   ],
   "statistic_analysis": {
     "bingo": [

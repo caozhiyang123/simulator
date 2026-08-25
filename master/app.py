@@ -3339,17 +3339,28 @@ def _parse_last_block(content: str) -> dict:
     in_pattern_count = False
     for line in last_block.splitlines():
         stripped = line.strip()
-        if re.match(r"^pattern\s+count\s*$", stripped):
+        if re.match(r"^pattern\s+count", stripped, re.IGNORECASE):
             in_pattern_count = True
             continue
         if in_pattern_count:
-            if re.match(r"^pattern\s+hit\s*rate", stripped) or re.match(r"^time:", stripped):
+            if re.match(r"^pattern\s+hit", stripped, re.IGNORECASE) or re.match(r"^time:", stripped):
                 in_pattern_count = False
                 continue
-            # Parse: "1line,      51300626," or "+,      13387580,"
+            # Format 1 (Bingo): each line is "name,      count,"
             m_pc = re.match(r"^(.+?),\s+([\d.]+),\s*$", stripped)
             if m_pc:
                 pattern_counts.append((m_pc.group(1).strip(), m_pc.group(2).strip()))
+                continue
+            # Format 2 (Slot): all on one line, semicolon-separated
+            # "3COW:114912.0000000;5DONKEY:2582.0000000;..."
+            if ":" in stripped and ";" in stripped:
+                for part in stripped.split(";"):
+                    part = part.strip()
+                    if not part:
+                        continue
+                    m_slot = re.match(r"^(.+?):([\d.]+)$", part)
+                    if m_slot:
+                        pattern_counts.append((m_slot.group(1).strip(), m_slot.group(2).strip()))
 
     if pattern_counts:
         result["_pattern_count"] = pattern_counts

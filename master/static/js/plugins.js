@@ -1995,7 +1995,7 @@ async function doSaMerge() {
     });
     html += '</table>';
 
-    // Pattern count table (bingo only, when configured)
+    // Pattern count table (when configured via pattern_count: true)
     if (includePatternCount && group.pattern_count && group.pattern_count.length > 0) {
       html += '<div style="margin-top:8px;margin-bottom:8px;">';
       html += '<div style="font-weight:600;font-size:12px;margin-bottom:4px;">pattern   count</div>';

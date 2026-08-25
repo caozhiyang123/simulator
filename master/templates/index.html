@@ -1231,6 +1231,9 @@
 
     <!-- STATISTIC ANALYSIS PAGE -->
     <div class="page-panel" id="pageStatisticanalysis">
+      <div class="batch-quick-access" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;"></div>
+      <div style="display:flex;gap:12px;align-items:stretch;">
+      <div style="flex:1;min-width:0;">
       <div class="card card-muted full-width">
         <h2>📊 Bingo Machine Statistic Analysis (multi-node)</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Merge simulator result statistics from multiple nodes. Files are grouped by SimC folder + base filename (ignoring timestamp), and numeric fields are summed across nodes.</p>
@@ -1276,6 +1279,9 @@
         </div>
         <div id="saResult" style="margin-top:16px;font-size:12px;"></div>
       </div>
+      </div><!-- end flex left content -->
+      <div class="batch-file-sync-panel"></div>
+      </div><!-- end flex row -->
     </div><!-- end pageStatisticanalysis -->
 
     <!-- CICD PAGE -->
@@ -4093,7 +4099,7 @@ function switchPage(page) {
   if (page === 'iam') iamInit();
 }
 
-var _batchPagesWithFileSync = ['batchdeletefile', 'batchoverride', 'batchedit', 'batchupload', 'batchdownload'];
+var _batchPagesWithFileSync = ['batchdeletefile', 'batchoverride', 'batchedit', 'batchupload', 'batchdownload', 'statisticanalysis'];
 var _fileSyncOriginalParent = null;
 var _fileSyncOriginalNextSibling = null;
 
