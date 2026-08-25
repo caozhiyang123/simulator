@@ -213,8 +213,10 @@ def read_file():
     if not os.path.isfile(full):
         return jsonify({"error": "File not found"}), 404
     try:
+        # full=1 param skips the 100KB preview limit (used by statistic analysis)
+        limit = None if request.args.get("full") == "1" else 100000
         with open(full, "r", encoding="utf-8") as f:
-            content = f.read(100000)  # limit to 100KB
+            content = f.read() if limit is None else f.read(limit)
         return jsonify({"path": file_path, "content": content, "size": os.path.getsize(full)})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500

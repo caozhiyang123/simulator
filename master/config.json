@@ -65,7 +65,7 @@
       "QUANTITY",
       "SPIN COUNT",
       "EB ROUNDS",
-      "TOTAL WIN ROUNDS",
+      "TOTAL WIN COUNT",
       "TOTAL EB WON",
       "BASE WON",
       "TOTAL WON",
@@ -76,10 +76,13 @@
       "FREE EB COUNT"
     ],
     "pattern_count": true,
+    "no_sum": [
+      "QUANTITY"
+    ],
     "slot": [
       "QUANTITY",
       "SPIN COUNT",
-      "TOTAL WIN ROUNDS",
+      "TOTAL WIN COUNT",
       "BASE WON",
       "TOTAL WON",
       "BASE SPENT",

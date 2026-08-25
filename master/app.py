@@ -3296,7 +3296,9 @@ def _parse_last_block(content: str) -> dict:
     """Parse the LAST QUANTITY block from a simulator result .txt file.
 
     The file may contain multiple blocks (one per checkpoint). Each block
-    starts with a line like "QUANTITY: 20". We want only the last block's
+    starts with "QUANTITY:" (possibly preceded by other text on the same
+    line if the prior block's last value had no trailing newline — a known
+    quirk of some simulator output). We want only the last block's
     key-value data (the final accumulated totals).
 
     Returns: dict with:
@@ -3304,13 +3306,15 @@ def _parse_last_block(content: str) -> dict:
       - "_pattern_count" -> list of (pattern_name, count_value) tuples
     """
     import re
-    # Split into blocks starting at each "QUANTITY:" line
-    blocks = re.split(r"(?=^QUANTITY:)", content, flags=re.MULTILINE)
-    blocks = [b for b in blocks if b.strip()]
-    if not blocks:
+
+    # Find ALL positions where "QUANTITY:" appears (may not be at line start
+    # if the previous block's TOTAL SPENT line had no trailing newline).
+    positions = [m.start() for m in re.finditer(r"QUANTITY\s*:", content)]
+    if not positions:
         return {}
 
-    last_block = blocks[-1]
+    # Take everything from the LAST "QUANTITY:" occurrence to end of file
+    last_block = content[positions[-1]:]
 
     # Parse all KEY: VALUE lines
     result = {}
@@ -3324,10 +3328,13 @@ def _parse_last_block(content: str) -> dict:
             val = m.group(2).strip()
             result[key] = val
 
-    # Parse "pattern   count" section:
-    # Lines like: "1line,      51300626,"
-    # Section starts after a line containing "pattern   count" (with spaces)
-    # and ends when we hit "pattern   hit rate" or another section header.
+    # Also check for KEY:VALUE that might be on a line with other preceding
+    # text (e.g. "...6456770QUANTITY: 20" on a single line — we already
+    # sliced from "QUANTITY:" so this is handled). But trailing values like
+    # TOTAL WON may appear on lines after "card,winning,count" — since we
+    # iterate all lines in last_block, they're captured.
+
+    # Parse "pattern   count" section
     pattern_counts = []
     in_pattern_count = False
     for line in last_block.splitlines():
@@ -3440,15 +3447,22 @@ def statistic_analysis_merge():
             content = None
             if _is_remote_addr(addr):
                 try:
-                    body, status = _worker_proxy_post(addr, "/files/batch-edit-read", {
-                        "path": filepath
-                    })
-                    if status == 200 and isinstance(body, dict):
-                        content = body.get("content", "")
+                    r = _worker_session.get(
+                        f"http://{addr}/files/read",
+                        params={"path": filepath, "full": "1"},
+                        timeout=30,
+                    )
+                    if r.ok:
+                        rdata = r.json()
+                        content = rdata.get("content", "")
                     else:
-                        errors.append(f"{addr}: {filepath} - read failed")
+                        try:
+                            err_msg = r.json().get("error", f"status {r.status_code}")
+                        except Exception:
+                            err_msg = f"status {r.status_code}"
+                        errors.append(f"{addr}: {filepath} - {err_msg}")
                         continue
-                except Exception as exc:
+                except http_requests.RequestException as exc:
                     errors.append(f"{addr}: {filepath} - {exc}")
                     continue
             else:
@@ -3479,27 +3493,47 @@ def statistic_analysis_merge():
 
     # Step 3 & 4: Merge each group
     include_pattern_count = sa_config.get("pattern_count", False)
+    # Fields that should NOT be summed — just take the value from the first
+    # file (e.g. QUANTITY is always the same across files in a group, summing
+    # it would double/triple it incorrectly).
+    no_sum_fields = set(
+        f.upper() for f in sa_config.get("no_sum", [])
+    )
     merged_results = []
     for key in sorted(groups.keys()):
         entries = groups[key]
         merged = {}
         for field in fields:
             field_upper = field.upper()
-            total = 0.0
-            found_any = False
-            for entry in entries:
-                val_str = entry["data"].get(field_upper)
-                if val_str is not None:
-                    try:
-                        total += float(val_str)
-                        found_any = True
-                    except ValueError:
-                        pass
-            if found_any:
-                # Keep as int if no decimal part
-                merged[field] = int(total) if total == int(total) else round(total, 7)
+            if field_upper in no_sum_fields:
+                # Take value from the first entry that has it (not summed)
+                val = None
+                for entry in entries:
+                    val_str = entry["data"].get(field_upper)
+                    if val_str is not None:
+                        try:
+                            v = float(val_str)
+                            val = int(v) if v == int(v) else round(v, 7)
+                        except ValueError:
+                            pass
+                        break
+                merged[field] = val
             else:
-                merged[field] = None
+                total = 0.0
+                found_any = False
+                for entry in entries:
+                    val_str = entry["data"].get(field_upper)
+                    if val_str is not None:
+                        try:
+                            total += float(val_str)
+                            found_any = True
+                        except ValueError:
+                            pass
+                if found_any:
+                    # Keep as int if no decimal part
+                    merged[field] = int(total) if total == int(total) else round(total, 7)
+                else:
+                    merged[field] = None
 
         # Merge pattern counts (sum same pattern names across files)
         merged_patterns = None
