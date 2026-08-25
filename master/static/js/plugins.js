@@ -110,10 +110,13 @@ var _batchInputHistoryClasses = [
   'batch-edit-content', 'batch-edit-target-dir', 'batch-edit-exclude-dir',
   'batch-up-src-file', 'batch-up-target-dir', 'batch-up-exclude-dir',
   'batch-dl-target-dir', 'batch-dl-exclude-dir',
-  'batch-del-pattern', 'batch-del-target-dir', 'batch-del-exclude-dir'
+  'batch-del-pattern', 'batch-del-target-dir', 'batch-del-exclude-dir',
+  'batch-up-multi-src-file', 'batch-up-multi-target-dir', 'batch-up-multi-exclude-dir',
+  'batch-override-multi-src', 'batch-override-multi-target-dir', 'batch-override-multi-exclude-dir',
+  'batch-dl-multi-target-dir', 'batch-dl-multi-exclude-dir'
 ];
 var _batchInputHistoryIds = [
-  'batchEditFileName', 'batchDlFileName', 'batchDelFilePattern'
+  'batchEditFileName', 'batchDlFileName', 'batchDelFilePattern', 'batchDlMultiFileName'
 ];
 
 function _initAllInputHistory() {
@@ -1325,4 +1328,344 @@ function rnpCopyResult() {
     var btn = text.parentElement.querySelector('span[onclick]');
     if (btn) { btn.textContent = '✅'; setTimeout(function() { btn.textContent = '📋'; }, 2000); }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Batch Upload File (multi-node)
+// ---------------------------------------------------------------------------
+function getBatchUpMultiSrcFiles() {
+  var inputs = document.querySelectorAll('#batchUpMultiSrcFiles .batch-up-multi-src-file');
+  var files = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) files.push(v); });
+  return files;
+}
+function getBatchUpMultiTargetDirs() {
+  var inputs = document.querySelectorAll('#batchUpMultiTargetDirs .batch-up-multi-target-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function getBatchUpMultiExcludeDirs() {
+  var inputs = document.querySelectorAll('#batchUpMultiExcludeDirs .batch-up-multi-exclude-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function addBatchUpMultiSrcFile() {
+  var container = document.getElementById('batchUpMultiSrcFiles');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-up-multi-src-file" placeholder="e.g. D:\\tools2\\path\\to\\file.jar" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+function addBatchUpMultiTargetDir() {
+  var container = document.getElementById('batchUpMultiTargetDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-up-multi-target-dir" placeholder="e.g. simulator/B2BGameSimulator/lib" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+function addBatchUpMultiExcludeDir() {
+  var container = document.getElementById('batchUpMultiExcludeDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-up-multi-exclude-dir" placeholder="e.g. E:/path/to/exclude" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+
+function showBatchUpMultiProgress() {
+  var mask = document.getElementById('batchUpMultiProgressMask');
+  var bar = document.getElementById('batchUpMultiProgressBar');
+  var text = document.getElementById('batchUpMultiProgressText');
+  bar.style.transition = 'none'; bar.style.width = '0%'; text.textContent = 'Uploading...';
+  mask.style.display = 'block';
+}
+function hideBatchUpMultiProgress() {
+  var mask = document.getElementById('batchUpMultiProgressMask');
+  var bar = document.getElementById('batchUpMultiProgressBar');
+  var text = document.getElementById('batchUpMultiProgressText');
+  bar.style.transition = 'width 0.3s ease'; bar.style.width = '100%'; text.textContent = '100%';
+  setTimeout(function() { mask.style.display = 'none'; bar.style.transition = 'none'; bar.style.width = '0%'; }, 800);
+}
+
+function renderBatchMultiResultByNode(results, actionLabel, listKeys) {
+  // results: {addr: {copied|replaced|found: [...], errors: [...]} | {error: "..."}}
+  var html = '';
+  Object.keys(results).forEach(function(addr) {
+    var r = results[addr] || {};
+    html += '<div style="margin-bottom:12px;">';
+    html += '<div style="font-weight:600;margin-bottom:4px;">🖥 ' + addr + '</div>';
+    if (r.error) {
+      html += '<div style="color:#e74c3c;">❌ ' + r.error + '</div>';
+      html += '</div>';
+      return;
+    }
+    var items = [];
+    listKeys.forEach(function(k) { if (r[k]) items = items.concat(r[k]); });
+    html += '<div style="color:#27ae60;">✅ ' + actionLabel + ' ' + items.length + ' item(s)</div>';
+    if (items.length > 0) {
+      html += '<div style="background:#1e1e2e;color:#a6e3a1;padding:10px;border-radius:6px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto;margin-top:4px;">';
+      items.forEach(function(p) { html += '<div>' + p + '</div>'; });
+      html += '</div>';
+    }
+    var errs = r.errors || [];
+    if (errs.length > 0) {
+      html += '<div style="color:#e74c3c;font-weight:600;margin-top:4px;">❌ Failed (' + errs.length + '):</div>';
+      html += '<div style="background:#1e1e2e;color:#f38ba8;padding:10px;border-radius:6px;font-family:monospace;font-size:11px;max-height:150px;overflow-y:auto;">';
+      errs.forEach(function(p) { html += '<div>' + p + '</div>'; });
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  return html || '<div style="color:#888;">No results.</div>';
+}
+
+async function doBatchUpMultiCheck() {
+  _saveAllBatchInputHistory();
+  var addrs = getBatchMultiNodeAddrs('batchUpMultiNodeCbs');
+  var srcFiles = getBatchUpMultiSrcFiles();
+  var dirs = getBatchUpMultiTargetDirs();
+  var excludes = getBatchUpMultiExcludeDirs();
+  if (!addrs.length) { showAlert('Please select at least one node'); return; }
+  if (!srcFiles.length) { showAlert('Please enter at least one source file name'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var resultEl = document.getElementById('batchUpMultiResult');
+  resultEl.innerHTML = '<div style="color:#888;">Checking ' + addrs.length + ' node(s)...</div>';
+
+  var res = await fetch('/files/batch-multi-up-check', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({src_files: srcFiles, target_dirs: dirs, exclude_dirs: excludes, addrs: addrs})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">🔍 Check results per node:</div>' +
+    renderBatchMultiResultByNode(data.results || {}, 'Found', ['found']);
+}
+
+async function doBatchUpMultiUpload() {
+  _saveAllBatchInputHistory();
+  var addrs = getBatchMultiNodeAddrs('batchUpMultiNodeCbs');
+  var srcFiles = getBatchUpMultiSrcFiles();
+  var dirs = getBatchUpMultiTargetDirs();
+  var excludes = getBatchUpMultiExcludeDirs();
+  if (!addrs.length) { showAlert('Please select at least one node'); return; }
+  if (!srcFiles.length) { showAlert('Please enter at least one source file name'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+
+  showBatchUpMultiProgress();
+  var resultEl = document.getElementById('batchUpMultiResult');
+  try {
+    var res = await fetch('/files/batch-multi-up-upload', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({src_files: srcFiles, target_dirs: dirs, exclude_dirs: excludes, addrs: addrs})
+    });
+    var data = await res.json();
+    hideBatchUpMultiProgress();
+    if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+    resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">⬆️ Upload results per node:</div>' +
+      renderBatchMultiResultByNode(data.results || {}, 'Uploaded', ['copied']);
+  } catch (e) {
+    hideBatchUpMultiProgress();
+    resultEl.innerHTML = '<div style="color:#e74c3c;">❌ Upload failed: ' + e.message + '</div>';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Batch Override File (multi-node)
+// ---------------------------------------------------------------------------
+function getBatchOverrideMultiSrcFiles() {
+  var inputs = document.querySelectorAll('#batchOverrideMultiSrcFiles .batch-override-multi-src');
+  var files = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) files.push(v); });
+  return files;
+}
+function getBatchOverrideMultiTargetDirs() {
+  var inputs = document.querySelectorAll('#batchOverrideMultiTargetDirs .batch-override-multi-target-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function getBatchOverrideMultiExcludeDirs() {
+  var inputs = document.querySelectorAll('#batchOverrideMultiExcludeDirs .batch-override-multi-exclude-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function addBatchOverrideMultiSrc() {
+  var container = document.getElementById('batchOverrideMultiSrcFiles');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-override-multi-src" placeholder="e.g. D:\\path\\to\\file.jar" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+function addBatchOverrideMultiTargetDir() {
+  var container = document.getElementById('batchOverrideMultiTargetDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-override-multi-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+function addBatchOverrideMultiExcludeDir() {
+  var container = document.getElementById('batchOverrideMultiExcludeDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-override-multi-exclude-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim/SimC1" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+
+async function doBatchOverrideMultiCheck() {
+  _saveAllBatchInputHistory();
+  var addrs = getBatchMultiNodeAddrs('batchOverrideMultiNodeCbs');
+  var sources = getBatchOverrideMultiSrcFiles();
+  var dirs = getBatchOverrideMultiTargetDirs();
+  var excludes = getBatchOverrideMultiExcludeDirs();
+  if (!addrs.length) { showAlert('Please select at least one node'); return; }
+  if (!sources.length) { showAlert('Please enter at least one source file path'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var resultEl = document.getElementById('batchOverrideMultiResult');
+  resultEl.innerHTML = '<div style="color:#888;">Checking ' + addrs.length + ' node(s)...</div>';
+
+  var res = await fetch('/files/batch-multi-check', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({sources: sources, target_dirs: dirs, exclude_dirs: excludes, addrs: addrs})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">🔍 Check results per node:</div>' +
+    renderBatchMultiResultByNode(data.results || {}, 'Found', ['found']);
+}
+
+async function doBatchOverrideMultiOverride() {
+  _saveAllBatchInputHistory();
+  var addrs = getBatchMultiNodeAddrs('batchOverrideMultiNodeCbs');
+  var sources = getBatchOverrideMultiSrcFiles();
+  var dirs = getBatchOverrideMultiTargetDirs();
+  var excludes = getBatchOverrideMultiExcludeDirs();
+  if (!addrs.length) { showAlert('Please select at least one node'); return; }
+  if (!sources.length) { showAlert('Please enter at least one source file path'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var resultEl = document.getElementById('batchOverrideMultiResult');
+  resultEl.innerHTML = '<div style="color:#888;">Overriding on ' + addrs.length + ' node(s)...</div>';
+
+  var res = await fetch('/files/batch-multi-override', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({sources: sources, target_dirs: dirs, exclude_dirs: excludes, addrs: addrs})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">📦 Override results per node:</div>' +
+    renderBatchMultiResultByNode(data.results || {}, 'Overridden', ['replaced']);
+}
+
+// ---------------------------------------------------------------------------
+// Batch Download File (multi-node, combined zip)
+// ---------------------------------------------------------------------------
+var _batchDlMultiFoundByNode = {}; // {addr: [filePath, ...]}
+
+function getBatchDlMultiTargetDirs() {
+  var inputs = document.querySelectorAll('#batchDlMultiTargetDirs .batch-dl-multi-target-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function getBatchDlMultiExcludeDirs() {
+  var inputs = document.querySelectorAll('#batchDlMultiExcludeDirs .batch-dl-multi-exclude-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function addBatchDlMultiTargetDir() {
+  var container = document.getElementById('batchDlMultiTargetDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-dl-multi-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+function addBatchDlMultiExcludeDir() {
+  var container = document.getElementById('batchDlMultiExcludeDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="batch-dl-multi-exclude-dir" placeholder="e.g. E:/path/to/exclude" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+
+function showBatchDlMultiProgress() {
+  var mask = document.getElementById('batchDlMultiProgressMask');
+  var bar = document.getElementById('batchDlMultiProgressBar');
+  var text = document.getElementById('batchDlMultiProgressText');
+  bar.style.transition = 'none'; bar.style.width = '0%'; text.textContent = 'Preparing...';
+  mask.style.display = 'block';
+}
+function hideBatchDlMultiProgress() {
+  var mask = document.getElementById('batchDlMultiProgressMask');
+  var bar = document.getElementById('batchDlMultiProgressBar');
+  var text = document.getElementById('batchDlMultiProgressText');
+  bar.style.transition = 'width 0.3s ease'; bar.style.width = '100%'; text.textContent = '100%';
+  setTimeout(function() { mask.style.display = 'none'; bar.style.transition = 'none'; bar.style.width = '0%'; }, 800);
+}
+
+async function doBatchDlMultiCheck() {
+  _saveAllBatchInputHistory();
+  var addrs = getBatchMultiNodeAddrs('batchDlMultiNodeCbs');
+  var filename = document.getElementById('batchDlMultiFileName').value.trim();
+  var dirs = getBatchDlMultiTargetDirs();
+  var excludes = getBatchDlMultiExcludeDirs();
+  if (!addrs.length) { showAlert('Please select at least one node'); return; }
+  if (!filename) { showAlert('Please enter a source file name'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var resultEl = document.getElementById('batchDlMultiResult');
+  resultEl.innerHTML = '<div style="color:#888;">Searching ' + addrs.length + ' node(s)...</div>';
+
+  var res = await fetch('/files/batch-multi-dl-check', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filename: filename, target_dirs: dirs, exclude_dirs: excludes, addrs: addrs})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+  var results = data.results || {};
+  _batchDlMultiFoundByNode = {};
+  Object.keys(results).forEach(function(addr) {
+    _batchDlMultiFoundByNode[addr] = (results[addr] && results[addr].found) || [];
+  });
+  resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">🔍 Search results per node (all found files will be included in the combined download):</div>' +
+    renderBatchMultiResultByNode(results, 'Found', ['found']);
+}
+
+async function doBatchDlMultiDownload() {
+  _saveAllBatchInputHistory();
+  var addrs = getBatchMultiNodeAddrs('batchDlMultiNodeCbs');
+  var dirs = getBatchDlMultiTargetDirs();
+  if (!addrs.length) { showAlert('Please select at least one node'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var hasFiles = addrs.some(function(a) { return (_batchDlMultiFoundByNode[a] || []).length > 0; });
+  if (!hasFiles) { showAlert('No files found yet. Please run Check All Files first.'); return; }
+
+  showBatchDlMultiProgress();
+  var resultEl = document.getElementById('batchDlMultiResult');
+  var perNodeFiles = {};
+  addrs.forEach(function(a) { perNodeFiles[a] = _batchDlMultiFoundByNode[a] || []; });
+
+  try {
+    var res = await fetch('/files/batch-multi-dl-download', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({addrs: addrs, target_dirs: dirs, per_node_files: perNodeFiles})
+    });
+    if (!res.ok) {
+      var errData = await res.json();
+      hideBatchDlMultiProgress();
+      resultEl.innerHTML = '<div style="color:#e74c3c;">❌ Download failed: ' + (errData.error || 'Unknown error') + '</div>';
+      return;
+    }
+    var blob = await res.blob();
+    hideBatchDlMultiProgress();
+    var url = window.URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'batch_multi_download.zip';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    resultEl.innerHTML = '<div style="color:#27ae60;">✅ Combined zip downloaded (one subfolder per node).</div>';
+  } catch (e) {
+    hideBatchDlMultiProgress();
+    resultEl.innerHTML = '<div style="color:#e74c3c;">❌ Download failed: ' + e.message + '</div>';
+  }
 }

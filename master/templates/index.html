@@ -603,6 +603,45 @@
           </div>
         </details>
       </div>
+
+      <!-- Batch Override File (multi-node) -->
+      <div class="card full-width">
+        <h2>📦 Batch Override File (multi-node)</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:16px;">Replace the same file across multiple nodes at once. Assumes selected nodes share an identical directory structure.</p>
+
+        <label>Nodes (file systems to operate on, select multiple)</label>
+        <div id="batchOverrideMultiNodeCbs" style="margin-bottom:12px;"></div>
+
+        <label>Source File (full path of the file to use as replacement)</label>
+        <div id="batchOverrideMultiSrcFiles">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-override-multi-src" placeholder="e.g. D:\tools2\b2b\B2BBMM\B2BSimulator\simulator\B2BGameSimulator\lib\VBWildBallLogic.jar" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchOverrideMultiSrc()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Target Directories (directories to recursively search in)</label>
+        <div id="batchOverrideMultiTargetDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-override-multi-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchOverrideMultiTargetDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Exclude Directories (skip these directories during search)</label>
+        <div id="batchOverrideMultiExcludeDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-override-multi-exclude-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim/SimC1" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchOverrideMultiExcludeDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <button class="btn-primary" onclick="doBatchOverrideMultiCheck()" style="margin-right:8px;">🔍 Check All Files</button>
+          <button class="btn-success" onclick="doBatchOverrideMultiOverride()">📦 Batch Override</button>
+        </div>
+        <div id="batchOverrideMultiResult" style="margin-top:16px;font-size:12px;"></div>
+      </div>
     </div><!-- end pageBatchoverride -->
 
     <!-- BATCH EDIT FILE PAGE -->
@@ -735,6 +774,54 @@
           </div>
         </details>
       </div>
+
+      <!-- Batch Upload File (multi-node) -->
+      <div class="card full-width">
+        <h2>⬆️ Batch Upload File (multi-node)</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:16px;">Upload the same source file(s) to multiple nodes at once. Assumes selected nodes share an identical directory structure under their production/simulator directory.</p>
+
+        <label>Nodes (destination file systems, select multiple)</label>
+        <div id="batchUpMultiNodeCbs" style="margin-bottom:12px;"></div>
+
+        <label>Source File (full path of the file to upload, always read from Master)</label>
+        <div id="batchUpMultiSrcFiles">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-up-multi-src-file" placeholder="e.g. D:\tools2\b2b\B2BBMM\B2BSimulator\simulator\B2BGameSimulator\lib\VBWildBallLogic.jar" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchUpMultiSrcFile()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Target Directories (directories to recursively search in, supports * wildcard)</label>
+        <div id="batchUpMultiTargetDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-up-multi-target-dir" placeholder="e.g. simulator/B2BGameSimulator/lib" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchUpMultiTargetDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Exclude Directories (skip these directories during search)</label>
+        <div id="batchUpMultiExcludeDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-up-multi-exclude-dir" placeholder="e.g. E:/path/to/exclude" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchUpMultiExcludeDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <button class="btn-primary" onclick="doBatchUpMultiCheck()" style="margin-right:8px;">🔍 Check All Files</button>
+          <button class="btn-success" onclick="doBatchUpMultiUpload()">⬆️ Batch Upload</button>
+        </div>
+
+        <div id="batchUpMultiProgressMask" style="display:none;margin-top:12px;">
+          <div style="font-size:13px;font-weight:600;color:#333;margin-bottom:8px;">⬆️ Uploading to selected nodes...</div>
+          <div style="width:100%;height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;">
+            <div id="batchUpMultiProgressBar" style="width:0%;height:100%;background:linear-gradient(90deg,#4a90d9,#67b26f);border-radius:4px;transition:width 0.3s ease;"></div>
+          </div>
+          <div id="batchUpMultiProgressText" style="font-size:11px;color:#666;margin-top:4px;">0%</div>
+        </div>
+
+        <div id="batchUpMultiResult" style="margin-top:16px;font-size:12px;"></div>
+      </div>
     </div><!-- end pageBatchupload -->
 
     <!-- BATCH DOWNLOAD FILE PAGE -->
@@ -799,6 +886,49 @@
             <p><strong>Download structure:</strong> A <code>temp</code> folder is created in the first target directory, files are copied preserving their relative paths, then compressed as <code>temp.zip</code> for download.</p>
           </div>
         </details>
+      </div>
+
+      <!-- Batch Download File (multi-node) -->
+      <div class="card full-width">
+        <h2>⬇️ Batch Download File (multi-node)</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:16px;">Search and download matching files from multiple nodes in a single combined zip (one subfolder per node), instead of downloading one zip per node manually.</p>
+
+        <label>Nodes (file systems to search on, select multiple)</label>
+        <div id="batchDlMultiNodeCbs" style="margin-bottom:12px;"></div>
+
+        <label>Source File Name (the file name to search, supports * wildcard)</label>
+        <input type="text" id="batchDlMultiFileName" placeholder="e.g. CalacaBingo*.txt or config.json" style="margin-bottom:12px;">
+
+        <label>Target Directories (directories to recursively search in)</label>
+        <div id="batchDlMultiTargetDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-dl-multi-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchDlMultiTargetDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Exclude Directories (skip these directories during search)</label>
+        <div id="batchDlMultiExcludeDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-dl-multi-exclude-dir" placeholder="e.g. E:/path/to/exclude" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchDlMultiExcludeDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <button class="btn-primary" onclick="doBatchDlMultiCheck()" style="margin-right:8px;">🔍 Check All Files</button>
+          <button class="btn-success" onclick="doBatchDlMultiDownload()">⬇️ Batch Download (combined zip)</button>
+        </div>
+
+        <div id="batchDlMultiProgressMask" style="display:none;margin-top:12px;">
+          <div style="font-size:13px;font-weight:600;color:#333;margin-bottom:8px;">⬇️ Preparing combined download...</div>
+          <div style="width:100%;height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;">
+            <div id="batchDlMultiProgressBar" style="width:0%;height:100%;background:linear-gradient(90deg,#4a90d9,#67b26f);border-radius:4px;transition:width 0.3s ease;"></div>
+          </div>
+          <div id="batchDlMultiProgressText" style="font-size:11px;color:#666;margin-top:4px;">0%</div>
+        </div>
+
+        <div id="batchDlMultiResult" style="margin-top:16px;font-size:12px;"></div>
       </div>
     </div><!-- end pageBatchdownload -->
 
@@ -2760,6 +2890,7 @@ function renderWorkers() {
   renderLogTabs();
   initFileSyncWorkerSelect();
   initBatchPluginNodeSelects();
+  renderBatchMultiNodeCheckboxes();
 }
 
 // ---------------------------------------------------------------------------
@@ -3442,6 +3573,46 @@ function initBatchPluginNodeSelects() {
 function getBatchPluginNodeAddr(selectId) {
   var sel = document.getElementById(selectId);
   return (sel && sel.value) ? sel.value : 'master';
+}
+
+// ---------------------------------------------------------------------------
+// Multi-node checkbox panels for Batch Upload/Override/Download File
+// (in addition to the single-select <select> above). Master's production_dir
+// subdirectory structure is assumed identical across nodes, so the same
+// Source File / Target Directories / Exclude Directories inputs can be
+// applied to several nodes at once instead of repeating the whole workflow
+// per node.
+// ---------------------------------------------------------------------------
+var _batchMultiNodeContainerIds = [
+  'batchUpMultiNodeCbs', 'batchOverrideMultiNodeCbs', 'batchDlMultiNodeCbs'
+];
+
+function renderBatchMultiNodeCheckboxes() {
+  _batchMultiNodeContainerIds.forEach(function(containerId) {
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    var prevChecked = {};
+    el.querySelectorAll('.batch-multi-node-cb').forEach(function(cb) {
+      prevChecked[cb.value] = cb.checked;
+    });
+    var html = '';
+    nodes.forEach(function(n) {
+      var label = n.addr === 'master' ? 'Master' : (n.alias || n.addr);
+      var addrDisplay = n.addr === 'master' ? 'local' : n.addr;
+      var checked = prevChecked.hasOwnProperty(n.addr) ? prevChecked[n.addr] : (n.addr === 'master');
+      html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+      html += '<input type="checkbox" class="batch-multi-node-cb" value="' + n.addr + '" data-is-master="' + (n.addr === 'master') + '"' + (checked ? ' checked' : '') + '>';
+      html += '<span style="flex:1;">' + label + ' <span style="color:#999;font-size:11px;">(' + addrDisplay + ')</span></span>';
+      html += '</label>';
+    });
+    el.innerHTML = html || '<div style="color:#888;font-size:12px;">No nodes configured.</div>';
+  });
+}
+
+function getBatchMultiNodeAddrs(containerId) {
+  var el = document.getElementById(containerId);
+  if (!el) return [];
+  return Array.from(el.querySelectorAll('.batch-multi-node-cb:checked')).map(function(cb) { return cb.value; });
 }
 
 // ---------------------------------------------------------------------------
@@ -4996,6 +5167,7 @@ async function init() {
   renderPercentageInputs();
   initFileSyncWorkerSelect();
   initBatchPluginNodeSelects();
+  renderBatchMultiNodeCheckboxes();
   loadLocalDir('');
   loadQuickAccessToolbar();
   loadFooterLinks();
