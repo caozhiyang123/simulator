@@ -3288,6 +3288,264 @@ def batch_dl_download():
     return send_file(zip_path, as_attachment=True, download_name="temp.zip")
 
 
+# ---------------------------------------------------------------------------
+# Bingo Machine Statistic Analysis
+# ---------------------------------------------------------------------------
+
+def _parse_last_block(content: str) -> dict:
+    """Parse the LAST QUANTITY block from a simulator result .txt file.
+
+    The file may contain multiple blocks (one per checkpoint). Each block
+    starts with a line like "QUANTITY: 20". We want only the last block's
+    key-value data (the final accumulated totals).
+
+    Returns: dict with:
+      - field_name_upper -> numeric_value_str (for standard KEY: VALUE lines)
+      - "_pattern_count" -> list of (pattern_name, count_value) tuples
+    """
+    import re
+    # Split into blocks starting at each "QUANTITY:" line
+    blocks = re.split(r"(?=^QUANTITY:)", content, flags=re.MULTILINE)
+    blocks = [b for b in blocks if b.strip()]
+    if not blocks:
+        return {}
+
+    last_block = blocks[-1]
+
+    # Parse all KEY: VALUE lines
+    result = {}
+    for line in last_block.splitlines():
+        line = line.strip()
+        m = re.match(
+            r"^([A-Z][A-Z0-9_ ]*?)\s*[:]\s*([\d.]+)$", line
+        )
+        if m:
+            key = m.group(1).strip()
+            val = m.group(2).strip()
+            result[key] = val
+
+    # Parse "pattern   count" section:
+    # Lines like: "1line,      51300626,"
+    # Section starts after a line containing "pattern   count" (with spaces)
+    # and ends when we hit "pattern   hit rate" or another section header.
+    pattern_counts = []
+    in_pattern_count = False
+    for line in last_block.splitlines():
+        stripped = line.strip()
+        if re.match(r"^pattern\s+count\s*$", stripped):
+            in_pattern_count = True
+            continue
+        if in_pattern_count:
+            if re.match(r"^pattern\s+hit\s*rate", stripped) or re.match(r"^time:", stripped):
+                in_pattern_count = False
+                continue
+            # Parse: "1line,      51300626," or "+,      13387580,"
+            m_pc = re.match(r"^(.+?),\s+([\d.]+),\s*$", stripped)
+            if m_pc:
+                pattern_counts.append((m_pc.group(1).strip(), m_pc.group(2).strip()))
+
+    if pattern_counts:
+        result["_pattern_count"] = pattern_counts
+
+    return result
+
+
+def _extract_sim_folder(filepath: str) -> str:
+    """Extract the SimC* folder name from a full file path.
+
+    E.g. ".../ShowBingoSim/SimC1/math/..." -> "SimC1"
+         ".../temp/SimC2/math/..." -> "SimC2"
+    """
+    import re
+    # Normalize to forward slashes for consistent matching
+    fp = filepath.replace("\\", "/")
+    m = re.search(r"/(SimC\d+)/", fp)
+    return m.group(1) if m else "unknown"
+
+
+def _extract_base_name(filepath: str) -> str:
+    """Extract the base filename without timestamp suffix.
+
+    E.g. "CalacaBingo_96_medium_vi_2026.08.24_16.15.24.txt"
+      -> "CalacaBingo_96_medium_vi"
+
+    The convention is: <game_name>_<date>_<time>.txt where date is
+    YYYY.MM.DD and time is HH.MM.SS — so we strip the last two
+    underscore-separated segments that look like dates/times + extension.
+    """
+    import re
+    name = filepath.replace("\\", "/").rsplit("/", 1)[-1]  # basename
+    # Remove .txt extension
+    if name.lower().endswith(".txt"):
+        name = name[:-4]
+    # Strip trailing _YYYY.MM.DD_HH.MM.SS pattern
+    name = re.sub(r"_\d{4}\.\d{2}\.\d{2}_\d{2}\.\d{2}\.\d{2}$", "", name)
+    return name
+
+
+def _group_key(filepath: str) -> str:
+    """Build a grouping key: SimCX + base_name (without timestamp).
+
+    Files with the same group key across nodes should be merged.
+    """
+    return _extract_sim_folder(filepath) + "/" + _extract_base_name(filepath)
+
+
+@app.route("/statistic-analysis/config", methods=["GET"])
+def statistic_analysis_config():
+    """Return the configured statistic fields for each game type."""
+    raw = _raw_config.get("statistic_analysis", {})
+    return jsonify({"bingo": raw.get("bingo", []), "slot": raw.get("slot", [])})
+
+
+@app.route("/statistic-analysis/merge", methods=["POST"])
+def statistic_analysis_merge():
+    """Merge statistics from multiple simulator result files across nodes.
+
+    Request body: {
+        "game_type": "bingo" | "slot",
+        "per_node_files": {"master": [...], "ip:port": [...]},
+        "addrs": ["master", "ip:port", ...]
+    }
+
+    The endpoint:
+      1. Reads each selected file's content (local or via worker proxy)
+      2. Parses the LAST QUANTITY block from each file
+      3. Groups files by (SimC folder + base name without timestamp)
+      4. For each group, sums the configured numeric fields
+      5. Returns the merged results + source file info per group
+    """
+    data = request.get_json(force=True)
+    game_type = data.get("game_type", "").strip().lower()
+    per_node_files = data.get("per_node_files", {})
+    addrs = data.get("addrs", [])
+
+    sa_config = _raw_config.get("statistic_analysis", {})
+    fields = sa_config.get(game_type, [])
+    if not fields:
+        return jsonify({"error": f"No statistic fields configured for game type: {game_type}"}), 400
+    if not per_node_files or not any(per_node_files.values()):
+        return jsonify({"error": "No files provided"}), 400
+
+    # Step 1 & 2: Read and parse each file
+    # Structure: {group_key: [{parsed_data, source_file, addr}, ...]}
+    groups: dict[str, list] = {}
+    errors = []
+
+    for raw_addr in addrs:
+        addr = (raw_addr or "master").strip() or "master"
+        files = per_node_files.get(addr) or per_node_files.get(raw_addr) or []
+        for filepath in files:
+            # Read file content
+            content = None
+            if _is_remote_addr(addr):
+                try:
+                    body, status = _worker_proxy_post(addr, "/files/batch-edit-read", {
+                        "path": filepath
+                    })
+                    if status == 200 and isinstance(body, dict):
+                        content = body.get("content", "")
+                    else:
+                        errors.append(f"{addr}: {filepath} - read failed")
+                        continue
+                except Exception as exc:
+                    errors.append(f"{addr}: {filepath} - {exc}")
+                    continue
+            else:
+                fpath = os.path.normpath(filepath)
+                if not os.path.isfile(fpath):
+                    errors.append(f"{addr}: {filepath} - file not found")
+                    continue
+                try:
+                    with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                        content = f.read()
+                except Exception as exc:
+                    errors.append(f"{addr}: {filepath} - {exc}")
+                    continue
+
+            parsed = _parse_last_block(content)
+            if not parsed:
+                errors.append(f"{addr}: {filepath} - no QUANTITY block found")
+                continue
+
+            key = _group_key(filepath)
+            if key not in groups:
+                groups[key] = []
+            groups[key].append({
+                "data": parsed,
+                "source": filepath,
+                "addr": addr,
+            })
+
+    # Step 3 & 4: Merge each group
+    include_pattern_count = sa_config.get("pattern_count", False)
+    merged_results = []
+    for key in sorted(groups.keys()):
+        entries = groups[key]
+        merged = {}
+        for field in fields:
+            field_upper = field.upper()
+            total = 0.0
+            found_any = False
+            for entry in entries:
+                val_str = entry["data"].get(field_upper)
+                if val_str is not None:
+                    try:
+                        total += float(val_str)
+                        found_any = True
+                    except ValueError:
+                        pass
+            if found_any:
+                # Keep as int if no decimal part
+                merged[field] = int(total) if total == int(total) else round(total, 7)
+            else:
+                merged[field] = None
+
+        # Merge pattern counts (sum same pattern names across files)
+        merged_patterns = None
+        if include_pattern_count:
+            pattern_totals = {}  # {pattern_name: total_count}
+            pattern_order = []   # preserve first-seen order
+            for entry in entries:
+                pc_list = entry["data"].get("_pattern_count", [])
+                for pname, pval in pc_list:
+                    try:
+                        val = float(pval)
+                    except ValueError:
+                        continue
+                    if pname not in pattern_totals:
+                        pattern_totals[pname] = 0.0
+                        pattern_order.append(pname)
+                    pattern_totals[pname] += val
+            if pattern_totals:
+                merged_patterns = [
+                    {"pattern": p, "count": int(pattern_totals[p]) if pattern_totals[p] == int(pattern_totals[p]) else pattern_totals[p]}
+                    for p in pattern_order
+                ]
+
+        sources = [{"file": e["source"], "addr": e["addr"]} for e in entries]
+        result_entry = {
+            "group": key,
+            "sim_folder": _extract_sim_folder(entries[0]["source"]),
+            "base_name": _extract_base_name(entries[0]["source"]),
+            "merged": merged,
+            "sources": sources,
+            "file_count": len(entries),
+        }
+        if merged_patterns is not None:
+            result_entry["pattern_count"] = merged_patterns
+        merged_results.append(result_entry)
+
+    return jsonify({
+        "status": "ok",
+        "game_type": game_type,
+        "fields": fields,
+        "include_pattern_count": include_pattern_count,
+        "results": merged_results,
+        "errors": errors,
+    })
+
+
 @app.route("/files/local/download", methods=["GET"])
 def local_download():
     """Download a local file."""

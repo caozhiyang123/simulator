@@ -66,6 +66,7 @@
         <div style="padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('patterncomb');hidePluginMenu()">🧩 Pattern Combination</div>
         <div style="padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('patterncalc');hidePluginMenu()">🎯 Pattern Calculation</div>
         <div style="padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('repeatnumpos');hidePluginMenu()">🔢 Repeat Number Position</div>
+        <div style="padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;color:#ccc;border-radius:4px;" onmouseover="this.style.background='#2a2a4e'" onmouseout="this.style.background=''" onclick="switchPage('statisticanalysis');hidePluginMenu()">📊 Statistic Analysis</div>
       </div>
     </div>
     <button class="sidebar-btn" onclick="switchPage('cicd')" id="navCicd">🚀<span>CICD</span></button>
@@ -1227,6 +1228,55 @@
         <div id="rnpResult" style="margin-top:16px;padding:12px;background:#f9f9f9;border:1px solid #eee;border-radius:6px;font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:500px;overflow-y:auto;color:#333;"></div>
       </div>
     </div><!-- end pageRepeatnumpos -->
+
+    <!-- STATISTIC ANALYSIS PAGE -->
+    <div class="page-panel" id="pageStatisticanalysis">
+      <div class="card card-muted full-width">
+        <h2>📊 Bingo Machine Statistic Analysis (multi-node)</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:16px;">Merge simulator result statistics from multiple nodes. Files are grouped by SimC folder + base filename (ignoring timestamp), and numeric fields are summed across nodes.</p>
+
+        <label>Nodes (select multiple)</label>
+        <div id="saMultiNodeCbs" style="margin-bottom:12px;"></div>
+
+        <label>Source File Name (supports * wildcard, click + to add more)</label>
+        <div id="saFileNames">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="sa-filename" placeholder="e.g. MegaJackpot_96_medium_vi*.txt" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addSaFileName()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Target Directories (auto-filled per node, supports * wildcard)</label>
+        <div id="saTargetDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="sa-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addSaTargetDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Exclude Directories</label>
+        <div id="saExcludeDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="sa-exclude-dir" placeholder="e.g. E:/path/to/exclude" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addSaExcludeDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Game Type</label>
+        <select id="saGameType" style="margin-bottom:12px;">
+          <option value="" disabled selected>-- Select game type --</option>
+          <option value="bingo">Bingo</option>
+          <option value="slot">Slot</option>
+        </select>
+
+        <div style="margin-top:12px;">
+          <button class="btn-primary" onclick="doSaCheck()" style="margin-right:8px;">🔍 Check All Files</button>
+          <button class="btn-success" onclick="doSaMerge()" style="margin-right:8px;">📊 Statistic Analysis</button>
+          <button class="btn-primary" onclick="doSaDownload()">⬇️ Download</button>
+        </div>
+        <div id="saResult" style="margin-top:16px;font-size:12px;"></div>
+      </div>
+    </div><!-- end pageStatisticanalysis -->
 
     <!-- CICD PAGE -->
     <div class="page-panel" id="pageCicd">
@@ -3740,7 +3790,7 @@ function getBatchPluginNodeAddr(selectId) {
 // the existing Remote File panel does).
 // ---------------------------------------------------------------------------
 var _batchMultiNodeContainerIds = [
-  'batchUpMultiNodeCbs', 'batchOverrideMultiNodeCbs', 'batchDlMultiNodeCbs', 'batchDelMultiNodeCbs'
+  'batchUpMultiNodeCbs', 'batchOverrideMultiNodeCbs', 'batchDlMultiNodeCbs', 'batchDelMultiNodeCbs', 'saMultiNodeCbs'
 ];
 
 // Maps each node-checkbox container to the Target Directories container it
@@ -3749,7 +3799,8 @@ var _batchMultiTargetDirConfig = {
   'batchUpMultiNodeCbs': {targetContainerId: 'batchUpMultiTargetDirs', inputClass: 'batch-up-multi-target-dir', placeholder: 'e.g. simulator/B2BGameSimulator/lib'},
   'batchOverrideMultiNodeCbs': {targetContainerId: 'batchOverrideMultiTargetDirs', inputClass: 'batch-override-multi-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'},
   'batchDlMultiNodeCbs': {targetContainerId: 'batchDlMultiTargetDirs', inputClass: 'batch-dl-multi-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'},
-  'batchDelMultiNodeCbs': {targetContainerId: 'batchDelMultiTargetDirs', inputClass: 'batch-del-multi-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'}
+  'batchDelMultiNodeCbs': {targetContainerId: 'batchDelMultiTargetDirs', inputClass: 'batch-del-multi-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'},
+  'saMultiNodeCbs': {targetContainerId: 'saTargetDirs', inputClass: 'sa-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'}
 };
 
 // Cache production_dir lookups per addr so re-checking the same node
@@ -4025,7 +4076,7 @@ function switchPage(page) {
   var navId = 'nav' + page.charAt(0).toUpperCase() + page.slice(1);
   var navEl = document.getElementById(navId);
   if (navEl) { navEl.classList.add('active'); }
-  else if (page === 'compare' || page === 'formatjson' || page === 'batchdeletefile' || page === 'batchoverride' || page === 'batchedit' || page === 'batchupload' || page === 'batchdownload' || page === 'formattime' || page === 'cardgen' || page === 'patterncomb' || page === 'patterncalc' || page === 'repeatnumpos') {
+  else if (page === 'compare' || page === 'formatjson' || page === 'batchdeletefile' || page === 'batchoverride' || page === 'batchedit' || page === 'batchupload' || page === 'batchdownload' || page === 'formattime' || page === 'cardgen' || page === 'patterncomb' || page === 'patterncalc' || page === 'repeatnumpos' || page === 'statisticanalysis') {
     document.getElementById('navPlugin').classList.add('active');
   }
   // Move File Sync panel into batch pages (reuses existing unique-ID DOM)
@@ -4882,7 +4933,8 @@ var _quickAccessNameToPage = {
   'Card Generation': 'cardgen',
   'Pattern Combination': 'patterncomb',
   'Pattern Calculation': 'patterncalc',
-  'Repeat Number Position': 'repeatnumpos'
+  'Repeat Number Position': 'repeatnumpos',
+  'Statistic Analysis': 'statisticanalysis'
 };
 
 var _quickAccessNameToIcon = {
@@ -4897,7 +4949,8 @@ var _quickAccessNameToIcon = {
   'Card Generation': '🃏',
   'Pattern Combination': '🧩',
   'Pattern Calculation': '🎯',
-  'Repeat Number Position': '🔢'
+  'Repeat Number Position': '🔢',
+  'Statistic Analysis': '📊'
 };
 
 async function loadQuickAccessToolbar() {

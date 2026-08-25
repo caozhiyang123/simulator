@@ -60,6 +60,32 @@
     "Batch Upload File",
     "Batch Download File"
   ],
+  "statistic_analysis": {
+    "bingo": [
+      "QUANTITY",
+      "SPIN COUNT",
+      "EB ROUNDS",
+      "TOTAL WIN ROUNDS",
+      "TOTAL EB WON",
+      "BASE WON",
+      "TOTAL WON",
+      "TOTAL EB SPENT",
+      "BASE SPENT",
+      "TOTAL SPENT",
+      "LUCKY BALL COUNT",
+      "FREE EB COUNT"
+    ],
+    "pattern_count": true,
+    "slot": [
+      "QUANTITY",
+      "SPIN COUNT",
+      "TOTAL WIN ROUNDS",
+      "BASE WON",
+      "TOTAL WON",
+      "BASE SPENT",
+      "TOTAL SPENT"
+    ]
+  },
   "footer_links": [
     {
       "name": "Sandbox Games dev",

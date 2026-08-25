@@ -114,7 +114,8 @@ var _batchInputHistoryClasses = [
   'batch-up-multi-src-file', 'batch-up-multi-target-dir', 'batch-up-multi-exclude-dir',
   'batch-override-multi-src', 'batch-override-multi-target-dir', 'batch-override-multi-exclude-dir',
   'batch-dl-multi-target-dir', 'batch-dl-multi-exclude-dir', 'batch-dl-multi-filename',
-  'batch-del-multi-pattern', 'batch-del-multi-target-dir', 'batch-del-multi-exclude-dir'
+  'batch-del-multi-pattern', 'batch-del-multi-target-dir', 'batch-del-multi-exclude-dir',
+  'sa-filename', 'sa-target-dir', 'sa-exclude-dir'
 ];
 var _batchInputHistoryIds = [
   'batchEditFileName', 'batchDlFileName', 'batchDelFilePattern'
@@ -1815,4 +1816,232 @@ async function doBatchDelMultiDelete() {
   }
   resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">🗑️ Delete results per node:</div>' +
     renderBatchMultiResultByNode(allNodeResults, 'Deleted', ['deleted']);
+}
+
+// ---------------------------------------------------------------------------
+// Bingo Machine Statistic Analysis (multi-node)
+// ---------------------------------------------------------------------------
+var _saFoundByNode = {}; // {addr: [filePath, ...]}
+var _saLastMergeText = ''; // for download
+
+function getSaFileNames() {
+  var inputs = document.querySelectorAll('#saFileNames .sa-filename');
+  var names = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) names.push(v); });
+  return names;
+}
+function addSaFileName() {
+  var container = document.getElementById('saFileNames');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="sa-filename" placeholder="e.g. MegaJackpot_94_medium_vi*.txt" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+function getSaTargetDirs() {
+  var inputs = document.querySelectorAll('#saTargetDirs .sa-target-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function addSaTargetDir() {
+  var container = document.getElementById('saTargetDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="sa-target-dir" placeholder="e.g. E:/path/to/dir" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+function getSaExcludeDirs() {
+  var inputs = document.querySelectorAll('#saExcludeDirs .sa-exclude-dir');
+  var dirs = [];
+  inputs.forEach(function(el) { var v = el.value.trim(); if (v) dirs.push(v); });
+  return dirs;
+}
+function addSaExcludeDir() {
+  var container = document.getElementById('saExcludeDirs');
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  row.innerHTML = '<input type="text" class="sa-exclude-dir" placeholder="e.g. E:/path/to/exclude" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  container.appendChild(row);
+}
+
+async function doSaCheck() {
+  _saveAllBatchInputHistory();
+  var addrs = getBatchMultiNodeAddrs('saMultiNodeCbs');
+  var filenames = getSaFileNames();
+  var dirs = getSaTargetDirs();
+  var excludes = getSaExcludeDirs();
+  if (!addrs.length) { showAlert('Please select at least one node'); return; }
+  if (!filenames.length) { showAlert('Please enter at least one source file name'); return; }
+  if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
+  var resultEl = document.getElementById('saResult');
+  resultEl.innerHTML = '<div style="color:#888;">Searching ' + addrs.length + ' node(s) for ' + filenames.length + ' pattern(s)...</div>';
+
+  _saFoundByNode = {};
+  var allResults = {};
+  for (var i = 0; i < filenames.length; i++) {
+    var res = await fetch('/files/batch-multi-dl-check', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({filename: filenames[i], target_dirs: dirs, exclude_dirs: excludes, addrs: addrs})
+    });
+    var data = await res.json();
+    if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+    var results = data.results || {};
+    Object.keys(results).forEach(function(addr) {
+      if (!allResults[addr]) allResults[addr] = {found: [], count: 0};
+      var nodeFound = (results[addr] && results[addr].found) || [];
+      allResults[addr].found = allResults[addr].found.concat(nodeFound);
+    });
+  }
+  // Deduplicate per node
+  Object.keys(allResults).forEach(function(addr) {
+    allResults[addr].found = Array.from(new Set(allResults[addr].found));
+    allResults[addr].count = allResults[addr].found.length;
+    _saFoundByNode[addr] = allResults[addr].found;
+  });
+
+  // Render with per-file checkboxes
+  var html = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">🔍 Found files per node:</div>';
+  html += '<div style="margin-bottom:8px;">';
+  html += '<button class="btn-primary btn-sm" onclick="saSelectAll()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select All</button>';
+  html += '<button class="btn-primary btn-sm" onclick="saSelectNone()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select None</button>';
+  html += '<button class="btn-primary btn-sm" onclick="saSelectInverse()" style="font-size:11px;padding:3px 8px;">Inverse</button>';
+  html += '</div>';
+
+  Object.keys(allResults).forEach(function(addr) {
+    var files = allResults[addr].found || [];
+    html += '<div style="margin-bottom:12px;">';
+    html += '<div style="font-weight:600;margin-bottom:4px;">🖥 ' + addr + ' (' + files.length + ' files)</div>';
+    if (files.length > 0) {
+      html += '<div style="background:#1e1e2e;color:#cdd6f4;padding:10px;border-radius:6px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto;">';
+      files.forEach(function(fp) {
+        html += '<label style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;">';
+        html += '<input type="checkbox" class="sa-file-cb" data-addr="' + addr + '" data-path="' + fp.replace(/"/g, '&quot;') + '" checked>';
+        html += '<span>' + fp + '</span></label>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div style="color:#888;">No matching files.</div>';
+    }
+    html += '</div>';
+  });
+  resultEl.innerHTML = html;
+}
+
+function saSelectAll() { document.querySelectorAll('.sa-file-cb').forEach(function(cb) { cb.checked = true; }); }
+function saSelectNone() { document.querySelectorAll('.sa-file-cb').forEach(function(cb) { cb.checked = false; }); }
+function saSelectInverse() { document.querySelectorAll('.sa-file-cb').forEach(function(cb) { cb.checked = !cb.checked; }); }
+
+function getSelectedSaFiles() {
+  // Returns {addr: [filePath, ...]}
+  var result = {};
+  document.querySelectorAll('.sa-file-cb:checked').forEach(function(cb) {
+    var addr = cb.dataset.addr;
+    var path = cb.dataset.path;
+    if (!result[addr]) result[addr] = [];
+    result[addr].push(path);
+  });
+  return result;
+}
+
+async function doSaMerge() {
+  _saveAllBatchInputHistory();
+  var gameType = document.getElementById('saGameType').value;
+  if (!gameType) { showAlert('Please select a game type (Bingo or Slot)'); return; }
+  var perNodeFiles = getSelectedSaFiles();
+  var addrs = Object.keys(perNodeFiles);
+  if (!addrs.length) { showAlert('No files selected. Please run Check All Files first and select files.'); return; }
+
+  var resultEl = document.getElementById('saResult');
+  resultEl.innerHTML = '<div style="color:#888;">Analyzing statistics...</div>';
+
+  var res = await fetch('/statistic-analysis/merge', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({game_type: gameType, per_node_files: perNodeFiles, addrs: addrs})
+  });
+  var data = await res.json();
+  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+
+  var results = data.results || [];
+  var fields = data.fields || [];
+  var errors = data.errors || [];
+  var includePatternCount = data.include_pattern_count || false;
+
+  var textOutput = '=== Statistic Analysis: ' + gameType.toUpperCase() + ' ===\n';
+  textOutput += 'Generated: ' + new Date().toLocaleString() + '\n\n';
+
+  var html = '<div style="font-weight:600;color:#4a90d9;margin-bottom:12px;">📊 Merged Results (' + results.length + ' group(s))';
+  html += ' <span onclick="saCopyResult()" style="cursor:pointer;font-size:16px;margin-left:8px;" title="Copy all results">📋</span>';
+  html += '</div>';
+
+  if (errors.length > 0) {
+    html += '<div style="color:#e74c3c;margin-bottom:12px;">⚠️ Warnings (' + errors.length + '):<br>';
+    errors.forEach(function(e) { html += '<span style="font-size:11px;">' + e + '</span><br>'; });
+    html += '</div>';
+    textOutput += 'WARNINGS:\n' + errors.join('\n') + '\n\n';
+  }
+
+  results.forEach(function(group) {
+    html += '<div class="card" style="margin-bottom:12px;padding:12px;">';
+    html += '<div style="font-weight:600;font-size:13px;margin-bottom:8px;">📁 ' + group.group + ' <span style="color:#888;font-size:11px;">(' + group.file_count + ' file(s) merged)</span></div>';
+
+    // Merged data table
+    html += '<table class="result-table" style="margin-bottom:8px;"><tr><th>Field</th><th>Value</th></tr>';
+    textOutput += '--- ' + group.group + ' (' + group.file_count + ' files merged) ---\n';
+    fields.forEach(function(field) {
+      var val = group.merged[field];
+      var display = val !== null && val !== undefined ? val.toLocaleString() : 'N/A';
+      html += '<tr><td>' + field + '</td><td>' + display + '</td></tr>';
+      textOutput += field + ': ' + (val !== null && val !== undefined ? val : 'N/A') + '\n';
+    });
+    html += '</table>';
+
+    // Pattern count table (bingo only, when configured)
+    if (includePatternCount && group.pattern_count && group.pattern_count.length > 0) {
+      html += '<div style="margin-top:8px;margin-bottom:8px;">';
+      html += '<div style="font-weight:600;font-size:12px;margin-bottom:4px;">pattern   count</div>';
+      html += '<table class="result-table"><tr><th>Pattern</th><th>Count</th></tr>';
+      textOutput += '\npattern   count\n';
+      group.pattern_count.forEach(function(pc) {
+        html += '<tr><td>' + pc.pattern + '</td><td>' + pc.count.toLocaleString() + '</td></tr>';
+        textOutput += pc.pattern + ',      ' + pc.count + ',\n';
+      });
+      html += '</table></div>';
+    }
+
+    textOutput += '\nSource files:\n';
+
+    // Source files
+    html += '<details><summary style="cursor:pointer;font-size:11px;color:#4a90d9;">Source files (' + group.sources.length + ')</summary>';
+    html += '<div style="font-size:11px;color:#888;margin-top:4px;">';
+    group.sources.forEach(function(s) {
+      html += '<div>' + s.addr + ': ' + s.file + '</div>';
+      textOutput += '  ' + s.addr + ': ' + s.file + '\n';
+    });
+    html += '</div></details>';
+    html += '</div>';
+    textOutput += '\n';
+  });
+
+  _saLastMergeText = textOutput;
+  resultEl.innerHTML = html;
+}
+
+function saCopyResult() {
+  if (!_saLastMergeText) { showAlert('No results to copy'); return; }
+  navigator.clipboard.writeText(_saLastMergeText).then(function() {
+    showAlert('Results copied to clipboard!');
+  });
+}
+
+function doSaDownload() {
+  if (!_saLastMergeText) { showAlert('No results to download. Run Statistic Analysis first.'); return; }
+  var blob = new Blob([_saLastMergeText], {type: 'text/plain'});
+  var url = window.URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'statistic_analysis_' + new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19) + '.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
 }
