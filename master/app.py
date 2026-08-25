@@ -3373,11 +3373,13 @@ def _extract_sim_folder(filepath: str) -> str:
 
     E.g. ".../ShowBingoSim/SimC1/math/..." -> "SimC1"
          ".../temp/SimC2/math/..." -> "SimC2"
+         ".../temp/SimC1LB/math/..." -> "SimC1LB"
+         ".../temp/SimC10/math/..." -> "SimC10"
     """
     import re
     # Normalize to forward slashes for consistent matching
     fp = filepath.replace("\\", "/")
-    m = re.search(r"/(SimC\d+)/", fp)
+    m = re.search(r"/(SimC\d+[A-Za-z]*)/", fp)
     return m.group(1) if m else "unknown"
 
 
@@ -3402,11 +3404,17 @@ def _extract_base_name(filepath: str) -> str:
 
 
 def _group_key(filepath: str) -> str:
-    """Build a grouping key: SimCX + base_name (without timestamp).
+    """Build a grouping key: normalized SimCX + base_name (without timestamp).
 
     Files with the same group key across nodes should be merged.
+    SimC1 and SimC1LB are treated as the same instance (normalized to SimC1).
     """
-    return _extract_sim_folder(filepath) + "/" + _extract_base_name(filepath)
+    import re
+    sim_folder = _extract_sim_folder(filepath)
+    # Normalize: strip trailing letters after digits so SimC1LB -> SimC1
+    m = re.match(r"^(SimC\d+)", sim_folder)
+    normalized = m.group(1) if m else sim_folder
+    return normalized + "/" + _extract_base_name(filepath)
 
 
 @app.route("/statistic-analysis/config", methods=["GET"])
