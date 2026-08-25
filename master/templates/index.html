@@ -605,7 +605,7 @@
       </div>
 
       <!-- Batch Override File (multi-node) -->
-      <div class="card full-width">
+      <div class="card card-muted full-width">
         <h2>📦 Batch Override File (multi-node)</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Replace the same file across multiple nodes at once. Assumes selected nodes share an identical directory structure.</p>
 
@@ -620,10 +620,10 @@
           </div>
         </div>
 
-        <label style="margin-top:8px;">Target Directories (directories to recursively search in)</label>
+        <label style="margin-top:8px;">Target Directories (directories to recursively search in, supports * wildcard)</label>
         <div id="batchOverrideMultiTargetDirs">
           <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
-            <input type="text" class="batch-override-multi-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim" style="flex:1;margin-bottom:0;">
+            <input type="text" class="batch-override-multi-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim/SimC*/math/ManilaBingo/configuration" style="flex:1;margin-bottom:0;">
             <button class="btn-primary btn-sm" onclick="addBatchOverrideMultiTargetDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
           </div>
         </div>
@@ -641,6 +641,24 @@
           <button class="btn-success" onclick="doBatchOverrideMultiOverride()">📦 Batch Override</button>
         </div>
         <div id="batchOverrideMultiResult" style="margin-top:16px;font-size:12px;"></div>
+
+        <!-- Documentation -->
+        <details style="margin-top:24px;border-top:1px solid #ccc;padding-top:12px;">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#4a90d9;">📖 Usage Guide</summary>
+          <div style="font-size:12px;color:#555;margin-top:8px;line-height:1.8;">
+            <p><strong>Purpose:</strong> Replace the same file across multiple nodes in one action, instead of repeating the single-node Batch Override workflow once per node.</p>
+            <p><strong>Steps:</strong></p>
+            <ol>
+              <li>Select the nodes to operate on (Master is checked by default). Target Directories are auto-filled with each selected node's production_dir root as soon as you check/uncheck a node.</li>
+              <li>Enter one or more source file full paths (click + to add more). These files will be used as the replacement content.</li>
+              <li>Adjust or add to Target Directories as needed. Supports <code>*</code>/<code>?</code> wildcard patterns (e.g. <code>E:/.../SimC*/math/Game/configuration</code>) — patterns are resolved per node, so a directory pattern belonging to a different node simply matches nothing on this node instead of causing a "Directory not found" error.</li>
+              <li>Optionally enter directories to exclude.</li>
+              <li>Click <b>Check All Files</b> to preview matching files per node.</li>
+              <li>Click <b>Batch Override</b> to replace all matching files with the source files on every selected node.</li>
+            </ol>
+            <p><strong>Note:</strong> Override matches files by filename. Each node's Target Directories are resolved independently, so it's safe to mix Windows and Linux-style paths when nodes run different OSes.</p>
+          </div>
+        </details>
       </div>
     </div><!-- end pageBatchoverride -->
 
@@ -776,7 +794,7 @@
       </div>
 
       <!-- Batch Upload File (multi-node) -->
-      <div class="card full-width">
+      <div class="card card-muted full-width">
         <h2>⬆️ Batch Upload File (multi-node)</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Upload the same source file(s) to multiple nodes at once. Assumes selected nodes share an identical directory structure under their production/simulator directory.</p>
 
@@ -821,6 +839,24 @@
         </div>
 
         <div id="batchUpMultiResult" style="margin-top:16px;font-size:12px;"></div>
+
+        <!-- Documentation -->
+        <details style="margin-top:24px;border-top:1px solid #ccc;padding-top:12px;">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#4a90d9;">📖 Usage Guide</summary>
+          <div style="font-size:12px;color:#555;margin-top:8px;line-height:1.8;">
+            <p><strong>Purpose:</strong> Upload the same source file(s) to multiple nodes in one action, instead of repeating the single-node Batch Upload workflow once per node.</p>
+            <p><strong>Steps:</strong></p>
+            <ol>
+              <li>Select the nodes to upload to (Master is checked by default). Target Directories are auto-filled with each selected node's production_dir root as soon as you check/uncheck a node.</li>
+              <li>Enter one or more source file full paths (click + to add more). Source files are always read from Master's local disk.</li>
+              <li>Adjust or add to Target Directories as needed. Supports <code>*</code>/<code>?</code> wildcard patterns (e.g. <code>E:/path/*/simulator/lib</code>) — patterns are resolved per node, so a directory pattern belonging to a different node simply matches nothing on this node instead of causing an error.</li>
+              <li>Optionally enter directories to exclude.</li>
+              <li>Click <b>Check All Files</b> to preview matching directories per node.</li>
+              <li>Click <b>Batch Upload</b> to copy the source file(s) into the matching directories on every selected node.</li>
+            </ol>
+            <p><strong>Note:</strong> Each node's Target Directories are resolved independently, so it's safe to leave a mixed list of Windows and Linux-style paths when nodes run different OSes.</p>
+          </div>
+        </details>
       </div>
     </div><!-- end pageBatchupload -->
 
@@ -889,7 +925,7 @@
       </div>
 
       <!-- Batch Download File (multi-node) -->
-      <div class="card full-width">
+      <div class="card card-muted full-width">
         <h2>⬇️ Batch Download File (multi-node)</h2>
         <p style="font-size:13px;color:#666;margin-bottom:16px;">Search and download matching files from multiple nodes in a single combined zip (one subfolder per node), instead of downloading one zip per node manually.</p>
 
@@ -899,10 +935,10 @@
         <label>Source File Name (the file name to search, supports * wildcard)</label>
         <input type="text" id="batchDlMultiFileName" placeholder="e.g. CalacaBingo*.txt or config.json" style="margin-bottom:12px;">
 
-        <label>Target Directories (directories to recursively search in)</label>
+        <label>Target Directories (directories to recursively search in, supports * wildcard)</label>
         <div id="batchDlMultiTargetDirs">
           <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
-            <input type="text" class="batch-dl-multi-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim" style="flex:1;margin-bottom:0;">
+            <input type="text" class="batch-dl-multi-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim/SimC*/math" style="flex:1;margin-bottom:0;">
             <button class="btn-primary btn-sm" onclick="addBatchDlMultiTargetDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
           </div>
         </div>
@@ -929,6 +965,24 @@
         </div>
 
         <div id="batchDlMultiResult" style="margin-top:16px;font-size:12px;"></div>
+
+        <!-- Documentation -->
+        <details style="margin-top:24px;border-top:1px solid #ccc;padding-top:12px;">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#4a90d9;">📖 Usage Guide</summary>
+          <div style="font-size:12px;color:#555;margin-top:8px;line-height:1.8;">
+            <p><strong>Purpose:</strong> Search and download matching files from multiple nodes in a single combined zip, instead of downloading one zip per node manually.</p>
+            <p><strong>Steps:</strong></p>
+            <ol>
+              <li>Select the nodes to search on (Master is checked by default). Target Directories are auto-filled with each selected node's production_dir root as soon as you check/uncheck a node.</li>
+              <li>Enter a file name to search (supports <code>*</code> wildcard, e.g. <code>BingoSeven_91_high_vi*.txt</code>).</li>
+              <li>Adjust or add to Target Directories as needed. Supports <code>*</code>/<code>?</code> wildcard patterns — patterns are resolved per node, so a directory pattern belonging to a different node simply matches nothing on this node.</li>
+              <li>Optionally enter directories to exclude.</li>
+              <li>Click <b>Check All Files</b> to preview matching files per node.</li>
+              <li>Click <b>Batch Download (combined zip)</b> to download one zip containing every matched file, organized into one subfolder per node (e.g. <code>master/</code>, <code>10.147.18.121_5002/</code>).</li>
+            </ol>
+            <p><strong>Note:</strong> If a download partially fails on some node, an <code>errors.txt</code> is included inside the combined zip listing which node/file failed, while the rest of the zip still downloads successfully.</p>
+          </div>
+        </details>
       </div>
     </div><!-- end pageBatchdownload -->
 

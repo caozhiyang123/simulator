@@ -1973,6 +1973,14 @@ def _batch_check_core(addr, sources, target_dirs, exclude_dirs):
     Shared by /files/batch-check (single node) and
     /files/batch-multi-check (multiple nodes, looped by the caller).
 
+    Target Directories may use wildcard (``*``/``?``) patterns (e.g.
+    ``E:/.../SimC*/math/Game/configuration``); they are resolved to literal
+    existing directories first (see _resolve_glob_dirs_core), which also
+    means a directory pattern that only makes sense for a DIFFERENT
+    selected node (multi-node panels send one combined target_dirs list
+    across all nodes) simply resolves to nothing on this node instead of
+    causing a hard error.
+
     Returns: (body_dict, http_status)
     """
     # Get all filenames to search for. Source files always live on the master
@@ -1987,9 +1995,16 @@ def _batch_check_core(addr, sources, target_dirs, exclude_dirs):
     if not filenames:
         return {"error": "no valid source files provided"}, 400
 
+    resolved_dirs, err_body, status = _resolve_glob_dirs_core(addr, target_dirs, exclude_dirs)
+    if err_body is not None:
+        return err_body, status
+    if not resolved_dirs:
+        return {"status": "ok", "found": [], "count": 0}, 200
+
     if _is_remote_addr(addr):
         return _worker_proxy_post(addr, "/files/batch-search", {
-            "mode": "exact", "names": list(filenames), "target_dirs": target_dirs, "exclude_dirs": exclude_dirs
+            "mode": "exact", "names": list(filenames),
+            "target_dirs": resolved_dirs, "exclude_dirs": exclude_dirs
         })
 
     # Normalize exclude dirs for comparison
@@ -1997,7 +2012,7 @@ def _batch_check_core(addr, sources, target_dirs, exclude_dirs):
 
     found = []
 
-    for td in target_dirs:
+    for td in resolved_dirs:
         td = os.path.normpath(td.strip())
         if not os.path.isdir(td):
             continue
@@ -2090,9 +2105,26 @@ def _batch_override_core(addr, sources, target_dirs, exclude_dirs):
     Shared by /files/batch-override (single node) and
     /files/batch-multi-override (multiple nodes, looped by the caller).
 
+    Target Directories may use wildcard (``*``/``?``) patterns and/or be a
+    combined list spanning multiple nodes (multi-node panel); resolved to
+    this node's literal existing directories up front via
+    _resolve_glob_dirs_core, so a pattern/dir belonging to a different node
+    resolves to nothing here instead of raising "Directory not found".
+
     Returns: (body_dict, http_status)
     """
     import shutil
+
+    resolved_dirs, err_body, status = _resolve_glob_dirs_core(addr, target_dirs, exclude_dirs)
+    if err_body is not None:
+        return err_body, status
+    if not resolved_dirs:
+        return {
+            "status": "ok", "replaced": [],
+            "errors": [f"No matching target directories found on {addr}"],
+            "count": 0,
+        }, 200
+    target_dirs = resolved_dirs
 
     if _is_remote_addr(addr):
         # Source File paths are interpreted relative to the SELECTED NODE's
@@ -2542,36 +2574,53 @@ def batch_edit_save():
 
 
 # ---------------------------------------------------------------------------
-# Batch Upload File (glob pattern directory matching + file copy)
+# Shared directory-pattern resolution (glob-aware, per-node)
 # ---------------------------------------------------------------------------
 
-def _batch_up_check_core(addr, src_files, target_dirs, exclude_dirs):
-    """Find directories matching glob patterns for batch upload, on one node.
+def _resolve_glob_dirs_core(addr, dir_patterns, exclude_dirs):
+    """Resolve directory glob patterns to literal, existing directories on one node.
 
-    Shared by /files/batch-up-check (single node) and
-    /files/batch-multi-up-check (multiple nodes, looped by the caller).
+    Shared by Batch Upload/Override/Download's Target Directories handling.
+    Target Directories may contain wildcard (``*``/``?``) segments (e.g.
+    ``E:/.../SimC*/math/Game/configuration``) AND, in the multi-node panels,
+    a single combined list covering every selected node even though each
+    node's production_dir root differs (or doesn't exist at all on other
+    nodes/platforms). Resolving each node's applicable, EXISTING directories
+    up front -- instead of matching file-search/copy logic against the raw
+    unresolved patterns everywhere else -- means:
+      1. Wildcard patterns actually expand to real directories (os.path.isdir
+         on a literal "*" string is always False, so without this step glob
+         patterns silently matched nothing).
+      2. A directory that belongs to a DIFFERENT selected node (not this
+         one) is simply absent from the resolved list, rather than causing
+         a hard "Directory not found" error for this node's request.
 
-    Returns: (body_dict, http_status)
+    Returns: (found_dirs, error_body_or_None, http_status)
     """
     import glob
 
     if _is_remote_addr(addr):
-        # Target directories (with glob patterns) are searched on the worker.
         body, status = _worker_proxy_post(addr, "/files/batch-search", {
-            "mode": "dir_glob", "dir_patterns": target_dirs, "exclude_dirs": exclude_dirs
+            "mode": "dir_glob", "dir_patterns": dir_patterns, "exclude_dirs": exclude_dirs
         })
-        return body, status
+        if status != 200 or not isinstance(body, dict):
+            err = body if isinstance(body, dict) else {
+                "error": f"resolve directories failed (status {status})"
+            }
+            return [], err, status
+        return body.get("found", []), None, 200
 
     exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
     found = []
 
-    for td in target_dirs:
+    for td in dir_patterns:
         td = td.strip()
-        # Use glob to expand wildcard patterns
-        if "*" in td or "?" in td:
-            matched_dirs = glob.glob(td)
-        else:
-            matched_dirs = [td]
+        if not td:
+            continue
+        # Use glob to expand wildcard patterns; treat as a literal path
+        # otherwise (glob.glob would return [] for a literal nonexistent
+        # path just the same as os.path.isdir would report False below).
+        matched_dirs = glob.glob(td) if ("*" in td or "?" in td) else [td]
 
         for d in matched_dirs:
             d_norm = os.path.normpath(d)
@@ -2589,8 +2638,24 @@ def _batch_up_check_core(addr, src_files, target_dirs, exclude_dirs):
             found.append(d_norm.replace("\\", "/"))
 
     # Remove duplicates and sort
-    found = sorted(set(found))
+    return sorted(set(found)), None, 200
 
+
+# ---------------------------------------------------------------------------
+# Batch Upload File (glob pattern directory matching + file copy)
+# ---------------------------------------------------------------------------
+
+def _batch_up_check_core(addr, src_files, target_dirs, exclude_dirs):
+    """Find directories matching glob patterns for batch upload, on one node.
+
+    Shared by /files/batch-up-check (single node) and
+    /files/batch-multi-up-check (multiple nodes, looped by the caller).
+
+    Returns: (body_dict, http_status)
+    """
+    found, err_body, status = _resolve_glob_dirs_core(addr, target_dirs, exclude_dirs)
+    if err_body is not None:
+        return err_body, status
     return {"status": "ok", "found": found, "count": len(found)}, 200
 
 
@@ -2836,9 +2901,20 @@ def _batch_dl_check_core(addr, filename, target_dirs, exclude_dirs):
     Shared by /files/batch-dl-check (single node) and
     /files/batch-multi-dl-check (multiple nodes, looped by the caller).
 
+    Target Directories may use wildcard (``*``/``?``) patterns and/or be a
+    combined list spanning multiple nodes (multi-node panel); resolved to
+    this node's literal existing directories up front via
+    _resolve_glob_dirs_core.
+
     Returns: (body_dict, http_status)
     """
     import fnmatch
+
+    resolved_dirs, err_body, status = _resolve_glob_dirs_core(addr, target_dirs, exclude_dirs)
+    if err_body is not None:
+        return err_body, status
+    if not resolved_dirs:
+        return {"status": "ok", "found": [], "count": 0}, 200
 
     use_wildcard = "*" in filename or "?" in filename
 
@@ -2847,13 +2923,13 @@ def _batch_dl_check_core(addr, filename, target_dirs, exclude_dirs):
             "mode": "glob" if use_wildcard else "exact",
             "pattern": filename,
             "names": [filename],
-            "target_dirs": target_dirs, "exclude_dirs": exclude_dirs
+            "target_dirs": resolved_dirs, "exclude_dirs": exclude_dirs
         })
 
     exclude_normalized = [os.path.normpath(d.strip()).lower() for d in exclude_dirs if d.strip()]
     found = []
 
-    for td in target_dirs:
+    for td in resolved_dirs:
         td = os.path.normpath(td.strip())
         if not os.path.isdir(td):
             continue
@@ -2987,11 +3063,15 @@ def _batch_dl_add_node_to_zip(combined_zf, addr, files, target_dirs, errors):
 
     node_folder = _sanitize_node_folder_name(addr)
 
-    # Only forward the target_dirs that actually apply to THIS node's
-    # files -- the caller's target_dirs is a combined list across all
-    # selected nodes, and forwarding the wrong node's dirs breaks the
-    # zip-staging base-directory lookup on both master and worker.
-    node_target_dirs = _filter_target_dirs_for_files(target_dirs, files)
+    # target_dirs here is the raw combined list from the request (possibly
+    # containing wildcard patterns and/or directories belonging to OTHER
+    # selected nodes). Resolve wildcards to this node's literal existing
+    # directories first, then keep only the ones that are actually an
+    # ancestor of at least one of this node's found files -- both steps
+    # are needed: resolving handles glob patterns, filtering handles the
+    # combined multi-node list.
+    resolved_dirs, _err, _status = _resolve_glob_dirs_core(addr, target_dirs, [])
+    node_target_dirs = _filter_target_dirs_for_files(resolved_dirs, files)
     if not node_target_dirs:
         errors.append(f"{addr}: none of the provided target directories match this node's found files")
         return

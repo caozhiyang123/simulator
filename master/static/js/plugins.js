@@ -1502,7 +1502,7 @@ function addBatchOverrideMultiTargetDir() {
   var container = document.getElementById('batchOverrideMultiTargetDirs');
   var row = document.createElement('div');
   row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
-  row.innerHTML = '<input type="text" class="batch-override-multi-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  row.innerHTML = '<input type="text" class="batch-override-multi-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim/SimC*/math/ManilaBingo/configuration" style="flex:1;margin-bottom:0;"><button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
   container.appendChild(row);
 }
 function addBatchOverrideMultiExcludeDir() {
