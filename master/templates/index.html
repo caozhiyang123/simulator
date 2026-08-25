@@ -3582,10 +3582,47 @@ function getBatchPluginNodeAddr(selectId) {
 // Source File / Target Directories / Exclude Directories inputs can be
 // applied to several nodes at once instead of repeating the whole workflow
 // per node.
+//
+// Each panel's Target Directories input, however, has to be per-node:
+// production_dir's ROOT differs per node (different drive letter on
+// Windows, or a completely different path on a Linux worker), even though
+// the subdirectory structure below that root is identical. So whenever the
+// node checkboxes change, we auto-fill one Target Directories row per
+// selected node with "<node's production_dir>" -- fetched on demand via
+// GET /files/production-dir (which for master reads config.production_dir
+// directly, and for a remote worker proxies its /files/browse the same way
+// the existing Remote File panel does).
 // ---------------------------------------------------------------------------
 var _batchMultiNodeContainerIds = [
   'batchUpMultiNodeCbs', 'batchOverrideMultiNodeCbs', 'batchDlMultiNodeCbs'
 ];
+
+// Maps each node-checkbox container to the Target Directories container it
+// should auto-fill, and the input class name to use for each generated row.
+var _batchMultiTargetDirConfig = {
+  'batchUpMultiNodeCbs': {targetContainerId: 'batchUpMultiTargetDirs', inputClass: 'batch-up-multi-target-dir', placeholder: 'e.g. simulator/B2BGameSimulator/lib'},
+  'batchOverrideMultiNodeCbs': {targetContainerId: 'batchOverrideMultiTargetDirs', inputClass: 'batch-override-multi-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'},
+  'batchDlMultiNodeCbs': {targetContainerId: 'batchDlMultiTargetDirs', inputClass: 'batch-dl-multi-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'}
+};
+
+// Cache production_dir lookups per addr so re-checking the same node
+// repeatedly (e.g. toggling checkboxes while composing a request) doesn't
+// re-fetch every time.
+var _productionDirCache = {};
+
+async function fetchProductionDir(addr) {
+  if (_productionDirCache.hasOwnProperty(addr)) return _productionDirCache[addr];
+  try {
+    var r = await fetch('/files/production-dir?addr=' + encodeURIComponent(addr));
+    var data = await r.json();
+    var result = (r.ok && data.production_dir) ? data.production_dir : null;
+    _productionDirCache[addr] = result;
+    return result;
+  } catch (e) {
+    _productionDirCache[addr] = null;
+    return null;
+  }
+}
 
 function renderBatchMultiNodeCheckboxes() {
   _batchMultiNodeContainerIds.forEach(function(containerId) {
@@ -3606,6 +3643,13 @@ function renderBatchMultiNodeCheckboxes() {
       html += '</label>';
     });
     el.innerHTML = html || '<div style="color:#888;font-size:12px;">No nodes configured.</div>';
+    el.querySelectorAll('.batch-multi-node-cb').forEach(function(cb) {
+      cb.addEventListener('change', function() { autoFillBatchMultiTargetDirs(containerId); });
+    });
+    // Auto-fill immediately for whichever nodes are checked by default
+    // (e.g. Master pre-checked), so the panel is usable without requiring
+    // the user to toggle a checkbox first.
+    autoFillBatchMultiTargetDirs(containerId);
   });
 }
 
@@ -3613,6 +3657,61 @@ function getBatchMultiNodeAddrs(containerId) {
   var el = document.getElementById(containerId);
   if (!el) return [];
   return Array.from(el.querySelectorAll('.batch-multi-node-cb:checked')).map(function(cb) { return cb.value; });
+}
+
+function makeBatchMultiTargetDirRow(inputClass, placeholder, value, addLabel) {
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  var addrTag = addLabel ? '<span style="font-size:10px;color:#888;white-space:nowrap;padding:2px 6px;background:#f0f0f0;border-radius:3px;" title="Auto-filled from node\'s production_dir">' + addLabel + '</span>' : '';
+  row.innerHTML = addrTag +
+    '<input type="text" class="' + inputClass + '" placeholder="' + placeholder + '" value="' + (value ? value.replace(/"/g, '&quot;') : '') + '" style="flex:1;margin-bottom:0;">' +
+    '<button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  return row;
+}
+
+// Auto-fill one Target Directories row per currently-selected node with
+// that node's production_dir root. Existing manually-typed rows that don't
+// match any node's auto-filled value are preserved (appended after the
+// auto-filled ones), so users can still add extra custom target dirs
+// (e.g. a "lib" subfolder) on top of the auto-filled roots.
+async function autoFillBatchMultiTargetDirs(nodeContainerId) {
+  var cfg = _batchMultiTargetDirConfig[nodeContainerId];
+  if (!cfg) return;
+  var targetEl = document.getElementById(cfg.targetContainerId);
+  if (!targetEl) return;
+
+  var addrs = getBatchMultiNodeAddrs(nodeContainerId);
+
+  // Preserve any rows the user typed manually that aren't one of our
+  // previous auto-filled values (tracked via data-auto-addr attribute).
+  // Skip empty untouched rows (e.g. the initial placeholder row) so
+  // auto-fill doesn't leave a stray blank input behind.
+  var manualRows = [];
+  targetEl.querySelectorAll('div').forEach(function(rowEl) {
+    if (rowEl.dataset.autoAddr) return;
+    var input = rowEl.querySelector('input');
+    if (input && input.value.trim()) manualRows.push(rowEl);
+  });
+
+  targetEl.innerHTML = '';
+
+  for (var i = 0; i < addrs.length; i++) {
+    var addr = addrs[i];
+    var prodDir = await fetchProductionDir(addr);
+    var label = addr === 'master' ? 'Master' : addr;
+    var row = makeBatchMultiTargetDirRow(cfg.inputClass, cfg.placeholder, prodDir || '', label);
+    row.dataset.autoAddr = addr;
+    if (!prodDir) {
+      row.querySelector('input').placeholder = '⚠ Could not resolve production_dir for ' + label;
+    }
+    targetEl.appendChild(row);
+  }
+
+  manualRows.forEach(function(rowEl) { targetEl.appendChild(rowEl); });
+
+  if (!addrs.length && !manualRows.length) {
+    targetEl.appendChild(makeBatchMultiTargetDirRow(cfg.inputClass, cfg.placeholder, '', null));
+  }
 }
 
 // ---------------------------------------------------------------------------

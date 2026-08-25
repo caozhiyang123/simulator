@@ -3234,6 +3234,50 @@ def local_read():
     return send_file(full_path, as_attachment=True)
 
 
+@app.route("/files/production-dir", methods=["GET"])
+def files_production_dir():
+    """Return a single node's resolved production_dir path.
+
+    Used by the Batch Upload/Override/Download File "multi-node" panels to
+    auto-fill Target Directories with each selected node's production_dir
+    root -- nodes share an identical subdirectory structure BELOW that
+    root, but the root itself (drive letter on Windows, or an entirely
+    different path on Linux workers) differs per node, so it cannot be
+    hardcoded on the frontend.
+
+    Query param: ?addr=master | ip:port
+
+    Returns: {"addr": ..., "production_dir": "..."}  or  {"error": "..."}
+    """
+    addr = request.args.get("addr", "master").strip() or "master"
+
+    if not _is_remote_addr(addr):
+        prod_dir = config.production_dir
+        if not prod_dir:
+            return jsonify({"error": "production_dir not configured for master"}), 400
+        return jsonify({"addr": addr, "production_dir": prod_dir.replace("\\", "/")})
+
+    # Remote worker: reuse its /files/browse with an empty path, which
+    # resolves to (and returns) the worker's own PRODUCTION_DIR without
+    # requiring a dedicated endpoint on the worker side.
+    try:
+        r = _worker_session.get(
+            f"http://{addr}/files/browse", params={"path": ""}, timeout=10
+        )
+        try:
+            data = r.json()
+        except ValueError:
+            return jsonify({"error": f"Worker returned non-JSON (status {r.status_code})"}), 500
+        if not r.ok:
+            return jsonify(data), r.status_code
+        prod_dir = data.get("path", "")
+        if not prod_dir:
+            return jsonify({"error": "Worker did not return a production_dir path"}), 500
+        return jsonify({"addr": addr, "production_dir": prod_dir})
+    except http_requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/files/worker/browse", methods=["GET"])
 def worker_browse():
     """Proxy: browse a worker's directory (absolute path).
