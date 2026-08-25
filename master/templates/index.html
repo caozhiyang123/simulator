@@ -545,6 +545,63 @@
           </div>
         </details>
       </div>
+
+      <!-- Batch Delete File (multi-node) -->
+      <div class="card card-muted full-width">
+        <h2>🗑️ Batch Delete File (multi-node)</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:16px;">Search and delete files matching wildcard patterns across multiple nodes at once. Assumes selected nodes share an identical directory structure.</p>
+
+        <label>Nodes (file systems to operate on, select multiple)</label>
+        <div id="batchDelMultiNodeCbs" style="margin-bottom:12px;"></div>
+
+        <label>Source File (filename pattern to search, supports * wildcard, click + to add more)</label>
+        <div id="batchDelMultiPatterns">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-del-multi-pattern" placeholder="e.g. CalacaBingo*.txt" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchDelMultiPattern()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Target Directories (directories to recursively search in, supports * wildcard)</label>
+        <div id="batchDelMultiTargetDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-del-multi-target-dir" placeholder="e.g. E:/python/workSpace/temp/ShowBingoSim/SimC*/math" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchDelMultiTargetDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <label style="margin-top:8px;">Exclude Directories (skip these directories during search)</label>
+        <div id="batchDelMultiExcludeDirs">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-del-multi-exclude-dir" placeholder="e.g. E:/path/to/exclude" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchDelMultiExcludeDir()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <button class="btn-primary" onclick="doBatchDelMultiCheck()" style="margin-right:8px;">🔍 Check All Files</button>
+          <button class="btn-danger" onclick="doBatchDelMultiDelete()">🗑️ Batch Delete</button>
+        </div>
+        <div id="batchDelMultiResult" style="margin-top:16px;font-size:12px;"></div>
+
+        <!-- Documentation -->
+        <details style="margin-top:24px;border-top:1px solid #ccc;padding-top:12px;">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#4a90d9;">📖 Usage Guide</summary>
+          <div style="font-size:12px;color:#555;margin-top:8px;line-height:1.8;">
+            <p><strong>Purpose:</strong> Search and delete files matching wildcard patterns across multiple nodes in one action.</p>
+            <p><strong>Steps:</strong></p>
+            <ol>
+              <li>Select the nodes to operate on (Master is checked by default). Target Directories are auto-filled with each selected node's production_dir root.</li>
+              <li>Enter one or more filename patterns (click + to add more, e.g. <code>CalacaBingo*.txt</code>, <code>*.log</code>).</li>
+              <li>Adjust or add to Target Directories as needed. Supports <code>*</code>/<code>?</code> wildcard patterns — patterns are resolved per node independently.</li>
+              <li>Optionally enter directories to exclude.</li>
+              <li>Click <b>Check All Files</b> to preview matching files per node.</li>
+              <li>Click <b>Batch Delete</b> to delete all found files on every selected node (a confirmation dialog will appear).</li>
+            </ol>
+            <p><strong>Note:</strong> Deletion is irreversible. Each node's Target Directories and filename patterns are resolved independently.</p>
+          </div>
+        </details>
+      </div>
     </div><!-- end pageBatchdeletefile -->
 
     <!-- BATCH OVERRIDE FILE PAGE -->
@@ -932,8 +989,13 @@
         <label>Nodes (file systems to search on, select multiple)</label>
         <div id="batchDlMultiNodeCbs" style="margin-bottom:12px;"></div>
 
-        <label>Source File Name (the file name to search, supports * wildcard)</label>
-        <input type="text" id="batchDlMultiFileName" placeholder="e.g. CalacaBingo*.txt or config.json" style="margin-bottom:12px;">
+        <label>Source File Name (the file name to search, supports * wildcard, click + to add more)</label>
+        <div id="batchDlMultiFileNames">
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">
+            <input type="text" class="batch-dl-multi-filename" placeholder="e.g. CalacaBingo*.txt or config.json" style="flex:1;margin-bottom:0;">
+            <button class="btn-primary btn-sm" onclick="addBatchDlMultiFileName()" title="Add" style="width:28px;height:28px;padding:0;font-size:16px;">+</button>
+          </div>
+        </div>
 
         <label>Target Directories (directories to recursively search in, supports * wildcard)</label>
         <div id="batchDlMultiTargetDirs">
@@ -3648,7 +3710,7 @@ function getBatchPluginNodeAddr(selectId) {
 // the existing Remote File panel does).
 // ---------------------------------------------------------------------------
 var _batchMultiNodeContainerIds = [
-  'batchUpMultiNodeCbs', 'batchOverrideMultiNodeCbs', 'batchDlMultiNodeCbs'
+  'batchUpMultiNodeCbs', 'batchOverrideMultiNodeCbs', 'batchDlMultiNodeCbs', 'batchDelMultiNodeCbs'
 ];
 
 // Maps each node-checkbox container to the Target Directories container it
@@ -3656,7 +3718,8 @@ var _batchMultiNodeContainerIds = [
 var _batchMultiTargetDirConfig = {
   'batchUpMultiNodeCbs': {targetContainerId: 'batchUpMultiTargetDirs', inputClass: 'batch-up-multi-target-dir', placeholder: 'e.g. simulator/B2BGameSimulator/lib'},
   'batchOverrideMultiNodeCbs': {targetContainerId: 'batchOverrideMultiTargetDirs', inputClass: 'batch-override-multi-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'},
-  'batchDlMultiNodeCbs': {targetContainerId: 'batchDlMultiTargetDirs', inputClass: 'batch-dl-multi-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'}
+  'batchDlMultiNodeCbs': {targetContainerId: 'batchDlMultiTargetDirs', inputClass: 'batch-dl-multi-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'},
+  'batchDelMultiNodeCbs': {targetContainerId: 'batchDelMultiTargetDirs', inputClass: 'batch-del-multi-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'}
 };
 
 // Cache production_dir lookups per addr so re-checking the same node
