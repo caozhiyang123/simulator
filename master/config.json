@@ -58,8 +58,38 @@
     "Batch Override File",
     "Batch Edit File",
     "Batch Upload File",
-    "Batch Download File"
+    "Batch Download File",
+    "Statistic Analysis"
   ],
+  "statistic_analysis": {
+    "bingo": [
+      "QUANTITY",
+      "SPIN COUNT",
+      "EB ROUNDS",
+      "TOTAL WIN COUNT",
+      "TOTAL EB WON",
+      "BASE WON",
+      "TOTAL WON",
+      "TOTAL EB SPENT",
+      "BASE SPENT",
+      "TOTAL SPENT",
+      "LUCKY BALL COUNT",
+      "FREE EB COUNT"
+    ],
+    "pattern_count": true,
+    "no_sum": [
+      "QUANTITY"
+    ],
+    "slot": [
+      "QUANTITY",
+      "SPIN COUNT",
+      "TOTAL WIN COUNT",
+      "BASE WON",
+      "TOTAL WON",
+      "BASE SPENT",
+      "TOTAL SPENT"
+    ]
+  },
   "footer_links": [
     {
       "name": "Sandbox Games dev",

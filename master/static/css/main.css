@@ -5,6 +5,12 @@ body > *:not(#bgMask) { position: relative; z-index: 1; }
 h1 { text-align: center; margin-bottom: 0; color: #1a1a2e; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 1200px; margin: 0 auto; }
 .card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+/* Gray variant used to visually set apart "multi-node" batch panels from
+   their single-node counterparts (Batch Upload/Override/Download File). */
+.card-muted { background: #eceff1; }
+/* File Sync panel shown in batch pages (side column) */
+.batch-file-sync-panel { width:504px; flex-shrink:0; align-self:stretch; }
+.batch-file-sync-panel > .card { height:100%; max-height:none; overflow-y:auto; }
 .card h2 { font-size: 15px; color: #555; margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
 .start-modules-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .start-module-column { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
