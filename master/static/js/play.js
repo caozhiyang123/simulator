@@ -216,7 +216,9 @@ async function playSelectMachine(machineId, enabled, machineType) {
     } else if (resp.cmd === 'bonus_start') {
       // Bonus start response (server acknowledges bonus session started)
       playLog('<<< [BONUS START] response: ' + JSON.stringify(resp));
-      if (machineName === 'WildWestBingo' && typeof wildWestHandleBonusStartResponse === 'function') {
+      if (machineName === 'CarnavalBingo' && typeof carnavalHandleBonusStartResponse === 'function') {
+        carnavalHandleBonusStartResponse(resp);
+      } else if (machineName === 'WildWestBingo' && typeof wildWestHandleBonusStartResponse === 'function') {
         wildWestHandleBonusStartResponse(resp);
       } else if (typeof doubleManiaHandleBonusStartResponse === 'function') {
         doubleManiaHandleBonusStartResponse(resp);
@@ -228,9 +230,11 @@ async function playSelectMachine(machineId, enabled, machineType) {
         superRichHandleMagicBallResponse(resp);
       }
     } else if (resp.cmd === 'bonus_spin') {
-      // Bonus spin response (e.g. BingoSeven/BingoAmazonia/BingoMoney cage)
+      // Bonus spin response (e.g. BingoSeven/BingoAmazonia/BingoMoney cage, CarnavalBingo wheel)
       playLog('<<< [BONUS SPIN] response: ' + JSON.stringify(resp));
-      if (_playCurrentMachine && _playCurrentMachine.name === 'BingoAmazonia') {
+      if (machineName === 'CarnavalBingo' && typeof carnavalHandleBonusSpinResponse === 'function') {
+        carnavalHandleBonusSpinResponse(resp);
+      } else if (_playCurrentMachine && _playCurrentMachine.name === 'BingoAmazonia') {
         if (typeof bingoAmazoniaHandleBonusSpinResponse === 'function') bingoAmazoniaHandleBonusSpinResponse(resp);
       } else {
         if (typeof bingoSevenHandleBonusSpinResponse === 'function') bingoSevenHandleBonusSpinResponse(resp);
@@ -837,6 +841,9 @@ var _playBonusPending = false; // set by machine plugins to defer round over
 function _playTriggerBonusBeforeRoundOver() {
   if (!_playBonusPending) return false;
   var name = (_playCurrentMachine && _playCurrentMachine.name) || '';
+  if (name === 'CarnavalBingo' && typeof carnavalTriggeredBonusBeforeRoundOver === 'function') {
+    return carnavalTriggeredBonusBeforeRoundOver();
+  }
   if (name === 'WildWestBingo' && typeof wildWestTriggeredBonusBeforeRoundOver === 'function') {
     return wildWestTriggeredBonusBeforeRoundOver();
   }

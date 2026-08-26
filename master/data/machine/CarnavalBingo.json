@@ -16,11 +16,11 @@
             "cardSize": 100,
             "max_cards": 4,
             "pattern_match_type": "overlap_win",
-            "class_name": "com.gamesmart.wild.videobingo.core.WildEBMachine",
+            "class_name": "com.gamesmart.wildeast.videobingo.core.WildEBMachine",
             "features": {
                 "lists": [
                     {
-                        "reference": "com.gamesmart.wild.videobingo.feature.BuffDoubleFreeEBFeature",
+                        "reference": "com.gamesmart.wildeast.videobingo.feature.BuffDoubleFreeEBFeature",
                         "config": {
 							"feature_id": 2,
 							"buff_id": 2,
@@ -29,7 +29,7 @@
                             "max_free_eb_count": 1
                         }
                     },{
-                        "reference": "com.gamesmart.wild.videobingo.feature.BuffCalaWildEBFeature",
+                        "reference": "com.gamesmart.wildeast.videobingo.feature.BuffCalaWildEBFeature",
                         "config": {
 							"feature_id": 3,
 							"buff_id": 3,
@@ -47,7 +47,7 @@
                             ]
                         }
                     },{
-                        "reference": "com.gamesmart.wild.videobingo.feature.BuffLightningEBFeature",
+                        "reference": "com.gamesmart.wildeast.videobingo.feature.BuffLightningEBFeature",
                         "config": {
                             "feature_id": 5,
 							"buff_id": 5,
@@ -55,7 +55,7 @@
                             "max_lightning_eb_count": 3
                         }
                     },{
-					  "reference":"com.gamesmart.wild.videobingo.feature.ManageBuffFeature",
+					  "reference":"com.gamesmart.wildeast.videobingo.feature.ManageBuffFeature",
 					  "config":{
 					    "feature_id": 7,
 					    "buffs":[
@@ -66,13 +66,13 @@
 					    ]
 					  }
 					},{
-					  "reference":"com.gamesmart.wild.videobingo.feature.BuffFeature",
+					  "reference":"com.gamesmart.wildeast.videobingo.feature.BuffFeature",
 					  "config":{
 					    "feature_id": 0,	
 					    "buff_id": 0
 					  }
 				    },{
-                        "reference": "com.gamesmart.wild.videobingo.feature.CarnavalBonusFeature",
+                        "reference": "com.gamesmart.wildeast.videobingo.feature.SuperCarnavalBonusFeature",
                         "config": {
 							"feature_id": 6,
                             "min_trigger_value": 500,
@@ -124,7 +124,7 @@
 							"bonus_multiplier":[{"format":"111111111111111","multi":1.2},{"format":"111111000111111","multi":1.0}]
                         }
                     },{
-                        "reference": "com.gamesmart.wild.videobingo.feature.SynchronizedMachineStatusFeature",
+                        "reference": "com.gamesmart.wildeast.videobingo.feature.SynchronizedMachineStatusFeature",
                         "config": {
                             "feature_id": 4
                         }
