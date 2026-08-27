@@ -59,6 +59,7 @@ var _carnavalBonusMultiplier = 0;      // multiplier from response
 var _carnavalBonusResults = [];        // carnaval_bonus array (wheel values per spin)
 var _carnavalBonusPositions = [];      // carnaval_bonus_positions (results of completed spins)
 var _carnavalBonusStarted = false;     // bonus_start flag from server
+var _carnavalBonusCurrentSpin = 0;     // client-tracked spin index (0-based)
 
 // ---------------------------------------------------------------------------
 // Update bonus state from every spin/EB response.
@@ -261,7 +262,7 @@ function carnavalHandleBonusStartResponse(resp) {
 // ---------------------------------------------------------------------------
 function carnavalSendBonusSpin() {
   var resp = _playCurrentMachine.response;
-  var position = _carnavalBonusPositions.length; // next spin index
+  var position = _carnavalBonusCurrentSpin; // current spin index (0-based)
   var cmd = {
     cmd: 'bonus_spin',
     session_token: _playSessionToken,
@@ -294,39 +295,46 @@ function carnavalHandleBonusSpinResponse(resp) {
     bonusData = resp;
   }
 
-  // Update positions from server
-  var newPositions = bonusData.carnaval_bonus_positions || _carnavalBonusPositions;
-  _carnavalBonusPositions = newPositions;
-  _carnavalBonusPrize = bonusData.carnaval_prize || _carnavalBonusPrize;
+  // Update prize from server if provided
+  if (bonusData.carnaval_prize !== undefined) {
+    _carnavalBonusPrize = bonusData.carnaval_prize;
+  }
 
-  // Determine the result for the current spin.
-  // The target value comes from carnaval_bonus array at the current spin index.
-  // carnaval_bonus_positions tracks completed spins, so the spin we just did
-  // is at index (positions.length - 1) if positions was updated,
-  // or we can derive from carnaval_bonus[completedSpins - 1].
-  var completedSpins = _carnavalBonusPositions.length;
+  // Update positions from server if provided
+  if (bonusData.carnaval_bonus_positions && bonusData.carnaval_bonus_positions.length > 0) {
+    _carnavalBonusPositions = bonusData.carnaval_bonus_positions;
+  }
+
+  // Determine the target value for this spin.
+  // Use _carnavalBonusCurrentSpin as the definitive spin index (client-tracked).
+  // The target value is carnaval_bonus[currentSpinIndex].
+  var spinIndex = _carnavalBonusCurrentSpin;
   var latestResult = 0;
 
-  // Prefer the last element of carnaval_bonus_positions (server's authoritative result)
-  if (completedSpins > 0) {
-    latestResult = _carnavalBonusPositions[completedSpins - 1];
+  if (_carnavalBonusResults.length > spinIndex) {
+    latestResult = _carnavalBonusResults[spinIndex];
   }
 
-  // Fallback: if positions wasn't updated but we know which spin we're on,
-  // use carnaval_bonus[currentSpinIndex] as the target value
-  if (latestResult === 0 || latestResult === undefined) {
-    var spinIndex = completedSpins > 0 ? completedSpins - 1 : 0;
-    if (_carnavalBonusResults.length > spinIndex) {
-      latestResult = _carnavalBonusResults[spinIndex];
-    }
+  // Fallback: try carnaval_bonus_positions last element from server
+  if ((latestResult === 0 || latestResult === undefined) && _carnavalBonusPositions.length > 0) {
+    latestResult = _carnavalBonusPositions[_carnavalBonusPositions.length - 1];
   }
 
-  playLog('[CarnavalBingo] wheel spin result: ' + latestResult + ' (completedSpins=' + completedSpins + ')');
+  // Increment the local spin counter
+  _carnavalBonusCurrentSpin++;
+
+  // Also update _carnavalBonusPositions locally if server didn't provide it
+  if (!bonusData.carnaval_bonus_positions || bonusData.carnaval_bonus_positions.length === 0) {
+    _carnavalBonusPositions.push(latestResult);
+  }
+
+  playLog('[CarnavalBingo] wheel spin result: ' + latestResult + ' (spinIndex=' + spinIndex + ', totalSpins=' + _carnavalBonusResults.length + ')');
 
   // Animate the wheel to the result
   carnavalWheelAnimateToResult(latestResult, function() {
     // After animation completes, check if more spins remain
     var totalSpins = _carnavalBonusResults.length;
+    var completedSpins = _carnavalBonusCurrentSpin;
 
     // Update status
     var statusEl = document.getElementById('carnavalWheelStatus');
@@ -469,6 +477,9 @@ function carnavalOpenWheelBonus() {
   _carnavalWheel.spinning = false;
   _carnavalWheel.angle = 0;
 
+  // Initialize current spin index from already-completed positions (for reconnection)
+  _carnavalBonusCurrentSpin = _carnavalBonusPositions.length;
+
   if (_carnavalWheel.segments.length === 0) {
     playLog('[CarnavalBingo] ERROR: no bonus_wheel segments in config');
     _playBonusPending = false;
@@ -561,7 +572,7 @@ function carnavalWheelSpin() {
   if (_carnavalWheel.spinning) return;
 
   var totalSpins = _carnavalBonusResults.length;
-  var completedSpins = _carnavalBonusPositions.length;
+  var completedSpins = _carnavalBonusCurrentSpin;
   if (completedSpins >= totalSpins) return;
 
   _carnavalWheel.spinning = true;
@@ -641,6 +652,7 @@ function carnavalWheelFinish() {
       _playBonusPending = false;
       _carnavalBonusHasBonus = false;
       _carnavalBonusStarted = false;
+      _carnavalBonusCurrentSpin = 0;
       _carnavalBonusResults = [];
       _carnavalBonusPositions = [];
       _carnavalWheel.spinning = false;
@@ -654,6 +666,7 @@ function carnavalWheelFinish() {
     _playBonusPending = false;
     _carnavalBonusHasBonus = false;
     _carnavalBonusStarted = false;
+    _carnavalBonusCurrentSpin = 0;
     _playSpinState = 'waiting_roundover';
     playRoundOver();
   }
