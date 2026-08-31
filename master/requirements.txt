@@ -24,3 +24,23 @@ python your_script.py
 方式1更简单,不需要激活。比如要在虚拟环境中运行 master
 & "e:\python\workSpace\simulator\.venv\Scripts\python.exe" e:\python\workSpace\simulator\master\a
 websocket-client
+
+#macos run with source code
+#master
+cd /path/to/simulator
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r master/requirements.txt
+python master/app.py
+#worker
+source .venv/bin/activate
+python worker/app.py
+
+#macos run with compiled file
+#build in macos
+python3 -m pip install pyinstaller
+cd /path/to/simulator/master
+pyinstaller master.spec
+#build in macos
+cd ../worker
+pyinstaller worker.spec

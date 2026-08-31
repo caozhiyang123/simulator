@@ -1,0 +1,4006 @@
+// ---------------------------------------------------------------------------
+// Background & Mask
+// ---------------------------------------------------------------------------
+function changeBg(val) {
+  var body = document.body;
+  switch(val) {
+    case 'gray': body.style.background = '#e0e0e0'; body.style.backgroundImage = 'none'; break;
+    case 'black': body.style.background = '#1a1a1a'; body.style.backgroundImage = 'none'; break;
+    case 'white': body.style.background = '#ffffff'; body.style.backgroundImage = 'none'; break;
+    case 'bg1': body.style.background = '#f5f7fa url("/static/background_1.PNG") no-repeat center center fixed'; body.style.backgroundSize = 'cover'; break;
+    case 'bg2': body.style.background = '#f5f7fa url("/static/background_2.PNG") no-repeat center center fixed'; body.style.backgroundSize = 'cover'; break;
+  }
+  // Adjust text color for dark backgrounds
+  if (val === 'black') { document.querySelector('h1').style.color = '#fff'; }
+  else { document.querySelector('h1').style.color = '#1a1a2e'; }
+}
+
+function toggleMask(enabled) {
+  var before = document.getElementById('bgMask');
+  if (before) before.style.display = enabled ? 'block' : 'none';
+}
+
+async function doLogout() {
+  await fetch('/auth/logout', {method: 'POST'});
+  window.location.href = '/login';
+}
+
+async function loadUserInfo() {
+  try {
+    var r = await fetch('/auth/me');
+    if (r.ok) {
+      var data = await r.json();
+      document.getElementById('userInfo').textContent = '👤 ' + data.username + ' (' + data.role + ')';
+      // Load user menus for authority-based filtering, then remove loading overlay
+      await loadUserMenus();
+      iamRemoveLoadingOverlay();
+    } else if (r.status === 401) {
+      window.location.href = '/login';
+    }
+  } catch(e) {
+    // Server down - redirect to login
+    window.location.href = '/login';
+  }
+}
+
+// Heartbeat: check session every 5 seconds, redirect if server down or session expired
+setInterval(async function() {
+  try {
+    var r = await fetch('/auth/me');
+    if (!r.ok) window.location.href = '/login';
+  } catch(e) {
+    window.location.href = '/login';
+  }
+}, 5000);
+
+function guideScrollTo(sectionId) {
+  // Switch to Home page first
+  switchPage('home');
+  setTimeout(function() {
+    var el = document.getElementById(sectionId);
+    if (!el) return;
+    el.scrollIntoView({behavior: 'smooth', block: 'center'});
+    // Highlight briefly
+    el.style.outline = '2px solid #4a90d9';
+    el.style.transition = 'outline 0.3s';
+    setTimeout(function() { el.style.outline = 'none'; }, 2000);
+  }, 100);
+}
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let nodes = [];          // [{addr, vcpu, percentage}, ...]
+let workerHealthMap = {};  // {addr: true/false}
+let autoRefreshTimer = null;
+let autoRefreshAutoStarted = false;  // true when auto-refresh was started by simulation
+let autoLogsTimer = null;
+let logSinceMap = {};  // {nodeKey: sinceLineNumber}
+let activeLogTab = 'master';
+let expandedModels = {};  // {modelId: true} track expanded state
+let expandedCharts = {};  // {chartId: modelName} track open charts
+let expandedHistory = {}; // {historyId: true} track expanded history
+let dynamicStartModules = [];
+let availableGames = [];
+let _dynamicStartSaveTimer = null;
+let _dynamicStartSaveChain = Promise.resolve(true);
+let _startModuleAlignmentFrame = null;
+
+// ---------------------------------------------------------------------------
+// Logging
+// ---------------------------------------------------------------------------
+function log(msg) {
+  const el = document.getElementById('log');
+  const ts = new Date().toLocaleTimeString();
+  el.textContent += '\n[' + ts + '] ' + msg;
+  el.scrollTop = el.scrollHeight;
+}
+
+// ---------------------------------------------------------------------------
+// Poller request/response log (Master -> Worker /status polling traffic)
+// ---------------------------------------------------------------------------
+let _pollerLogSince = 0;
+let _pollerLogTimer = null;
+let _pollerLogDisabledNoticeShown = false;
+
+function formatPollerLogEntry(e) {
+  var detail = e.detail;
+  if (detail && typeof detail === 'object') {
+    detail = JSON.stringify(detail);
+  }
+  var tag = e.outcome === 'ok' ? 'poll' : (e.outcome === 'stale' ? 'poll-stale' : 'poll-error');
+  return '[' + tag + '] ' + e.addr + ' ' + e.url + ' -> ' + detail;
+}
+
+async function fetchPollerLog() {
+  try {
+    var r = await fetch('/poller/log?since=' + _pollerLogSince);
+    if (!r.ok) return;
+    var data = await r.json();
+    if (data.enabled === false) {
+      // Feature disabled via config.json ("enable_poller_log": false,
+      // the default) to avoid unbounded memory growth during very long
+      // simulations. Stop polling this endpoint entirely and note it once.
+      if (!_pollerLogDisabledNoticeShown) {
+        _pollerLogDisabledNoticeShown = true;
+        log('[poll-log] Poller request/response logging is disabled (set "enable_poller_log": true in config.json to enable)');
+      }
+      if (_pollerLogTimer) {
+        clearInterval(_pollerLogTimer);
+        _pollerLogTimer = null;
+      }
+      return;
+    }
+    var entries = data.entries || [];
+    for (var i = 0; i < entries.length; i++) {
+      log(formatPollerLogEntry(entries[i]));
+      _pollerLogSince = entries[i].id;
+    }
+  } catch (e) {
+    // ignore transient fetch errors, will retry next tick
+  }
+}
+
+// Poll for master<->worker /status request/response traffic every 2s so the
+// Operation Log shows exactly what each worker returned (or the raw error),
+// making it possible to tell whether a running->stopped misreport comes from
+// the worker itself or from a failed/timed-out request. Disabled by default
+// via config.json ("enable_poller_log") since keeping this on for the
+// entire duration of a very long simulation can grow memory enough to
+// crash Master; the server-side check above stops this loop automatically
+// when disabled.
+_pollerLogTimer = setInterval(fetchPollerLog, 2000);
+fetchPollerLog();
+
+// ---------------------------------------------------------------------------
+// Alert helper (reusable)
+// ---------------------------------------------------------------------------
+function showAlert(message) {
+  alert(message);
+}
+
+// ---------------------------------------------------------------------------
+// Button state management (start/stop互斥)
+// ---------------------------------------------------------------------------
+let runningNodes = {};  // {nodeAddr: true/false}
+
+function setNodeRunning(addr, running) {
+  runningNodes[addr] = running;
+  // Mark timestamp to prevent getStatus from overriding optimistic updates
+  if (running) {
+    if (!setNodeRunning._optimisticTimestamps) setNodeRunning._optimisticTimestamps = {};
+    setNodeRunning._optimisticTimestamps[addr] = Date.now();
+  }
+  // Update existing DOM elements in-place (don't re-render to preserve checkbox state)
+  // Update batch checkboxes
+  document.querySelectorAll('.batch-node-cb').forEach(function(cb) {
+    if (cb.value !== addr) return;
+    var row = cb.closest('label');
+    if (!row) return;
+    var isRunning = !!runningNodes[addr];
+    cb.setAttribute('data-status', isRunning ? 'running' : 'stopped');
+    // Get direct children spans only
+    var children = row.children;
+    for (var i = 0; i < children.length; i++) {
+      var el = children[i];
+      if (el.tagName !== 'SPAN') continue;
+      // Dot span (has border-radius:50%)
+      if (el.style.borderRadius === '50%') { el.style.background = isRunning ? '#27ae60' : '#e74c3c'; }
+      // Status span (last span, has font-weight 600)
+      if (el.style.fontWeight === '600') { el.textContent = isRunning ? 'running' : 'stopped'; el.style.color = isRunning ? '#27ae60' : '#888'; }
+    }
+  });
+  // Update single radios
+  document.querySelectorAll('.single-node-radio').forEach(function(r) {
+    if (r.value !== addr) return;
+    var row = r.closest('label');
+    if (!row) return;
+    var isRunning = !!runningNodes[addr];
+    r.setAttribute('data-status', isRunning ? 'running' : 'stopped');
+    var children = row.children;
+    for (var i = 0; i < children.length; i++) {
+      var el = children[i];
+      if (el.tagName !== 'SPAN') continue;
+      if (el.style.borderRadius === '50%') { el.style.background = isRunning ? '#27ae60' : '#e74c3c'; }
+      if (el.style.fontWeight === '600') { el.textContent = isRunning ? 'running' : 'stopped'; el.style.color = isRunning ? '#27ae60' : '#888'; }
+    }
+  });
+  // Update button states AFTER DOM updates
+  updateBatchButtons();
+  updateSingleButtons();
+  // Auto-enable status polling when any node starts running
+  if (running && !autoRefreshTimer) {
+    var interval = parseFloat(document.getElementById('pollInterval').value) || 2;
+    autoRefreshTimer = setInterval(getStatus, interval * 1000);
+    autoRefreshAutoStarted = true;
+    document.getElementById('autoRefreshBtn').textContent = 'Disable Auto Refresh';
+    log('▶ Auto refresh enabled (simulation started)');
+    getStatus();
+  }
+}
+
+function updateButtonStates() {
+  updateBatchButtons();
+  updateSingleButtons();
+
+  // Update checkbox status indicators (batch)
+  document.querySelectorAll('.batch-node-cb').forEach(function(cb) {
+    var isRunning = !!runningNodes[cb.value];
+    cb.setAttribute('data-status', isRunning ? 'running' : 'stopped');
+    var row = cb.closest('label');
+    if (row) {
+      var children = row.children;
+      for (var i = 0; i < children.length; i++) {
+        var el = children[i];
+        if (el.tagName !== 'SPAN') continue;
+        if (el.style.borderRadius === '50%') el.style.background = isRunning ? '#27ae60' : '#e74c3c';
+        if (el.style.fontWeight === '600') { el.textContent = isRunning ? 'running' : 'stopped'; el.style.color = isRunning ? '#27ae60' : '#888'; }
+      }
+    }
+  });
+
+  // Update radio status indicators (single)
+  document.querySelectorAll('.single-node-radio').forEach(function(r) {
+    var isRunning = !!runningNodes[r.value];
+    r.setAttribute('data-status', isRunning ? 'running' : 'stopped');
+    var row = r.closest('label');
+    if (row) {
+      var children = row.children;
+      for (var i = 0; i < children.length; i++) {
+        var el = children[i];
+        if (el.tagName !== 'SPAN') continue;
+        if (el.style.borderRadius === '50%') el.style.background = isRunning ? '#27ae60' : '#e74c3c';
+        if (el.style.fontWeight === '600') { el.textContent = isRunning ? 'running' : 'stopped'; el.style.color = isRunning ? '#27ae60' : '#888'; }
+      }
+    }
+  });
+}
+
+function updateBatchButtons() {
+  var batchStartBtn = document.getElementById('batchStartBtn');
+  var batchStopBtn = document.getElementById('batchStopBtn');
+  if (!batchStartBtn || !batchStopBtn) return;
+
+  var cbs = document.querySelectorAll('.batch-node-cb:checked');
+  if (cbs.length === 0) {
+    batchStartBtn.disabled = true;
+    batchStopBtn.disabled = true;
+    return;
+  }
+
+  var hasRunning = false, hasStopped = false;
+  cbs.forEach(function(cb) {
+    if (runningNodes[cb.value]) hasRunning = true;
+    else hasStopped = true;
+  });
+
+  // Mixed selection: both disabled
+  if (hasRunning && hasStopped) {
+    batchStartBtn.disabled = true;
+    batchStopBtn.disabled = true;
+  } else if (hasRunning) {
+    // All running: can stop, cannot start
+    batchStartBtn.disabled = true;
+    batchStopBtn.disabled = false;
+  } else {
+    // All stopped: can start, cannot stop
+    batchStartBtn.disabled = false;
+    batchStopBtn.disabled = true;
+  }
+}
+
+function updateSingleButtons() {
+  var startBtn = document.getElementById('singleStartBtn');
+  var stopBtn = document.getElementById('singleStopBtn');
+  if (!startBtn || !stopBtn) return;
+
+  var selected = document.querySelector('.single-node-radio:checked');
+  if (!selected) {
+    startBtn.disabled = true;
+    stopBtn.disabled = true;
+    return;
+  }
+
+  var isRunning = !!runningNodes[selected.value];
+  startBtn.disabled = isRunning;
+  stopBtn.disabled = !isRunning;
+}
+
+// ---------------------------------------------------------------------------
+// CPU Health Warning (ring overlay on batch/single modules)
+// ---------------------------------------------------------------------------
+var _cpuMonitorTimer = null;
+var _cpuMonitorActive = false;
+var _cpuHealthyThreshold = 90;
+
+function activateCpuMonitor() {
+  if (_cpuMonitorActive) return;
+  _cpuMonitorActive = true;
+  if (!_cpuMonitorTimer) {
+    _cpuMonitorTimer = setInterval(cpuMonitorCheck, 5000);
+    setTimeout(cpuMonitorCheck, 2000); // first check after 2s
+  }
+}
+
+function deactivateCpuMonitor() {
+  _cpuMonitorActive = false;
+  if (_cpuMonitorTimer) { clearInterval(_cpuMonitorTimer); _cpuMonitorTimer = null; }
+  hideCpuWarn('batchCpuWarn');
+  hideCpuWarn('singleCpuWarn');
+  hideDynamicCpuWarnings();
+}
+
+async function cpuMonitorCheck() {
+  var runningAddrs = [];
+  for (var addr in runningNodes) { if (runningNodes[addr]) runningAddrs.push(addr); }
+  if (runningAddrs.length === 0) { deactivateCpuMonitor(); return; }
+
+  var totalCpu = 0, count = 0;
+  for (var i = 0; i < runningAddrs.length; i++) {
+    try {
+      var r;
+      if (runningAddrs[i] === 'master') r = await fetch('/sysinfo');
+      else r = await fetch('/files/worker/sysinfo?addr=' + encodeURIComponent(runningAddrs[i]));
+      var data = await r.json();
+      if (!data.error && data.cpu_percent !== undefined) { totalCpu += data.cpu_percent; count++; }
+    } catch(e) {}
+  }
+  if (count === 0) return;
+  var avgCpu = totalCpu / count;
+
+  if (avgCpu < _cpuHealthyThreshold) {
+    showCpuWarn('batchCpuWarn', 'batchCpuCanvas', 'batchCpuText', avgCpu, false);
+    showCpuWarn('singleCpuWarn', 'singleCpuCanvas', 'singleCpuText', avgCpu, false);
+    updateDynamicCpuWarnings(avgCpu, false);
+  } else {
+    showCpuWarn('batchCpuWarn', 'batchCpuCanvas', 'batchCpuText', avgCpu, true);
+    showCpuWarn('singleCpuWarn', 'singleCpuCanvas', 'singleCpuText', avgCpu, true);
+    updateDynamicCpuWarnings(avgCpu, true);
+  }
+}
+
+function showCpuWarn(warnId, canvasId, textId, cpu, healthy) {
+  var el = document.getElementById(warnId);
+  if (el) {
+    el.style.display = 'flex';
+    el.style.background = healthy ? 'rgba(39,174,96,0.08)' : 'rgba(231,76,60,0.08)';
+  }
+  drawCpuRing(canvasId, cpu, healthy);
+  var textEl = document.getElementById(textId);
+  if (textEl) {
+    textEl.style.color = healthy ? '#27ae60' : '#e74c3c';
+    textEl.textContent = healthy ? ('CPU avg: ' + cpu.toFixed(1) + '% ✓ Healthy') : ('CPU avg: ' + cpu.toFixed(1) + '% (< ' + _cpuHealthyThreshold + '%)');
+  }
+}
+
+function hideCpuWarn(warnId) {
+  var el = document.getElementById(warnId);
+  if (el) el.style.display = 'none';
+}
+
+function drawCpuRing(canvasId, cpu, healthy) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var w = canvas.width, h = canvas.height;
+  var cx = w / 2, cy = h / 2;
+  var outerR = 50, innerR = 32;
+  var color = healthy ? [39,174,96] : [231,76,60];
+
+  ctx.clearRect(0, 0, w, h);
+
+  var angle = (cpu / 100) * 2 * Math.PI - Math.PI / 2;
+  // Background ring (gray)
+  ctx.beginPath();
+  ctx.arc(cx, cy, (outerR + innerR) / 2, 0, 2 * Math.PI);
+  ctx.lineWidth = outerR - innerR;
+  ctx.strokeStyle = 'rgba(200,200,200,0.3)';
+  ctx.stroke();
+
+  // Colored ring with gradient
+  var gradient = ctx.createRadialGradient(cx, cy, innerR, cx, cy, outerR);
+  gradient.addColorStop(0, 'rgba(' + color.join(',') + ',0.9)');
+  gradient.addColorStop(1, 'rgba(' + color.join(',') + ',0.2)');
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, (outerR + innerR) / 2, -Math.PI / 2, angle);
+  ctx.lineWidth = outerR - innerR;
+  ctx.strokeStyle = gradient;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Center text
+  ctx.fillStyle = healthy ? '#27ae60' : '#e74c3c';
+  ctx.font = 'bold 18px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(cpu.toFixed(0) + '%', cx, cy);
+}
+
+async function startSingleNode() {
+  var selected = document.querySelector('.single-node-radio:checked');
+  if (!selected) { showAlert('Please select a node'); return; }
+  var addr = selected.value;
+  var spins = parseInt(document.getElementById('singleSpins').value);
+  var gameName = document.getElementById('singleGameName').value;
+  var intervalCount = parseInt(document.getElementById('singleIntervalCount').value);
+  var simType = document.getElementById('singleSimType').value;
+  var overrideSpinSettings = document.getElementById('singleOverrideSpinSettings').checked;
+
+  if (!gameName) { showAlert('Please select a game'); return; }
+
+  if (addr === 'master') {
+    log('▶ Starting Master with ' + spins + ' spins...');
+    var r = await api('/start-master', 'POST', {spins: spins, game_name: gameName, interval_count: intervalCount, sim_type: simType, override_spin_settings: overrideSpinSettings});
+    if (r.ok) { log('✅ Master started'); setNodeRunning('master', true); activateCpuMonitor(); }
+    else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
+  } else {
+    log('▶ Starting Worker(' + addr + ') with ' + spins + ' spins...');
+    var r = await api('/start-worker', 'POST', {worker_addr: addr, spins: spins, game_name: gameName, interval_count: intervalCount, sim_type: simType, override_spin_settings: overrideSpinSettings});
+    if (r.ok) { log('✅ Worker started'); setNodeRunning(addr, true); activateCpuMonitor(); }
+    else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
+  }
+}
+
+async function stopSingleNode() {
+  var selected = document.querySelector('.single-node-radio:checked');
+  if (!selected) { showAlert('Please select a node'); return; }
+  var addr = selected.value;
+
+  if (addr === 'master') {
+    log('⏹ Stopping Master...');
+    var r = await api('/stop-master', 'POST', {});
+    if (r.ok) { log('✅ Master stopped'); setNodeRunning('master', false); }
+    else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
+  } else {
+    log('⏹ Stopping Worker(' + addr + ')...');
+    var r = await api('/stop-worker', 'POST', {worker_addr: addr});
+    if (r.ok) { log('✅ Worker stopped'); setNodeRunning(addr, false); }
+    else { log('❌ ' + (r.data.message || r.data.error || 'Failed')); }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// API helpers
+// ---------------------------------------------------------------------------
+async function api(url, method, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  try {
+    const res = await fetch(url, opts);
+    const data = await res.json();
+    if (!res.ok) {
+      log('❌ ' + method + ' ' + url + ' → ' + res.status + ': ' + JSON.stringify(data));
+    }
+    return { ok: res.ok, status: res.status, data };
+  } catch (e) {
+    log('❌ Request failed: ' + url + ' → ' + e.message);
+    return { ok: false, status: 0, data: { error: e.message } };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Batch start
+// ---------------------------------------------------------------------------
+async function startBatch() {
+  const spins = parseInt(document.getElementById('totalSpins').value);
+  if (!spins || spins <= 0) { showAlert('Please enter a valid Spins value'); return; }
+  const mode = document.getElementById('allocationMode').value;
+  const gameName = document.getElementById('batchGameName').value;
+  if (!gameName) { showAlert('Please select a game'); return; }
+  const checkboxes = document.querySelectorAll('.batch-node-cb:checked');
+  const selectedNodes = Array.from(checkboxes).map(function(cb) { return cb.value; });
+  if (selectedNodes.length === 0) { showAlert('Please select at least one simulator'); return; }
+  var intervalCount = parseInt(document.getElementById('batchIntervalCount').value) || spins;
+  var simType = document.getElementById('batchSimType').value;
+  var overrideSpinSettings = document.getElementById('batchOverrideSpinSettings').checked;
+
+  // Clear old status & results
+  document.getElementById('statusArea').innerHTML = '';
+  // Clear old logs and reset offsets
+  logSinceMap = {};
+  var logNodes = getLogNodes();
+  logNodes.forEach(function(k) {
+    var panel = document.getElementById(safeId(k));
+    if (panel) panel.textContent = '';
+  });
+  // Clear expanded states
+  expandedModels = {};
+  expandedHistory = {};
+  expandedCharts = {};
+
+  // Immediately mark selected nodes as running (optimistic)
+  selectedNodes.forEach(function(addr) { setNodeRunning(addr, true); });
+  activateCpuMonitor();
+
+  log('🚀 Batch start: type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount + ', mode=' + mode + ', nodes=' + selectedNodes.join(','));
+  const r = await api('/start', 'POST', { total_spins: spins, interval_count: intervalCount, mode, game_name: gameName, selected_nodes: selectedNodes, sim_type: simType, override_spin_settings: overrideSpinSettings });
+  if (r.ok) {
+    log('✅ Batch start completed: ' + r.data.status);
+    if (r.data.results) {
+      r.data.results.forEach(function(n) {
+        if (n.success) setNodeRunning(n.node, true);
+        log('   ' + n.node + ': ' + (n.success ? 'OK' : 'FAIL') +
+            (n.retries ? ' (retries: ' + n.retries + ')' : '') +
+            (n.error ? ' - ' + n.error : ''));
+      });
+    }
+    // Auto-enable status refresh to track progress
+    if (!autoRefreshTimer) {
+      var interval = parseFloat(document.getElementById('pollInterval').value) || 2;
+      autoRefreshTimer = setInterval(getStatus, interval * 1000);
+      document.getElementById('autoRefreshBtn').textContent = 'Disable Auto Refresh';
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Single start: Master
+// ---------------------------------------------------------------------------
+async function startMaster() {
+  const spins = parseInt(document.getElementById('singleSpins').value);
+  if (!spins || spins <= 0) { showAlert('Please enter a valid Spins value'); return; }
+  const gameName = document.getElementById('singleGameName').value;
+  if (!gameName) { showAlert('Please select a game'); return; }
+  var intervalCount = parseInt(document.getElementById('singleIntervalCount').value) || spins;
+  var simType = document.getElementById('singleSimType').value;
+  var overrideSpinSettings = document.getElementById('singleOverrideSpinSettings').checked;
+  log('🚀 Start Master: type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount);
+  setNodeRunning('master', true);
+  const r = await api('/start-master', 'POST', { spins, interval_count: intervalCount, game_name: gameName, sim_type: simType, override_spin_settings: overrideSpinSettings });
+  if (r.ok) { log('✅ ' + r.data.message); }
+  else { setNodeRunning('master', false); }
+}
+
+// ---------------------------------------------------------------------------
+// Single start: Worker
+// ---------------------------------------------------------------------------
+async function startWorker(addr) {
+  const spins = parseInt(document.getElementById('singleSpins').value);
+  if (!spins || spins <= 0) { showAlert('Please enter a valid Spins value'); return; }
+  const gameName = document.getElementById('singleGameName').value;
+  if (!gameName) { showAlert('Please select a game'); return; }
+  var intervalCount = parseInt(document.getElementById('singleIntervalCount').value) || spins;
+  var simType = document.getElementById('singleSimType').value;
+  var overrideSpinSettings = document.getElementById('singleOverrideSpinSettings').checked;
+  log('🚀 Start Worker ' + addr + ': type=' + simType + ', game=' + gameName + ', spins=' + spins + ', intervalCount=' + intervalCount);
+  setNodeRunning(addr, true);
+  const r = await api('/start-worker', 'POST', { worker_addr: addr, spins, interval_count: intervalCount, game_name: gameName, sim_type: simType, override_spin_settings: overrideSpinSettings });
+  if (r.ok) { log('✅ Worker ' + addr + ' start request sent'); }
+  else { setNodeRunning(addr, false); }
+}
+
+// ---------------------------------------------------------------------------
+// Status
+// ---------------------------------------------------------------------------
+async function clearResults() {
+  if (!confirm('Clear all Per-Model Results?')) return;
+  var r = await api('/clear-results', 'POST', {});
+  if (r.ok) {
+    log('🗑 Results cleared');
+    expandedModels = {};
+    expandedCharts = {};
+    expandedHistory = {};
+    getStatus();
+  }
+}
+
+async function getStatus() {
+  const r = await api('/status', 'GET');
+  if (!r.ok) return;
+  // Sync runningNodes from backend status (only when nodes are reported)
+  if (r.data.nodes && r.data.nodes.length > 0) {
+    r.data.nodes.forEach(function(n) {
+      var wasRunning = runningNodes[n.addr];
+      var isRunning = (n.status === 'running');
+      // Don't override optimistic "running" state within 10 seconds of setting it
+      if (!isRunning && wasRunning && setNodeRunning._optimisticTimestamps && setNodeRunning._optimisticTimestamps[n.addr]) {
+        if (Date.now() - setNodeRunning._optimisticTimestamps[n.addr] < 10000) {
+          return; // Skip this node, keep optimistic state
+        }
+        delete setNodeRunning._optimisticTimestamps[n.addr];
+      }
+      if (isRunning && setNodeRunning._optimisticTimestamps && setNodeRunning._optimisticTimestamps[n.addr]) {
+        delete setNodeRunning._optimisticTimestamps[n.addr]; // Server confirmed, clear optimistic flag
+      }
+      // Reset log offset when a node starts a new run
+      if (isRunning && !wasRunning) {
+        var logKey = n.addr === 'master' ? 'master' : n.addr;
+        logSinceMap[logKey] = 0;
+        var panel = document.getElementById(safeId(logKey));
+        if (panel) panel.textContent = '';
+      }
+      runningNodes[n.addr] = isRunning;
+    });
+    updateButtonStates();
+    // Auto-disable polling when no nodes are running (only if auto-started)
+    var anyRunning = Object.values(runningNodes).some(function(v) { return v; });
+    if (!anyRunning && autoRefreshTimer && autoRefreshAutoStarted) {
+      clearInterval(autoRefreshTimer);
+      autoRefreshTimer = null;
+      autoRefreshAutoStarted = false;
+      document.getElementById('autoRefreshBtn').textContent = 'Enable Auto Refresh';
+      log('⏸ Auto refresh disabled (all nodes finished)');
+    }
+  }
+  renderStatus(r.data);
+}
+
+function renderStatus(data) {
+  const area = document.getElementById('statusArea');
+  let html = '<div style="margin-bottom:8px;font-weight:600;">Overall Status: <span class="status status-' +
+    data.overall_status + '">' + data.overall_status + '</span></div>';
+
+  // Node cards
+  if (data.nodes && data.nodes.length) {
+    html += '<div>';
+    data.nodes.forEach(function(n) {
+      html += '<div class="node-card">';
+      html += '<span class="name">' + n.name + '</span>';
+      html += '<span class="status status-' + n.status + '">' + n.status + '</span>';
+      if (n.models_completed !== undefined) {
+        html += ' <span style="font-size:12px;color:#666;">Models: ' + n.models_completed + '/' + (n.models_total || '?') + '</span>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Per-model aggregated results with progress bar and volcano chart
+  if (data.model_results && Object.keys(data.model_results).length > 0) {
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-top:12px;margin-bottom:8px;">';
+    html += '<h3 style="font-size:14px;margin:0;">📈 Per-Model Results</h3>';
+    html += '<button class="btn-danger btn-sm" onclick="clearResults()">🗑 Clear</button>';
+    html += '</div>';
+
+    var models = Object.entries(data.model_results).sort(function(a, b) { return a[0].localeCompare(b[0]); });
+    models.forEach(function(entry, idx) {
+      var name = entry[0];
+      var m = entry[1];
+      var latest = m.latest || m;
+      var history = m.history || [];
+      var modelId = 'model_' + idx;
+      var chartId = 'chart_' + idx;
+
+      // Parse open card info from composite key "open N card | filename"
+      var openCard = '';
+      var displayName = name;
+      if (name.indexOf(' | ') !== -1) {
+        var parts = name.split(' | ');
+        openCard = parts[0];
+        displayName = parts[1];
+      }
+
+      html += '<div style="margin-top:8px;padding:8px;border:1px solid #e0e0e0;border-radius:6px;">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
+      html += '<span style="font-weight:600;font-size:13px;cursor:pointer;" onclick="toggleModel(\'' + modelId + '\')">';
+      if (openCard) {
+        html += '▶ <span style="color:#e67e22;">[' + openCard + ']</span> ' + displayName + '</span>';
+      } else {
+        html += '▶ ' + displayName + '</span>';
+      }
+      html += '<span style="font-size:11px;color:#888;">(nodes: ' + (latest.node_count || 1) + ')</span>';
+      var isSingleNode = (latest.node_count || 1) <= 1;
+      if (history.length > 1) {
+        html += '<button class="btn-warning btn-sm" onclick="toggleChart(\'' + chartId + '\',\'' + name + '\')">📊 Volcano</button>';
+      }
+      html += '</div>';
+
+      // Volcano chart canvas (hidden by default, restored from state)
+      var chartVisible = expandedCharts[chartId] ? 'block' : 'none';
+      html += '<div id="' + chartId + '" style="display:' + chartVisible + ';margin-bottom:8px;"><canvas id="canvas_' + chartId + '" width="600" height="200" style="width:100%;border:1px solid #ddd;border-radius:4px;"></canvas></div>';
+
+      // Collapsible detail (restored from state)
+      var modelVisible = expandedModels[modelId] ? 'block' : 'none';
+      html += '<div id="' + modelId + '" style="display:' + modelVisible + ';">';
+      var latestDataId = 'latestData_' + idx;
+      html += '<button class="btn-primary btn-sm" onclick="copyLatest(\'' + latestDataId + '\', this)" style="margin-bottom:4px;">📋 Copy</button>';
+      html += '<table class="result-table" id="' + latestDataId + '">';
+      html += '<tr><th>Metric</th><th>Value</th></tr>';
+      html += '<tr><td>SPIN COUNT</td><td>' + fmt(latest.spin_count) + '</td></tr>';
+      html += '<tr><td>TOTAL WON</td><td>' + fmt(latest.total_won) + '</td></tr>';
+      html += '<tr><td>TOTAL SPENT</td><td>' + fmt(latest.total_spent) + '</td></tr>';
+      html += '<tr><td>BASE WON</td><td>' + fmt(latest.base_won) + '</td></tr>';
+      html += '<tr><td>BASE SPENT</td><td>' + fmt(latest.base_spent) + '</td></tr>';
+      html += '<tr><td>EB WON</td><td>' + fmt(latest.eb_won) + '</td></tr>';
+      html += '<tr><td>EB SPENT</td><td>' + fmt(latest.eb_spent) + '</td></tr>';
+      html += '<tr><td>TOTAL RTP</td><td>' + fmtPct(latest.total_rtp) + '</td></tr>';
+      html += '<tr><td>BASE RTP</td><td>' + fmtPct(latest.base_rtp) + '</td></tr>';
+      html += '<tr><td>EB RTP</td><td>' + fmtPct(latest.eb_rtp) + '</td></tr>';
+      html += '</table>';
+
+      // History snapshots
+      if (history.length > 0) {
+        var histId = 'hist_' + idx;
+        var histTableId = 'histTable_' + idx;
+        var histOpen = expandedHistory[histId] ? 'block' : 'none';
+        html += '<div style="margin-top:6px;"><span style="font-size:12px;cursor:pointer;color:#666;" onclick="toggleHistory(\'' + histId + '\')">▶ History (' + history.length + ' snapshots)</span>';
+        html += ' <button class="btn-primary btn-sm" onclick="copyTable(\'' + histTableId + '\', this)" style="font-size:10px;">📋 Copy</button>';
+        html += '<div id="' + histId + '" style="display:' + histOpen + ';">';
+        html += '<table class="result-table" id="' + histTableId + '" style="margin-top:4px;">';
+        html += '<tr><th>SPIN COUNT</th><th>TOTAL RTP</th><th>BASE RTP</th><th>EB RTP</th></tr>';
+        history.forEach(function(h) {
+          html += '<tr><td>' + fmt(h.spin_count) + '</td><td>' + fmtPct(h.total_rtp) + '</td><td>' + fmtPct(h.base_rtp) + '</td><td>' + fmtPct(h.eb_rtp) + '</td></tr>';
+        });
+        html += '</table></div></div>';
+      }
+
+      html += '</div></div>';
+    });
+
+    // Store model data globally for chart rendering
+    window._modelData = data.model_results;
+  }
+
+  area.innerHTML = html;
+
+  // Redraw any open volcano charts after DOM update
+  for (var cid in expandedCharts) {
+    if (expandedCharts[cid]) {
+      drawVolcanoChart('canvas_' + cid, expandedCharts[cid]);
+    }
+  }
+}
+
+function toggleModel(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    expandedModels[id] = true;
+  } else {
+    el.style.display = 'none';
+    delete expandedModels[id];
+  }
+}
+
+function toggleHistory(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    expandedHistory[id] = true;
+  } else {
+    el.style.display = 'none';
+    delete expandedHistory[id];
+  }
+}
+
+function copyTable(tableId, btnEl) {
+  var table = document.getElementById(tableId);
+  if (!table) return;
+  var rows = table.querySelectorAll('tr');
+  var text = '';
+  rows.forEach(function(row) {
+    var cells = row.querySelectorAll('th, td');
+    var line = [];
+    cells.forEach(function(cell) { line.push(cell.textContent.trim()); });
+    text += line.join('\t') + '\n';
+  });
+  navigator.clipboard.writeText(text).then(function() {
+    log('📋 Copied to clipboard');
+    // Cooldown: disable button for 3 seconds
+    if (btnEl) {
+      var origText = btnEl.textContent;
+      btnEl.textContent = '✅ Copied';
+      btnEl.disabled = true;
+      setTimeout(function() { btnEl.textContent = origText; btnEl.disabled = false; }, 3000);
+    }
+  });
+}
+
+function copyLatest(tableId, btnEl) {
+  copyTable(tableId, btnEl);
+}
+
+function toggleChart(chartId, modelName) {
+  var el = document.getElementById(chartId);
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    expandedCharts[chartId] = modelName;
+    drawVolcanoChart('canvas_' + chartId, modelName);
+  } else {
+    el.style.display = 'none';
+    delete expandedCharts[chartId];
+  }
+}
+
+function drawVolcanoChart(canvasId, modelName) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas || !window._modelData || !window._modelData[modelName]) return;
+  var ctx = canvas.getContext('2d');
+  var data = window._modelData[modelName];
+  var history = data.history || [];
+  if (history.length < 2) return;
+
+  var w = canvas.width, h = canvas.height;
+  var pad = {top: 20, right: 20, bottom: 30, left: 60};
+  var plotW = w - pad.left - pad.right;
+  var plotH = h - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#fafafa';
+  ctx.fillRect(0, 0, w, h);
+
+  var spins = history.map(function(h) { return h.spin_count || 0; });
+  var maxSpin = Math.max.apply(null, spins);
+  var minSpin = Math.min.apply(null, spins);
+  if (maxSpin === minSpin) maxSpin = minSpin + 1;
+
+  // Collect all RTP series
+  var series = [
+    {key: 'total_rtp', label: 'TOTAL RTP', color: '#e74c3c'},
+    {key: 'base_rtp', label: 'BASE RTP', color: '#2980b9'},
+    {key: 'eb_rtp', label: 'EB RTP', color: '#27ae60'},
+  ];
+
+  // Find global min/max across all series
+  var allVals = [];
+  series.forEach(function(s) {
+    history.forEach(function(h) { allVals.push(h[s.key] || 0); });
+  });
+  var minRtp = Math.min.apply(null, allVals) * 0.998;
+  var maxRtp = Math.max.apply(null, allVals) * 1.002;
+  if (maxRtp === minRtp) maxRtp = minRtp + 0.01;
+
+  // Draw axes
+  ctx.strokeStyle = '#999';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, h - pad.bottom);
+  ctx.lineTo(w - pad.right, h - pad.bottom);
+  ctx.stroke();
+
+  // Y axis labels
+  ctx.fillStyle = '#666';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  for (var i = 0; i <= 4; i++) {
+    var yVal = minRtp + (maxRtp - minRtp) * i / 4;
+    var yPos = h - pad.bottom - (i / 4) * plotH;
+    ctx.fillText((yVal * 100).toFixed(2) + '%', pad.left - 4, yPos + 3);
+    ctx.strokeStyle = '#eee';
+    ctx.beginPath(); ctx.moveTo(pad.left, yPos); ctx.lineTo(w - pad.right, yPos); ctx.stroke();
+  }
+
+  // Draw each series
+  series.forEach(function(s) {
+    var vals = history.map(function(h) { return h[s.key] || 0; });
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (var j = 0; j < vals.length; j++) {
+      var x = pad.left + (spins[j] - minSpin) / (maxSpin - minSpin) * plotW;
+      var y = h - pad.bottom - (vals[j] - minRtp) / (maxRtp - minRtp) * plotH;
+      if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // Dots
+    ctx.fillStyle = s.color;
+    for (var k = 0; k < vals.length; k++) {
+      var dx = pad.left + (spins[k] - minSpin) / (maxSpin - minSpin) * plotW;
+      var dy = h - pad.bottom - (vals[k] - minRtp) / (maxRtp - minRtp) * plotH;
+      ctx.beginPath(); ctx.arc(dx, dy, 3, 0, Math.PI * 2); ctx.fill();
+    }
+  });
+
+  // Legend
+  var legendX = pad.left + 10;
+  var legendY = pad.top + 4;
+  series.forEach(function(s, i) {
+    ctx.fillStyle = s.color;
+    ctx.fillRect(legendX, legendY + i * 14, 10, 10);
+    ctx.fillStyle = '#333';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(s.label, legendX + 14, legendY + i * 14 + 9);
+  });
+
+  // X axis label
+  ctx.fillStyle = '#666';
+  ctx.textAlign = 'center';
+  ctx.fillText('SPIN COUNT', w / 2, h - 4);
+}
+
+function fmt(v) {
+  if (v === null || v === undefined) return '-';
+  return typeof v === 'number' ? v.toLocaleString() : v;
+}
+
+function fmtPct(v) {
+  if (v === null || v === undefined) return '-';
+  return (v * 100).toFixed(4) + '%';
+}
+
+// ---------------------------------------------------------------------------
+// Auto refresh
+// ---------------------------------------------------------------------------
+function toggleAutoRefresh() {
+  const btn = document.getElementById('autoRefreshBtn');
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+    autoRefreshAutoStarted = false;
+    btn.textContent = 'Enable Auto Refresh';
+    log('⏸ Auto refresh disabled');
+  } else {
+    const interval = parseFloat(document.getElementById('pollInterval').value) || 2;
+    autoRefreshTimer = setInterval(getStatus, interval * 1000);
+    btn.textContent = 'Disable Auto Refresh';
+    log('▶ Auto refresh enabled (interval ' + interval + 's)');
+    getStatus();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Poll interval
+// ---------------------------------------------------------------------------
+async function setPollInterval() {
+  const val = parseFloat(document.getElementById('pollInterval').value);
+  if (!val || val <= 0) { log('⚠️ Please enter a valid poll interval'); return; }
+  log('⚙️ Set poll interval: ' + val + 's');
+  const r = await api('/config/poll-interval', 'POST', { interval: val });
+  if (r.ok) log('✅ Poll interval updated to ' + r.data.interval + 's');
+}
+
+// ---------------------------------------------------------------------------
+// Allocation mode
+// ---------------------------------------------------------------------------
+function onModeChange() {
+  const mode = document.getElementById('allocationMode').value;
+  const section = document.getElementById('percentageSection');
+  if (mode === 'percentage') {
+    section.classList.remove('hidden');
+    renderPercentageInputs();
+  } else {
+    section.classList.add('hidden');
+  }
+}
+
+async function setAllocationMode() {
+  const mode = document.getElementById('allocationMode').value;
+  log('⚙️ Switch allocation mode: ' + mode);
+  const r = await api('/config/allocation-mode', 'POST', { mode });
+  if (r.ok) log('✅ Allocation mode switched to ' + r.data.mode);
+}
+
+function renderPercentageInputs() {
+  const container = document.getElementById('percentageInputs');
+  let html = '';
+  nodes.forEach(function(n) {
+    const label = n.addr === 'master' ? 'Master' : 'Worker(' + n.addr + ')';
+    html += '<div class="pct-row">';
+    html += '<span>' + label + '</span>';
+    html += '<input type="number" class="pct-input" data-addr="' + n.addr +
+            '" value="' + (n.percentage || 0) + '" min="0" max="100" step="0.1">';
+    html += '<span>%</span>';
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+
+async function savePercentages() {
+  const inputs = document.querySelectorAll('.pct-input');
+  const percentages = {};
+  inputs.forEach(function(inp) {
+    percentages[inp.dataset.addr] = parseFloat(inp.value) || 0;
+  });
+  const sum = Object.values(percentages).reduce(function(a, b) { return a + b; }, 0);
+  if (Math.abs(sum - 100) > 0.01) {
+    log('⚠️ Percentages sum to ' + sum.toFixed(2) + '%, must be 100%');
+    return;
+  }
+  log('⚙️ Save percentage config');
+  const r = await api('/config/percentages', 'POST', { percentages });
+  if (r.ok) log('✅ Percentage config saved');
+}
+
+// ---------------------------------------------------------------------------
+// Worker management
+// ---------------------------------------------------------------------------
+function validateWorkerInput(addr, vcpu, alias) {
+  // Validate IP:PORT format
+  if (!addr) { showAlert('Please enter Worker address (IP:PORT)'); return false; }
+  var parts = addr.split(':');
+  if (parts.length !== 2) { showAlert('Invalid format. Use IP:PORT (e.g. 192.168.1.2:5001)'); return false; }
+  var ip = parts[0], port = parseInt(parts[1]);
+  // Validate IP
+  var ipParts = ip.split('.');
+  if (ipParts.length !== 4 || ipParts.some(function(p) { var n = parseInt(p); return isNaN(n) || n < 0 || n > 255 || p !== String(n); })) {
+    showAlert('Invalid IP address'); return false;
+  }
+  // Validate port
+  if (isNaN(port) || port < 1 || port > 65535) { showAlert('Invalid port (1-65535)'); return false; }
+  // Validate vCPU
+  if (!vcpu || vcpu < 1 || vcpu > 256) { showAlert('vCPU must be between 1 and 256'); return false; }
+  // Validate alias length
+  if (alias && alias.length > 50) { showAlert('Alias must be 50 characters or less'); return false; }
+  return true;
+}
+
+async function addWorker() {
+  const addr = document.getElementById('newWorkerAddr').value.trim();
+  const vcpu = parseInt(document.getElementById('newWorkerVcpu').value) || 1;
+  const alias = document.getElementById('newWorkerAlias').value.trim();
+  if (!validateWorkerInput(addr, vcpu, alias)) return;
+  log('➕ Add Worker: ' + addr + ' (vCPU=' + vcpu + ', alias=' + alias + ')');
+  const r = await api('/add_worker', 'POST', { addr, vcpu, alias });
+  if (r.ok) {
+    log('✅ Worker ' + addr + ' added');
+    document.getElementById('newWorkerAddr').value = '';
+    document.getElementById('newWorkerAlias').value = '';
+    nodes = r.data.workers;
+    renderWorkers();
+    renderPercentageInputs();
+  }
+}
+
+async function delWorker(addr) {
+  if (!confirm('Delete Worker ' + addr + '?')) return;
+  log('➖ Delete Worker: ' + addr);
+  const r = await api('/del_worker', 'POST', { addr });
+  if (r.ok) {
+    log('✅ Worker ' + addr + ' deleted');
+    nodes = r.data.workers;
+    renderWorkers();
+    renderPercentageInputs();
+  }
+}
+
+function editWorker(addr, vcpu, alias) {
+  var newAddr = prompt('IP:PORT', addr);
+  if (newAddr === null) return;
+  var newVcpu = prompt('vCPU', vcpu);
+  if (newVcpu === null) return;
+  var newAlias = prompt('Alias', alias);
+  if (newAlias === null) return;
+  var parsedVcpu = parseInt(newVcpu) || 1;
+  if (!validateWorkerInput(newAddr.trim(), parsedVcpu, newAlias.trim())) return;
+  doEditWorker(addr, newAddr.trim(), parsedVcpu, newAlias.trim());
+}
+
+async function doEditWorker(oldAddr, addr, vcpu, alias) {
+  var r = await api('/edit_worker', 'POST', {old_addr: oldAddr, addr: addr, vcpu: vcpu, alias: alias});
+  if (r.ok) {
+    log('✅ Worker ' + oldAddr + ' updated');
+    nodes = r.data.workers;
+    renderWorkers();
+    renderPercentageInputs();
+  }
+}
+
+// Worker Management node selection handlers
+var _wmSysinfoTimer = null;
+var _wmSysinfoInterval = 5; // default 5s, overridden from config
+
+// ---------------------------------------------------------------------------
+// Launcher controls: start/stop worker.exe on a remote worker machine via
+// its Launcher service (see /launcher project). Shared between the Home
+// page Worker Management card ('wm' prefix) and the dedicated Workers page
+// ('pgWm' prefix).
+// ---------------------------------------------------------------------------
+function renderLauncherControls(addr, prefix) {
+  var statusId = prefix + 'LauncherStatus_' + safeId(addr);
+  var html = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px;background:#f8f9fa;border-radius:6px;">';
+  html += '<span style="font-size:12px;font-weight:600;color:#555;">worker.exe:</span>';
+  html += '<span id="' + statusId + '" style="font-size:12px;color:#888;">checking...</span>';
+  html += '<span style="flex:1;"></span>';
+  html += '<button class="btn-success btn-sm" onclick="launcherStartWorker(\'' + addr + '\',\'' + prefix + '\')" style="font-size:11px;padding:4px 10px;">▶ Start worker.exe</button>';
+  html += '<button class="btn-danger btn-sm" onclick="launcherStopWorker(\'' + addr + '\',\'' + prefix + '\')" style="font-size:11px;padding:4px 10px;">⏹ Stop worker.exe</button>';
+  html += '</div>';
+  return html;
+}
+
+async function refreshLauncherStatus(addr, prefix) {
+  var statusId = prefix + 'LauncherStatus_' + safeId(addr);
+  var el = document.getElementById(statusId);
+  if (!el) return;
+  el.style.color = '#888';
+  el.textContent = 'checking...';
+  try {
+    var r = await api('/workers/launcher-status?addr=' + encodeURIComponent(addr), 'GET');
+    el = document.getElementById(statusId); // re-fetch in case DOM was rebuilt while awaiting
+    if (!el) return;
+    if (!r.ok) {
+      el.style.color = '#e74c3c';
+      el.textContent = 'Launcher unreachable (' + (r.data.error || 'unknown error') + ')';
+      return;
+    }
+    if (r.data.running) {
+      el.style.color = '#27ae60';
+      el.textContent = '✓ running (pid' + (r.data.pids.length > 1 ? 's' : '') + ': ' + r.data.pids.join(', ') + ')';
+    } else {
+      el.style.color = '#e74c3c';
+      el.textContent = '✗ not running';
+    }
+  } catch (e) {
+    el = document.getElementById(statusId);
+    if (el) { el.style.color = '#e74c3c'; el.textContent = 'Failed to check: ' + e.message; }
+  }
+}
+
+async function launcherStartWorker(addr, prefix) {
+  log('▶ Requesting worker.exe start on ' + addr + ' via Launcher...');
+  var r = await api('/workers/launcher-start', 'POST', {addr: addr});
+  if (r.ok) {
+    if (r.data.status === 'already_running') {
+      log('ℹ️ worker.exe already running on ' + addr + ' (pids: ' + (r.data.pids||[]).join(', ') + ')');
+    } else {
+      log('✅ worker.exe started on ' + addr + ' (pid: ' + r.data.pid + ')');
+    }
+  } else {
+    log('❌ Failed to start worker.exe on ' + addr + ': ' + (r.data.error || 'unknown error'));
+    showAlert('Failed to start worker.exe: ' + (r.data.error || 'unknown error'));
+  }
+  refreshLauncherStatus(addr, prefix);
+}
+
+async function launcherStopWorker(addr, prefix) {
+  if (!confirm('⚠️ Stop worker.exe on ' + addr + '?\n\nAny simulation currently running on this node will be terminated.')) return;
+  log('⏹ Requesting worker.exe stop on ' + addr + ' via Launcher...');
+  var r = await api('/workers/launcher-stop', 'POST', {addr: addr});
+  if (r.ok) {
+    if (r.data.status === 'not_running') {
+      log('ℹ️ worker.exe was not running on ' + addr);
+    } else if (r.data.status === 'partial') {
+      log('⚠️ worker.exe partially stopped on ' + addr + ': ' + JSON.stringify(r.data.errors));
+    } else {
+      log('✅ worker.exe stopped on ' + addr + ' (pids: ' + (r.data.stopped||[]).join(', ') + ')');
+    }
+  } else {
+    log('❌ Failed to stop worker.exe on ' + addr + ': ' + (r.data.error || 'unknown error'));
+    showAlert('Failed to stop worker.exe: ' + (r.data.error || 'unknown error'));
+  }
+  refreshLauncherStatus(addr, prefix);
+}
+
+function wmOnNodeSelect() {
+  // Clear previous auto-refresh
+  if (_wmSysinfoTimer) { clearInterval(_wmSysinfoTimer); _wmSysinfoTimer = null; }
+
+  var selected = document.querySelector('.wm-node-radio:checked');
+  var editBtn = document.getElementById('wmEditBtn');
+  var deleteBtn = document.getElementById('wmDeleteBtn');
+  var detailEl = document.getElementById('wmNodeDetail');
+
+  if (!selected) {
+    editBtn.disabled = true;
+    deleteBtn.disabled = true;
+    detailEl.innerHTML = '';
+    return;
+  }
+
+  var isMaster = selected.getAttribute('data-is-master') === 'true';
+  editBtn.disabled = isMaster;
+  deleteBtn.disabled = isMaster;
+
+  // Show node detail with tabs
+  var addr = selected.value;
+  var label = isMaster ? 'Master (local)' : (selected.getAttribute('data-alias') || addr);
+  var html = '<div style="border:1px solid #ddd;border-radius:8px;padding:16px;margin-top:8px;">';
+  html += '<div style="font-weight:600;font-size:14px;margin-bottom:12px;">' + label + (isMaster ? '' : ' (' + addr + ')') + '</div>';
+  // Tabs
+  html += '<div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid #eee;padding-bottom:8px;">';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;background:#4a90d9;color:#fff;" onclick="wmShowTab(\'' + addr + '\',\'monitor\')">monitor</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">Detailed information</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">Status and Alarms</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">Safety</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">networking</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">storage</span>';
+  html += '</div>';
+  if (!isMaster) {
+    html += renderLauncherControls(addr, 'wm');
+  }
+  html += '<div id="wmTabContent" style="min-height:120px;"><div style="color:#888;font-size:12px;">Loading...</div></div>';
+  html += '</div>';
+  detailEl.innerHTML = html;
+
+  // Auto-load monitor
+  wmShowTab(addr, 'monitor');
+  if (!isMaster) refreshLauncherStatus(addr, 'wm');
+}
+
+async function wmShowTab(addr, tab) {
+  var contentEl = document.getElementById('wmTabContent');
+  if (!contentEl) return;
+
+  // Clear previous timer
+  if (_wmSysinfoTimer) { clearInterval(_wmSysinfoTimer); _wmSysinfoTimer = null; }
+
+  if (tab === 'monitor') {
+    await wmLoadMonitor(addr, contentEl);
+    // Start auto-refresh
+    _wmSysinfoTimer = setInterval(function() { wmLoadMonitor(addr, contentEl); }, _wmSysinfoInterval * 1000);
+  }
+}
+
+async function wmLoadMonitor(addr, contentEl) {
+  if (!contentEl) contentEl = document.getElementById('wmTabContent');
+  if (!contentEl) return;
+  try {
+    var r;
+    if (addr === 'master') {
+      r = await fetch('/sysinfo');
+    } else {
+      r = await fetch('/files/worker/sysinfo?addr=' + encodeURIComponent(addr));
+    }
+    var data = await r.json();
+    if (data.error) { contentEl.innerHTML = '<div style="color:#e74c3c;">' + data.error + '</div>'; return; }
+
+    var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
+    // CPU
+    html += '<div style="border:1px solid #eee;border-radius:6px;padding:12px;">';
+    html += '<div style="font-size:12px;font-weight:600;margin-bottom:8px;">CPU utilization (%)</div>';
+    html += '<div style="font-size:24px;font-weight:600;color:#4a90d9;">' + (data.cpu_percent || 0) + '%</div>';
+    html += '<div style="font-size:11px;color:#888;margin-top:4px;">Cores: ' + (data.cpu_count || '?') + '</div>';
+    html += '<div style="margin-top:8px;background:#eee;border-radius:4px;height:8px;overflow:hidden;"><div style="height:100%;background:#4a90d9;width:' + (data.cpu_percent || 0) + '%;border-radius:4px;"></div></div>';
+    html += '</div>';
+    // Memory
+    html += '<div style="border:1px solid #eee;border-radius:6px;padding:12px;">';
+    html += '<div style="font-size:12px;font-weight:600;margin-bottom:8px;">Memory usage</div>';
+    html += '<div style="font-size:24px;font-weight:600;color:#27ae60;">' + (data.mem_percent || 0) + '%</div>';
+    html += '<div style="font-size:11px;color:#888;margin-top:4px;">' + (data.mem_used_mb || 0) + ' MB / ' + (data.mem_total_mb || 0) + ' MB</div>';
+    html += '<div style="margin-top:8px;background:#eee;border-radius:4px;height:8px;overflow:hidden;"><div style="height:100%;background:#27ae60;width:' + (data.mem_percent || 0) + '%;border-radius:4px;"></div></div>';
+    html += '</div>';
+    html += '</div>';
+    html += '<div style="font-size:10px;color:#aaa;margin-top:8px;">Auto-refresh every ' + _wmSysinfoInterval + 's</div>';
+
+    contentEl.innerHTML = html;
+  } catch(e) {
+    contentEl.innerHTML = '<div style="color:#e74c3c;">Failed to load: ' + e.message + '</div>';
+  }
+}
+
+function wmEditSelected() {
+  var selected = document.querySelector('.wm-node-radio:checked');
+  if (!selected || selected.getAttribute('data-is-master') === 'true') return;
+  var addr = selected.value;
+  var vcpu = parseInt(selected.getAttribute('data-vcpu')) || 1;
+  var alias = selected.getAttribute('data-alias') || '';
+  editWorker(addr, vcpu, alias);
+}
+
+function wmDeleteSelected() {
+  var selected = document.querySelector('.wm-node-radio:checked');
+  if (!selected || selected.getAttribute('data-is-master') === 'true') return;
+  delWorker(selected.value);
+}
+
+function renderWorkers() {
+  // Worker list with radio selection (master first, then workers)
+  const listEl = document.getElementById('workerList');
+  let listHtml = '';
+  // Master node first
+  var masterHealthy = true; // master is always available
+  listHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+  listHtml += '<input type="radio" name="wmNodeRadio" class="wm-node-radio" value="master" data-is-master="true">';
+  listHtml += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#27ae60;"></span>';
+  listHtml += '<span style="flex:1;">Master <span style="color:#999;font-size:11px;">(local)</span></span>';
+  listHtml += '<span style="font-size:11px;color:#27ae60;font-weight:600;">online</span>';
+  listHtml += '</label>';
+  // Worker nodes
+  nodes.forEach(function(n) {
+    if (n.addr === 'master') return;
+    var isHealthy = !!workerHealthMap[n.addr];
+    var dotColor = isHealthy ? '#27ae60' : '#e74c3c';
+    var statusText = isHealthy ? 'online' : 'offline';
+    var statusColor = isHealthy ? '#27ae60' : '#e74c3c';
+    var label = n.alias || n.addr;
+    listHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+    listHtml += '<input type="radio" name="wmNodeRadio" class="wm-node-radio" value="' + n.addr + '" data-is-master="false" data-vcpu="' + n.vcpu + '" data-alias="' + (n.alias||'') + '">';
+    listHtml += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>';
+    listHtml += '<span style="flex:1;">' + label + ' <span style="color:#999;font-size:11px;">(' + n.addr + ', vCPU: ' + n.vcpu + ')</span></span>';
+    listHtml += '<span style="font-size:11px;color:' + statusColor + ';font-weight:600;">' + statusText + '</span>';
+    listHtml += '</label>';
+  });
+  listEl.innerHTML = listHtml;
+  listEl.querySelectorAll('.wm-node-radio').forEach(function(r) {
+    r.addEventListener('change', wmOnNodeSelect);
+  });
+
+  // Single node radio buttons
+  const radioEl = document.getElementById('singleNodeRadios');
+  let radioHtml = '';
+  nodes.forEach(function(n) {
+    var label = n.addr === 'master' ? 'Master' : (n.alias || n.addr);
+    var addrDisplay = n.addr === 'master' ? 'local' : n.addr;
+    var isRunning = !!runningNodes[n.addr];
+    var statusText = isRunning ? 'running' : 'stopped';
+    var statusColor = isRunning ? '#27ae60' : '#888';
+    var dotColor = isRunning ? '#27ae60' : '#e74c3c';
+    radioHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+    radioHtml += '<input type="radio" name="singleNodeRadio" class="single-node-radio" value="' + n.addr + '" data-status="' + statusText + '">';
+    radioHtml += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>';
+    radioHtml += '<span style="flex:1;">' + label + ' <span style="color:#999;font-size:11px;">(' + addrDisplay + ')</span></span>';
+    radioHtml += '<span style="font-size:11px;color:' + statusColor + ';font-weight:600;">' + statusText + '</span>';
+    radioHtml += '</label>';
+  });
+  radioEl.innerHTML = radioHtml;
+  radioEl.querySelectorAll('.single-node-radio').forEach(function(r) {
+    r.addEventListener('change', updateSingleButtons);
+  });
+
+  // Batch node checkboxes
+  const cbEl = document.getElementById('batchNodeCheckboxes');
+  let cbHtml = '';
+  nodes.forEach(function(n) {
+    var label = n.addr === 'master' ? 'Master' : (n.alias || n.addr);
+    var addrDisplay = n.addr === 'master' ? 'local' : n.addr;
+    var isRunning = !!runningNodes[n.addr];
+    var statusText = isRunning ? 'running' : 'stopped';
+    var statusColor = isRunning ? '#27ae60' : '#888';
+    var dotColor = isRunning ? '#27ae60' : '#e74c3c';
+    cbHtml += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+    cbHtml += '<input type="checkbox" class="batch-node-cb" value="' + n.addr + '" data-status="' + statusText + '">';
+    cbHtml += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>';
+    cbHtml += '<span style="flex:1;">' + label + ' <span style="color:#999;font-size:11px;">(' + addrDisplay + ')</span></span>';
+    cbHtml += '<span style="font-size:11px;color:' + statusColor + ';font-weight:600;">' + statusText + '</span>';
+    cbHtml += '</label>';
+  });
+  cbEl.innerHTML = cbHtml;
+  // Update button states when checkboxes change
+  cbEl.querySelectorAll('.batch-node-cb').forEach(function(cb) {
+    cb.addEventListener('change', updateBatchButtons);
+  });
+  updateBatchButtons();
+
+  // Refresh log tabs
+  renderLogTabs();
+  initFileSyncWorkerSelect();
+  initBatchPluginNodeSelects();
+  renderBatchMultiNodeCheckboxes();
+}
+
+// ---------------------------------------------------------------------------
+// Stop
+// ---------------------------------------------------------------------------
+async function stopMaster() {
+  log('⏹ Stop Master');
+  const r = await api('/stop-master', 'POST', {});
+  if (r.ok) { log('✅ ' + r.data.message); setNodeRunning('master', false); }
+  else log('❌ ' + (r.data.message || r.data.error || 'Stop failed'));
+}
+
+async function stopWorker(addr) {
+  log('⏹ Stop Worker ' + addr);
+  const r = await api('/stop-worker', 'POST', { worker_addr: addr });
+  if (r.ok) { log('✅ Worker ' + addr + ' stopped'); setNodeRunning(addr, false); }
+  else log('❌ ' + (r.data.message || r.data.error || 'Stop failed'));
+}
+
+async function stopBatchSelected() {
+  const checkboxes = document.querySelectorAll('.batch-node-cb:checked');
+  const selectedNodes = Array.from(checkboxes).map(function(cb) { return cb.value; });
+  if (selectedNodes.length === 0) { showAlert('Please select at least one simulator'); return; }
+  log('⏹ Batch stop: ' + selectedNodes.join(', '));
+  for (var i = 0; i < selectedNodes.length; i++) {
+    var addr = selectedNodes[i];
+    if (addr === 'master') {
+      await stopMaster();
+    } else {
+      await stopWorker(addr);
+    }
+  }
+  log('✅ Batch stop completed');
+}
+
+// ---------------------------------------------------------------------------
+// Simulator logs (per-node)
+// ---------------------------------------------------------------------------
+function getLogNodes() {
+  var list = ['master'];
+  nodes.forEach(function(n) { if (n.addr !== 'master') list.push(n.addr); });
+  return list;
+}
+
+function renderLogTabs() {
+  var tabsEl = document.getElementById('logTabs');
+  var panelsEl = document.getElementById('logPanels');
+  var logNodes = getLogNodes();
+
+  // Only rebuild panels if node list changed
+  var existingPanels = panelsEl.querySelectorAll('[data-log-node]');
+  var existingKeys = Array.from(existingPanels).map(function(el) { return el.dataset.logNode; });
+  var needsRebuild = logNodes.length !== existingKeys.length ||
+    logNodes.some(function(k, i) { return k !== existingKeys[i]; });
+
+  if (needsRebuild) {
+    var panelsHtml = '';
+    logNodes.forEach(function(key) {
+      var display = key === activeLogTab ? 'block' : 'none';
+      panelsHtml += '<div id="' + safeId(key) + '" data-log-node="' + key + '" style="display:' + display +
+        ';background:#1e1e2e;color:#cdd6f4;padding:12px;border-radius:6px;font-family:\'Cascadia Code\',monospace;font-size:12px;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;">Waiting for simulator...</div>';
+    });
+    panelsEl.innerHTML = panelsHtml;
+    logSinceMap = {};
+  } else {
+    // Just toggle visibility
+    logNodes.forEach(function(key) {
+      var el = document.getElementById(safeId(key));
+      if (el) el.style.display = key === activeLogTab ? 'block' : 'none';
+    });
+  }
+
+  // Always rebuild tabs (lightweight)
+  var tabsHtml = '';
+  logNodes.forEach(function(key) {
+    var label = key === 'master' ? 'Master' : 'Worker(' + key + ')';
+    var cls = key === activeLogTab ? 'btn-primary btn-sm' : 'btn-sm';
+    tabsHtml += '<button class="' + cls + '" onclick="switchLogTab(\'' + key + '\')">' + label + '</button>';
+  });
+  tabsEl.innerHTML = tabsHtml;
+}
+
+function switchLogTab(key) {
+  activeLogTab = key;
+  // Just toggle display, don't rebuild panels
+  var logNodes = getLogNodes();
+  logNodes.forEach(function(k) {
+    var el = document.getElementById(safeId(k));
+    if (el) el.style.display = k === key ? 'block' : 'none';
+  });
+  // Rebuild tab buttons for active highlight
+  var tabsEl = document.getElementById('logTabs');
+  var tabsHtml = '';
+  logNodes.forEach(function(k) {
+    var label = k === 'master' ? 'Master' : 'Worker(' + k + ')';
+    var cls = k === key ? 'btn-primary btn-sm' : 'btn-sm';
+    tabsHtml += '<button class="' + cls + '" onclick="switchLogTab(\'' + k + '\')">' + label + '</button>';
+  });
+  tabsEl.innerHTML = tabsHtml;
+  fetchNodeLogs(key);
+}
+
+function safeId(key) { return 'logPanel_' + key.replace(/[:.]/g, '_'); }
+
+async function fetchNodeLogs(key) {
+  var since = logSinceMap[key] || 0;
+  var r;
+  if (key === 'master') {
+    r = await api('/logs?since=' + since, 'GET');
+  } else {
+    r = await api('/logs/worker?addr=' + encodeURIComponent(key) + '&since=' + since, 'GET');
+  }
+  if (!r.ok) return;
+  var el = document.getElementById(safeId(key));
+  if (!el) return;
+  if (r.data.lines && r.data.lines.length > 0) {
+    if (since === 0) el.textContent = '';
+    r.data.lines.forEach(function(line) { el.textContent += line + '\n'; });
+    el.scrollTop = el.scrollHeight;
+    logSinceMap[key] = r.data.total;
+  }
+}
+
+async function fetchAllLogs() {
+  var logNodes = getLogNodes();
+  for (var i = 0; i < logNodes.length; i++) {
+    await fetchNodeLogs(logNodes[i]);
+  }
+}
+
+function toggleAutoLogs() {
+  var btn = document.getElementById('autoLogsBtn');
+  if (autoLogsTimer) {
+    clearInterval(autoLogsTimer);
+    autoLogsTimer = null;
+    btn.textContent = 'Enable Auto Refresh';
+  } else {
+    autoLogsTimer = setInterval(fetchAllLogs, 2000);
+    btn.textContent = 'Disable Auto Refresh';
+    fetchAllLogs();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// File Sync
+// ---------------------------------------------------------------------------
+var localCurrentPath = '';  // absolute path
+var remoteCurrentPath = '';
+var selectedLocalFiles = [];
+
+// Upload progress helpers — fake animated progress
+var _uploadTimers = {};
+
+function showUploadProgress(panel) {
+  var mask = document.getElementById(panel + 'UploadMask');
+  var bar = document.getElementById(panel + 'UploadProgressBar');
+  var text = document.getElementById(panel + 'UploadProgressText');
+  bar.style.transition = 'none';
+  bar.style.width = '0%';
+  text.textContent = 'Uploading...';
+  mask.style.display = 'flex';
+  // Start fake progress: 0% → 90% over time, slowing down as it approaches 90%
+  var progress = 0;
+  if (_uploadTimers[panel]) clearInterval(_uploadTimers[panel]);
+  _uploadTimers[panel] = setInterval(function() {
+    var remaining = 90 - progress;
+    var step = Math.max(0.5, remaining * 0.08);
+    progress = Math.min(90, progress + step);
+    bar.style.transition = 'width 0.3s ease';
+    bar.style.width = progress.toFixed(1) + '%';
+    text.textContent = Math.round(progress) + '%';
+    if (progress >= 89.9) {
+      clearInterval(_uploadTimers[panel]);
+      _uploadTimers[panel] = null;
+    }
+  }, 200);
+}
+
+function hideUploadProgress(panel) {
+  if (_uploadTimers[panel]) {
+    clearInterval(_uploadTimers[panel]);
+    _uploadTimers[panel] = null;
+  }
+  var mask = document.getElementById(panel + 'UploadMask');
+  var bar = document.getElementById(panel + 'UploadProgressBar');
+  var text = document.getElementById(panel + 'UploadProgressText');
+  // Jump to 100% then hide after a short delay
+  bar.style.transition = 'width 0.3s ease';
+  bar.style.width = '100%';
+  text.textContent = '100%';
+  setTimeout(function() {
+    mask.style.display = 'none';
+    bar.style.transition = 'none';
+    bar.style.width = '0%';
+  }, 500);
+}
+
+function waitForRepaint() {
+  return new Promise(function(resolve) {
+    requestAnimationFrame(function() {
+      requestAnimationFrame(resolve);
+    });
+  });
+}
+
+async function loadLocalDir(path) {
+  var r = await api('/files/local/browse?path=' + encodeURIComponent(path), 'GET');
+  if (!r.ok) return;
+  localCurrentPath = r.data.path || '';
+  var parentPath = r.data.parent || '';
+
+  // Breadcrumb
+  var bcEl = document.getElementById('localBreadcrumb');
+  bcEl.innerHTML = '<span style="font-size:12px;color:#666;">' + localCurrentPath + '</span>';
+
+  var el = document.getElementById('localFileList');
+  var html = '';
+  // Always show parent navigation
+  var parentPath = r.data.parent || '';
+  if (parentPath) {
+    html += '<div class="file-item" onclick="loadLocalDir(\'' + parentPath.replace(/'/g, "\\'") + '\')"><span class="icon">⬆</span> ..</div>';
+  }
+  (r.data.entries || []).forEach(function(e) {
+    var fp = e.full_path;
+    if (e.type === 'dir') {
+      html += '<div class="file-item local-selectable" data-path="' + fp + '" onclick="if(!event.detail||event.detail===1){toggleSelectFile(this)}" ondblclick="loadLocalDir(\'' + fp.replace(/'/g, "\\'") + '\')"><span class="icon">📁</span> ' + e.name + '</div>';
+    } else {
+      html += '<div class="file-item local-selectable" draggable="true" data-path="' + fp + '" data-name="' + e.name + '" onclick="toggleSelectFile(this)" ondblclick="previewLocalFile(\'' + fp.replace(/'/g, "\\'") + '\',\'' + e.name.replace(/'/g, "\\'") + '\')" ondragstart="onDragStart(event)"><span class="icon">📄</span> ' + e.name + '</div>';
+    }
+  });
+  el.innerHTML = html || '<span style="color:#999;">Empty</span>';
+}
+
+async function loadRemoteDir(path) {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) return;
+  var r = await api('/files/worker/browse?addr=' + encodeURIComponent(addr) + '&path=' + encodeURIComponent(path || 'default'), 'GET');
+  if (!r.ok) return;
+  remoteCurrentPath = r.data.path || '';
+  var parentPath = r.data.parent || '';
+
+  var bcEl = document.getElementById('remoteBreadcrumb');
+  bcEl.innerHTML = '<span style="font-size:12px;color:#666;">' + remoteCurrentPath + '</span>';
+
+  var el = document.getElementById('remoteFileList');
+  var html = '';
+  if (parentPath) {
+    html += '<div class="file-item" onclick="loadRemoteDir(\'' + parentPath.replace(/'/g, "\\'") + '\')"><span class="icon">⬆</span> ..</div>';
+  }
+  (r.data.entries || []).forEach(function(e) {
+    var fp = e.full_path || e.name;
+    if (e.type === 'dir') {
+      html += '<div class="file-item remote-selectable" data-path="' + fp + '" onclick="if(!event.detail||event.detail===1){toggleSelectFile(this)}" ondblclick="loadRemoteDir(\'' + fp.replace(/'/g, "\\'") + '\')" ondragover="event.preventDefault();event.dataTransfer.dropEffect=\'copy\';this.style.background=\'#d4edda\'" ondragleave="this.style.background=\'\'" ondrop="handleDropOnDir(event,\'' + fp.replace(/'/g, "\\'") + '\')"><span class="icon">📁</span> ' + e.name + '</div>';
+    } else {
+      html += '<div class="file-item remote-selectable" data-path="' + fp + '" onclick="toggleSelectFile(this)" ondblclick="previewRemoteFile(\'' + fp.replace(/'/g, "\\'") + '\',\'' + e.name.replace(/'/g, "\\'") + '\')"><span class="icon">📄</span> ' + e.name + ' <span style="color:#999;font-size:11px;">(' + (e.size/1024).toFixed(1) + 'KB)</span></div>';
+    }
+  });
+  el.innerHTML = html || '<span style="color:#999;">Empty</span>';
+}
+
+function toggleSelectFile(el) {
+  el.classList.toggle('selected');
+}
+
+function onDragStart(event) {
+  var files = [];
+  document.querySelectorAll('#localFileList .file-item.selected').forEach(function(item) {
+    if (item.dataset.path) files.push({path: item.dataset.path, name: item.dataset.name});
+  });
+  // Add dragged file if not already selected
+  var el = event.currentTarget;
+  var dragged = {path: el.dataset.path, name: el.dataset.name};
+  if (dragged.path && !files.some(function(f) { return f.path === dragged.path; })) {
+    files.push(dragged);
+  }
+  event.dataTransfer.setData('application/json', JSON.stringify(files));
+  event.dataTransfer.effectAllowed = 'copy';
+}
+
+async function handleDrop(event) {
+  event.preventDefault();
+  event.currentTarget.style.background = '';
+  await uploadDroppedFiles(event, remoteCurrentPath);
+}
+
+async function handleDropOnDir(event, dirPath) {
+  event.preventDefault();
+  event.stopPropagation();
+  event.currentTarget.style.background = '';
+  await uploadDroppedFiles(event, dirPath);
+}
+
+async function uploadDroppedFiles(event, targetDir) {
+  // Check for native file drop from OS (browser File API)
+  if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+    await uploadNativeFilesToRemote(event.dataTransfer.files, targetDir);
+    return;
+  }
+  // Internal drag from master file list
+  var data = event.dataTransfer.getData('application/json');
+  if (!data) return;
+  var files = JSON.parse(data);
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+
+  var total = files.length;
+  log('📂 Uploading ' + total + ' file(s) to ' + addr + ':' + targetDir);
+  showUploadProgress('remote');
+  for (var i = 0; i < total; i++) {
+    var f = files[i];
+    var formData = new FormData();
+    formData.append('addr', addr);
+    formData.append('rel_dir', targetDir);
+    formData.append('local_path', f.path);
+    try {
+      var r = await fetch('/files/worker/upload', {method: 'POST', body: formData});
+      var result = await r.json();
+      if (r.ok) {
+        log('  ✅ ' + f.name + ' → ' + targetDir);
+      } else {
+        log('  ❌ ' + f.name + ': ' + (result.error || 'failed'));
+      }
+    } catch(e) {
+      log('  ❌ ' + f.name + ': ' + e.message);
+    }
+  }
+  hideUploadProgress('remote');
+  log('📂 Upload complete');
+  loadRemoteDir(targetDir);
+  document.querySelectorAll('#localFileList .file-item.selected').forEach(function(el) {
+    el.classList.remove('selected');
+  });
+}
+
+async function handleLocalDrop(event) {
+  event.preventDefault();
+  document.getElementById('localFileList').style.background = '';
+  if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+    await uploadToMaster(event.dataTransfer.files);
+  }
+}
+
+async function uploadToMaster(files) {
+  if (!files || files.length === 0) return;
+  var targetDir = localCurrentPath || '';
+  var total = files.length;
+  log('📤 Uploading ' + total + ' file(s) to Master: ' + targetDir);
+  showUploadProgress('local');
+  for (var i = 0; i < total; i++) {
+    var formData = new FormData();
+    formData.append('target_dir', targetDir);
+    formData.append('file', files[i]);
+    try {
+      var r = await fetch('/files/master/upload', {method: 'POST', body: formData});
+      var result = await r.json();
+      if (r.ok) {
+        log('  ✅ ' + files[i].name);
+      } else {
+        log('  ❌ ' + files[i].name + ': ' + (result.error || 'failed'));
+      }
+    } catch(e) {
+      log('  ❌ ' + files[i].name + ': ' + e.message);
+    }
+  }
+  hideUploadProgress('local');
+  log('📤 Upload to Master complete');
+  loadLocalDir(targetDir);
+}
+
+async function uploadToRemote(files) {
+  if (!files || files.length === 0) return;
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  var targetDir = remoteCurrentPath || '';
+  await uploadNativeFilesToRemote(files, targetDir);
+}
+
+async function uploadNativeFilesToRemote(files, targetDir) {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  var total = files.length;
+  log('📤 Uploading ' + total + ' file(s) to Remote ' + addr + ':' + targetDir);
+  showUploadProgress('remote');
+  for (var i = 0; i < total; i++) {
+    var formData = new FormData();
+    formData.append('addr', addr);
+    formData.append('target_dir', targetDir);
+    formData.append('file', files[i]);
+    try {
+      var r = await fetch('/files/remote/upload-browser', {method: 'POST', body: formData});
+      var result = await r.json();
+      if (r.ok) {
+        log('  ✅ ' + files[i].name + ' → ' + targetDir);
+      } else {
+        log('  ❌ ' + files[i].name + ': ' + (result.error || 'failed'));
+      }
+    } catch(e) {
+      log('  ❌ ' + files[i].name + ': ' + e.message);
+    }
+  }
+  hideUploadProgress('remote');
+  log('📤 Upload to Remote complete');
+  loadRemoteDir(targetDir);
+}
+
+// ---------------------------------------------------------------------------
+// File Preview & Edit
+// ---------------------------------------------------------------------------
+var _previewSource = null; // {type: 'local'|'remote', path: '', addr: ''}
+
+async function previewLocalFile(path, name) {
+  _previewSource = {type: 'local', path: path};
+  openPreviewModal(name);
+  var r = await api('/files/local/read?path=' + encodeURIComponent(path) + '&preview=1', 'GET');
+  if (r.ok) {
+    showPreviewContent(r.data.content, r.data.size);
+  } else {
+    showPreviewContent('Error: ' + (r.data.error || 'Failed to load'), 0);
+  }
+}
+
+async function previewRemoteFile(path, name) {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  _previewSource = {type: 'remote', path: path, addr: addr};
+  openPreviewModal(name + ' (' + addr + ')');
+  var r = await api('/files/worker/read?addr=' + encodeURIComponent(addr) + '&path=' + encodeURIComponent(path), 'GET');
+  if (r.ok) {
+    showPreviewContent(r.data.content, r.data.size);
+  } else {
+    showPreviewContent('Error: ' + (r.data.error || 'Failed to load'), 0);
+  }
+}
+
+function openPreviewModal(title) {
+  document.getElementById('previewTitle').textContent = title;
+  document.getElementById('previewLoading').style.display = 'block';
+  document.getElementById('previewContent').style.display = 'none';
+  document.getElementById('previewSaveBtn').style.display = 'none';
+  document.getElementById('previewModal').style.display = 'flex';
+}
+
+function showPreviewContent(content, size) {
+  document.getElementById('previewLoading').style.display = 'none';
+  var el = document.getElementById('previewContent');
+  el.value = content;
+  el.style.display = 'block';
+  document.getElementById('previewSaveBtn').style.display = 'inline-block';
+}
+
+async function savePreview() {
+  if (!_previewSource) return;
+  var content = document.getElementById('previewContent').value;
+  var btn = document.getElementById('previewSaveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  var r;
+  if (_previewSource.type === 'local') {
+    r = await api('/files/local/write', 'POST', {path: _previewSource.path, content: content});
+  } else {
+    r = await api('/files/worker/write', 'POST', {addr: _previewSource.addr, path: _previewSource.path, content: content});
+  }
+
+  if (r.ok) {
+    btn.textContent = '✅ Saved';
+    log('💾 File saved: ' + _previewSource.path);
+    setTimeout(function() { btn.textContent = '💾 Save'; btn.disabled = false; }, 2000);
+  } else {
+    btn.textContent = '❌ Failed';
+    log('❌ Save failed: ' + (r.data.error || 'unknown'));
+    setTimeout(function() { btn.textContent = '💾 Save'; btn.disabled = false; }, 2000);
+  }
+}
+
+function closePreview() {
+  document.getElementById('previewModal').style.display = 'none';
+  _previewSource = null;
+}
+
+async function deleteSelectedLocal() {
+  var selected = document.querySelectorAll('#localFileList .local-selectable.selected');
+  if (!selected.length) { showAlert('Please select files or folders to delete'); return; }
+  var paths = [];
+  selected.forEach(function(el) { if (el.dataset.path) paths.push(el.dataset.path); });
+  if (!confirm('Delete ' + paths.length + ' item(s) locally?')) return;
+  log('🗑 Deleting ' + paths.length + ' local item(s)');
+  var r = await api('/files/local/delete', 'POST', {paths: paths});
+  if (r.ok && r.data.results) {
+    r.data.results.forEach(function(res) {
+      log('  ' + (res.status === 'deleted' ? '✅' : '❌') + ' ' + res.path + ': ' + res.status);
+    });
+  }
+  loadLocalDir(localCurrentPath);
+}
+
+async function deleteSelectedRemote() {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  var selected = document.querySelectorAll('#remoteFileList .remote-selectable.selected');
+  if (!selected.length) { showAlert('Please select files or folders to delete'); return; }
+  var paths = [];
+  selected.forEach(function(el) { if (el.dataset.path) paths.push(el.dataset.path); });
+  if (!confirm('Delete ' + paths.length + ' item(s) on ' + addr + '?')) return;
+  log('🗑 Deleting ' + paths.length + ' item(s) on ' + addr);
+  var r = await api('/files/worker/delete', 'POST', {addr: addr, paths: paths});
+  if (r.ok && r.data.results) {
+    r.data.results.forEach(function(res) {
+      log('  ' + (res.status === 'deleted' ? '✅' : '❌') + ' ' + res.path + ': ' + res.status);
+    });
+  }
+  loadRemoteDir(remoteCurrentPath);
+}
+
+// Create folder/file functions
+async function createLocalFolder() {
+  var name = prompt('Enter folder name:');
+  if (!name || !name.trim()) return;
+  name = name.trim();
+  var path = localCurrentPath ? localCurrentPath + '/' + name : name;
+  var r = await api('/files/local/mkdir', 'POST', {path: path});
+  if (r.ok) { log('📁 Created local folder: ' + name); loadLocalDir(localCurrentPath); }
+  else { showAlert(r.data.error || 'Failed to create folder'); }
+}
+
+async function createLocalFile() {
+  var name = prompt('Enter file name (with extension, e.g. config.json):');
+  if (!name || !name.trim()) return;
+  name = name.trim();
+  var path = localCurrentPath ? localCurrentPath + '/' + name : name;
+  var r = await api('/files/local/create', 'POST', {path: path, content: ''});
+  if (r.ok) { log('📄 Created local file: ' + name); loadLocalDir(localCurrentPath); }
+  else { showAlert(r.data.error || 'Failed to create file'); }
+}
+
+async function createRemoteFolder() {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  var name = prompt('Enter folder name:');
+  if (!name || !name.trim()) return;
+  name = name.trim();
+  var path = remoteCurrentPath ? remoteCurrentPath + '/' + name : name;
+  var r = await api('/files/worker/mkdir', 'POST', {addr: addr, path: path});
+  if (r.ok) { log('📁 Created remote folder: ' + name); loadRemoteDir(remoteCurrentPath); }
+  else { showAlert(r.data.error || 'Failed to create folder'); }
+}
+
+async function createRemoteFile() {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  var name = prompt('Enter file name (with extension, e.g. config.json):');
+  if (!name || !name.trim()) return;
+  name = name.trim();
+  var path = remoteCurrentPath ? remoteCurrentPath + '/' + name : name;
+  var r = await api('/files/worker/create', 'POST', {addr: addr, path: path, content: ''});
+  if (r.ok) { log('📄 Created remote file: ' + name); loadRemoteDir(remoteCurrentPath); }
+  else { showAlert(r.data.error || 'Failed to create file'); }
+}
+
+async function renameSelectedLocal() {
+  var selected = document.querySelectorAll('#localFileList .local-selectable.selected');
+  if (selected.length !== 1) { showAlert('Please select exactly one file or folder to rename'); return; }
+  var oldPath = selected[0].dataset.path;
+  var oldName = oldPath.split('/').pop().split('\\').pop();
+  var newName = prompt('Enter new name:', oldName);
+  if (!newName || !newName.trim() || newName.trim() === oldName) return;
+  var newPath = oldPath.substring(0, oldPath.length - oldName.length) + newName.trim();
+  var r = await api('/files/local/rename', 'POST', {old_path: oldPath, new_path: newPath});
+  if (r.ok) { log('✏ Renamed: ' + oldName + ' → ' + newName.trim()); loadLocalDir(localCurrentPath); }
+  else { showAlert(r.data.error || 'Failed to rename'); }
+}
+
+async function renameSelectedRemote() {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  var selected = document.querySelectorAll('#remoteFileList .remote-selectable.selected');
+  if (selected.length !== 1) { showAlert('Please select exactly one file or folder to rename'); return; }
+  var oldPath = selected[0].dataset.path;
+  var oldName = oldPath.split('/').pop().split('\\').pop();
+  var newName = prompt('Enter new name:', oldName);
+  if (!newName || !newName.trim() || newName.trim() === oldName) return;
+  var newPath = oldPath.substring(0, oldPath.length - oldName.length) + newName.trim();
+  var r = await api('/files/worker/rename', 'POST', {addr: addr, old_path: oldPath, new_path: newPath});
+  if (r.ok) { log('✏ Renamed: ' + oldName + ' → ' + newName.trim()); loadRemoteDir(remoteCurrentPath); }
+  else { showAlert(r.data.error || 'Failed to rename'); }
+}
+
+async function duplicateSelectedLocal() {
+  var selected = document.querySelectorAll('#localFileList .local-selectable.selected');
+  if (selected.length !== 1) { showAlert('Please select exactly one file or folder to duplicate'); return; }
+  var srcPath = selected[0].dataset.path;
+  var srcName = srcPath.split('/').pop().split('\\').pop();
+  var dotIdx = srcName.lastIndexOf('.');
+  var defaultName = dotIdx > 0 ? srcName.substring(0, dotIdx) + '_copy' + srcName.substring(dotIdx) : srcName + '_copy';
+  var newName = prompt('Enter name for the copy:', defaultName);
+  if (!newName || !newName.trim()) return;
+  var newPath = srcPath.substring(0, srcPath.length - srcName.length) + newName.trim();
+  var r = await api('/files/local/duplicate', 'POST', {source: srcPath, dest: newPath});
+  if (r.ok) { log('📋 Duplicated: ' + srcName + ' → ' + newName.trim()); loadLocalDir(localCurrentPath); }
+  else { showAlert(r.data.error || 'Failed to duplicate'); }
+}
+
+async function duplicateSelectedRemote() {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  var selected = document.querySelectorAll('#remoteFileList .remote-selectable.selected');
+  if (selected.length !== 1) { showAlert('Please select exactly one file or folder to duplicate'); return; }
+  var srcPath = selected[0].dataset.path;
+  var srcName = srcPath.split('/').pop().split('\\').pop();
+  var dotIdx = srcName.lastIndexOf('.');
+  var defaultName = dotIdx > 0 ? srcName.substring(0, dotIdx) + '_copy' + srcName.substring(dotIdx) : srcName + '_copy';
+  var newName = prompt('Enter name for the copy:', defaultName);
+  if (!newName || !newName.trim()) return;
+  var newPath = srcPath.substring(0, srcPath.length - srcName.length) + newName.trim();
+  var r = await api('/files/worker/duplicate', 'POST', {addr: addr, source: srcPath, dest: newPath});
+  if (r.ok) { log('📋 Duplicated: ' + srcName + ' → ' + newName.trim()); loadRemoteDir(remoteCurrentPath); }
+  else { showAlert(r.data.error || 'Failed to duplicate'); }
+}
+
+function downloadSelectedLocal() {
+  var selected = document.querySelectorAll('#localFileList .local-selectable.selected');
+  if (selected.length !== 1) { showAlert('Please select exactly one file to download'); return; }
+  var filePath = selected[0].dataset.path;
+  var fileType = selected[0].dataset.type;
+  if (fileType === 'dir') { showAlert('Cannot download a folder. Please select a file.'); return; }
+  window.open('/files/local/download?path=' + encodeURIComponent(filePath), '_blank');
+}
+
+function downloadSelectedRemote() {
+  var addr = document.getElementById('syncWorkerSelect').value;
+  if (!addr) { showAlert('Please select a worker'); return; }
+  var selected = document.querySelectorAll('#remoteFileList .remote-selectable.selected');
+  if (selected.length !== 1) { showAlert('Please select exactly one file to download'); return; }
+  var filePath = selected[0].dataset.path;
+  var fileType = selected[0].dataset.type;
+  if (fileType === 'dir') { showAlert('Cannot download a folder. Please select a file.'); return; }
+  window.open('/files/worker/download?addr=' + encodeURIComponent(addr) + '&path=' + encodeURIComponent(filePath), '_blank');
+}
+
+function initFileSyncWorkerSelect() {
+  var sel = document.getElementById('syncWorkerSelect');
+  var html = '<option value="">-- Select Worker --</option>';
+  nodes.forEach(function(n) {
+    if (n.addr === 'master') return;
+    var label = n.addr + ' [' + (n.alias || 'unknown') + ']';
+    html += '<option value="' + n.addr + '">' + label + '</option>';
+  });
+  sel.innerHTML = html;
+}
+
+// ---------------------------------------------------------------------------
+// Batch plugin node selectors (Batch Delete/Override/Edit/Upload/Download File)
+// Each dropdown includes Master (local) plus all configured worker nodes.
+// ---------------------------------------------------------------------------
+var _batchPluginNodeSelectIds = [
+  'batchDelNodeSelect', 'batchOverrideNodeSelect', 'batchEditNodeSelect',
+  'batchUpNodeSelect', 'batchDlNodeSelect'
+];
+
+function initBatchPluginNodeSelects() {
+  _batchPluginNodeSelectIds.forEach(function(id) {
+    var sel = document.getElementById(id);
+    if (!sel) return;
+    var prevValue = sel.value || 'master';
+    var html = '';
+    nodes.forEach(function(n) {
+      var label = n.addr === 'master' ? 'Master (local)' : (n.addr + ' [' + (n.alias || 'unknown') + ']');
+      html += '<option value="' + n.addr + '">' + label + '</option>';
+    });
+    sel.innerHTML = html || '<option value="master">Master (local)</option>';
+    // Restore previous selection if still valid, else default to master
+    if (sel.querySelector('option[value="' + prevValue + '"]')) {
+      sel.value = prevValue;
+    } else {
+      sel.value = 'master';
+    }
+  });
+}
+
+function getBatchPluginNodeAddr(selectId) {
+  var sel = document.getElementById(selectId);
+  return (sel && sel.value) ? sel.value : 'master';
+}
+
+// ---------------------------------------------------------------------------
+// Multi-node checkbox panels for Batch Upload/Override/Download File
+// (in addition to the single-select <select> above). Master's production_dir
+// subdirectory structure is assumed identical across nodes, so the same
+// Source File / Target Directories / Exclude Directories inputs can be
+// applied to several nodes at once instead of repeating the whole workflow
+// per node.
+//
+// Each panel's Target Directories input, however, has to be per-node:
+// production_dir's ROOT differs per node (different drive letter on
+// Windows, or a completely different path on a Linux worker), even though
+// the subdirectory structure below that root is identical. So whenever the
+// node checkboxes change, we auto-fill one Target Directories row per
+// selected node with "<node's production_dir>" -- fetched on demand via
+// GET /files/production-dir (which for master reads config.production_dir
+// directly, and for a remote worker proxies its /files/browse the same way
+// the existing Remote File panel does).
+// ---------------------------------------------------------------------------
+var _batchMultiNodeContainerIds = [
+  'batchUpMultiNodeCbs', 'batchOverrideMultiNodeCbs', 'batchDlMultiNodeCbs', 'batchDelMultiNodeCbs', 'saMultiNodeCbs'
+];
+
+// Maps each node-checkbox container to the Target Directories container it
+// should auto-fill, and the input class name to use for each generated row.
+var _batchMultiTargetDirConfig = {
+  'batchUpMultiNodeCbs': {targetContainerId: 'batchUpMultiTargetDirs', inputClass: 'batch-up-multi-target-dir', placeholder: 'e.g. simulator/B2BGameSimulator/lib'},
+  'batchOverrideMultiNodeCbs': {targetContainerId: 'batchOverrideMultiTargetDirs', inputClass: 'batch-override-multi-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'},
+  'batchDlMultiNodeCbs': {targetContainerId: 'batchDlMultiTargetDirs', inputClass: 'batch-dl-multi-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'},
+  'batchDelMultiNodeCbs': {targetContainerId: 'batchDelMultiTargetDirs', inputClass: 'batch-del-multi-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'},
+  'saMultiNodeCbs': {targetContainerId: 'saTargetDirs', inputClass: 'sa-target-dir', placeholder: 'e.g. E:/python/workSpace/temp/ShowBingoSim'}
+};
+
+// Cache production_dir lookups per addr so re-checking the same node
+// repeatedly (e.g. toggling checkboxes while composing a request) doesn't
+// re-fetch every time.
+var _productionDirCache = {};
+
+async function fetchProductionDir(addr) {
+  if (_productionDirCache.hasOwnProperty(addr)) return _productionDirCache[addr];
+  try {
+    var r = await fetch('/files/production-dir?addr=' + encodeURIComponent(addr));
+    var data = await r.json();
+    var result = (r.ok && data.production_dir) ? data.production_dir : null;
+    _productionDirCache[addr] = result;
+    return result;
+  } catch (e) {
+    _productionDirCache[addr] = null;
+    return null;
+  }
+}
+
+function renderBatchMultiNodeCheckboxes() {
+  _batchMultiNodeContainerIds.forEach(function(containerId) {
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    var prevChecked = {};
+    el.querySelectorAll('.batch-multi-node-cb').forEach(function(cb) {
+      prevChecked[cb.value] = cb.checked;
+    });
+    var html = '';
+    nodes.forEach(function(n) {
+      var label = n.addr === 'master' ? 'Master' : (n.alias || n.addr);
+      var addrDisplay = n.addr === 'master' ? 'local' : n.addr;
+      var checked = prevChecked.hasOwnProperty(n.addr) ? prevChecked[n.addr] : (n.addr === 'master');
+      html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+      html += '<input type="checkbox" class="batch-multi-node-cb" value="' + n.addr + '" data-is-master="' + (n.addr === 'master') + '"' + (checked ? ' checked' : '') + '>';
+      html += '<span style="flex:1;">' + label + ' <span style="color:#999;font-size:11px;">(' + addrDisplay + ')</span></span>';
+      html += '</label>';
+    });
+    el.innerHTML = html || '<div style="color:#888;font-size:12px;">No nodes configured.</div>';
+    el.querySelectorAll('.batch-multi-node-cb').forEach(function(cb) {
+      cb.addEventListener('change', function() { autoFillBatchMultiTargetDirs(containerId); });
+    });
+    // Auto-fill immediately for whichever nodes are checked by default
+    // (e.g. Master pre-checked), so the panel is usable without requiring
+    // the user to toggle a checkbox first.
+    autoFillBatchMultiTargetDirs(containerId);
+  });
+}
+
+function getBatchMultiNodeAddrs(containerId) {
+  var el = document.getElementById(containerId);
+  if (!el) return [];
+  return Array.from(el.querySelectorAll('.batch-multi-node-cb:checked')).map(function(cb) { return cb.value; });
+}
+
+function makeBatchMultiTargetDirRow(inputClass, placeholder, value, addLabel) {
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center;';
+  var addrTag = addLabel ? '<span style="font-size:10px;color:#888;white-space:nowrap;padding:2px 6px;background:#f0f0f0;border-radius:3px;" title="Auto-filled from node\'s production_dir">' + addLabel + '</span>' : '';
+  row.innerHTML = addrTag +
+    '<input type="text" class="' + inputClass + '" placeholder="' + placeholder + '" value="' + (value ? value.replace(/"/g, '&quot;') : '') + '" style="flex:1;margin-bottom:0;">' +
+    '<button class="btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remove" style="width:28px;height:28px;padding:0;font-size:14px;">−</button>';
+  return row;
+}
+
+// Auto-fill one Target Directories row per currently-selected node with
+// that node's production_dir root. Existing manually-typed rows that don't
+// match any node's auto-filled value are preserved (appended after the
+// auto-filled ones), so users can still add extra custom target dirs
+// (e.g. a "lib" subfolder) on top of the auto-filled roots.
+async function autoFillBatchMultiTargetDirs(nodeContainerId) {
+  var cfg = _batchMultiTargetDirConfig[nodeContainerId];
+  if (!cfg) return;
+  var targetEl = document.getElementById(cfg.targetContainerId);
+  if (!targetEl) return;
+
+  var addrs = getBatchMultiNodeAddrs(nodeContainerId);
+
+  // Preserve any rows the user typed manually that aren't one of our
+  // previous auto-filled values (tracked via data-auto-addr attribute).
+  // Skip empty untouched rows (e.g. the initial placeholder row) so
+  // auto-fill doesn't leave a stray blank input behind.
+  var manualRows = [];
+  targetEl.querySelectorAll('div').forEach(function(rowEl) {
+    if (rowEl.dataset.autoAddr) return;
+    var input = rowEl.querySelector('input');
+    if (input && input.value.trim()) manualRows.push(rowEl);
+  });
+
+  targetEl.innerHTML = '';
+
+  for (var i = 0; i < addrs.length; i++) {
+    var addr = addrs[i];
+    var prodDir = await fetchProductionDir(addr);
+    var label = addr === 'master' ? 'Master' : addr;
+    var row = makeBatchMultiTargetDirRow(cfg.inputClass, cfg.placeholder, prodDir || '', label);
+    row.dataset.autoAddr = addr;
+    if (!prodDir) {
+      row.querySelector('input').placeholder = '⚠ Could not resolve production_dir for ' + label;
+    }
+    targetEl.appendChild(row);
+  }
+
+  manualRows.forEach(function(rowEl) { targetEl.appendChild(rowEl); });
+
+  if (!addrs.length && !manualRows.length) {
+    targetEl.appendChild(makeBatchMultiTargetDirRow(cfg.inputClass, cfg.placeholder, '', null));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Node Status Monitoring
+// ---------------------------------------------------------------------------
+var nodeStatusTimer = null;
+var cpuHistory = {};   // {nodeAddr: [values]}
+var memHistory = {};
+var NODE_HISTORY_MAX = 30;
+
+async function fetchNodeStatus() {
+  // Only fetch for running nodes
+  var activeNodes = [];
+  for (var addr in runningNodes) {
+    if (runningNodes[addr]) activeNodes.push(addr);
+  }
+  if (activeNodes.length === 0) {
+    document.getElementById('nodeStatusArea').innerHTML = '<span style="color:#999;">No active nodes</span>';
+    // Auto-stop refresh when no nodes running
+    if (nodeStatusTimer) {
+      clearInterval(nodeStatusTimer);
+      nodeStatusTimer = null;
+      document.getElementById('nodeStatusAutoBtn').textContent = 'Enable Auto Refresh';
+    }
+    return;
+  }
+  var r = await api('/sysinfo/all', 'GET');
+  if (!r.ok) return;
+  var data = r.data;
+  var area = document.getElementById('nodeStatusArea');
+  var html = '';
+  for (var i = 0; i < activeNodes.length; i++) {
+    var addr = activeNodes[i];
+    var info = data[addr];
+    if (!info || info.error) {
+      html += '<div class="node-card" style="min-width:200px;"><span class="name">' + addr + '</span><div style="color:#e74c3c;font-size:12px;">Error: ' + (info ? info.error : 'No data') + '</div></div>';
+      continue;
+    }
+    // Track history
+    if (!cpuHistory[addr]) cpuHistory[addr] = [];
+    if (!memHistory[addr]) memHistory[addr] = [];
+    cpuHistory[addr].push(info.cpu_percent);
+    memHistory[addr].push(info.mem_percent);
+    if (cpuHistory[addr].length > NODE_HISTORY_MAX) cpuHistory[addr].shift();
+    if (memHistory[addr].length > NODE_HISTORY_MAX) memHistory[addr].shift();
+
+    var cpuColor = info.cpu_percent > 80 ? '#e74c3c' : info.cpu_percent > 50 ? '#f39c12' : '#27ae60';
+    var memColor = info.mem_percent > 80 ? '#e74c3c' : info.mem_percent > 50 ? '#f39c12' : '#2980b9';
+    html += '<div class="node-card" style="min-width:200px;flex:1;">';
+    html += '<div class="name">' + addr + '</div>';
+    html += '<div style="font-size:12px;margin-top:4px;">CPU: <span style="color:' + cpuColor + ';font-weight:600;">' + info.cpu_percent.toFixed(1) + '%</span> (' + info.cpu_count + ' cores)</div>';
+    html += '<div style="background:#eee;border-radius:3px;height:8px;margin:2px 0;"><div style="background:' + cpuColor + ';height:100%;border-radius:3px;width:' + info.cpu_percent + '%;transition:width 0.3s;"></div></div>';
+    html += '<div style="font-size:12px;">Memory: <span style="color:' + memColor + ';font-weight:600;">' + info.mem_percent.toFixed(1) + '%</span> (' + info.mem_used_mb + ' / ' + info.mem_total_mb + ' MB)</div>';
+    html += '<div style="background:#eee;border-radius:3px;height:8px;margin:2px 0;"><div style="background:' + memColor + ';height:100%;border-radius:3px;width:' + info.mem_percent + '%;transition:width 0.3s;"></div></div>';
+    html += '</div>';
+  }
+  area.innerHTML = html || '<span style="color:#999;">No nodes</span>';
+  drawNodeChart('cpuChart', cpuHistory, 'CPU %', 100);
+  drawNodeChart('memChart', memHistory, 'Memory %', 100);
+}
+
+function drawNodeChart(canvasId, historyMap, label, maxVal) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var w = canvas.width, h = canvas.height;
+  var pad = {top: 15, right: 15, bottom: 20, left: 40};
+  var plotW = w - pad.left - pad.right;
+  var plotH = h - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#fafafa';
+  ctx.fillRect(0, 0, w, h);
+
+  // Axes
+  ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.left, pad.top); ctx.lineTo(pad.left, h - pad.bottom); ctx.lineTo(w - pad.right, h - pad.bottom); ctx.stroke();
+
+  // Y labels
+  ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  for (var i = 0; i <= 4; i++) {
+    var yVal = maxVal * i / 4;
+    var yPos = h - pad.bottom - (i / 4) * plotH;
+    ctx.fillText(yVal + '%', pad.left - 4, yPos + 3);
+    if (i > 0) { ctx.strokeStyle = '#eee'; ctx.beginPath(); ctx.moveTo(pad.left, yPos); ctx.lineTo(w - pad.right, yPos); ctx.stroke(); }
+  }
+
+  // Title
+  ctx.fillStyle = '#666'; ctx.textAlign = 'center'; ctx.font = '11px sans-serif';
+  ctx.fillText(label, w / 2, h - 3);
+
+  // Draw lines per node
+  var colors = ['#e74c3c', '#2980b9', '#27ae60', '#f39c12', '#9b59b6', '#1abc9c'];
+  var ci = 0;
+  var legendX = pad.left + 8, legendY = pad.top + 2;
+  for (var addr in historyMap) {
+    var vals = historyMap[addr];
+    if (!vals.length) continue;
+    var color = colors[ci % colors.length];
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+    for (var j = 0; j < vals.length; j++) {
+      var x = pad.left + (j / (NODE_HISTORY_MAX - 1)) * plotW;
+      var y = h - pad.bottom - (vals[j] / maxVal) * plotH;
+      if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // Fill area
+    ctx.globalAlpha = 0.1; ctx.fillStyle = color;
+    ctx.lineTo(pad.left + ((vals.length - 1) / (NODE_HISTORY_MAX - 1)) * plotW, h - pad.bottom);
+    ctx.lineTo(pad.left, h - pad.bottom); ctx.fill();
+    ctx.globalAlpha = 1.0;
+    // Legend
+    ctx.fillStyle = color; ctx.fillRect(legendX, legendY + ci * 13, 8, 8);
+    ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(addr, legendX + 12, legendY + ci * 13 + 8);
+    ci++;
+  }
+}
+
+function toggleNodeStatusAuto() {
+  var btn = document.getElementById('nodeStatusAutoBtn');
+  if (nodeStatusTimer) {
+    clearInterval(nodeStatusTimer);
+    nodeStatusTimer = null;
+    btn.textContent = 'Enable Auto Refresh';
+  } else {
+    var interval = parseFloat(document.getElementById('pollInterval').value) || 2;
+    nodeStatusTimer = setInterval(fetchNodeStatus, interval * 1000);
+    btn.textContent = 'Disable Auto Refresh';
+    fetchNodeStatus();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Page Navigation
+// ---------------------------------------------------------------------------
+function togglePluginMenu() {
+  var menu = document.getElementById('pluginSubmenu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+function hidePluginMenu() {
+  document.getElementById('pluginSubmenu').style.display = 'none';
+}
+// Close plugin menu when clicking elsewhere
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#navPlugin') && !e.target.closest('#pluginSubmenu')) {
+    hidePluginMenu();
+  }
+});
+
+function switchPage(page) {
+  // Hide plugin submenu
+  hidePluginMenu();
+  // Check if user is editing in CICD
+  if (typeof _cicdIsEditing !== 'undefined' && _cicdIsEditing) {
+    if (!confirm('You have unsaved changes. Are you sure you want to leave this page?')) return;
+    _cicdIsEditing = false;
+  }
+  document.querySelectorAll('.page-panel').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.sidebar-btn').forEach(function(el) { el.classList.remove('active'); });
+  var pageEl = document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1));
+  if (pageEl) pageEl.classList.add('active');
+  // Determine which nav button to highlight
+  var navId = 'nav' + page.charAt(0).toUpperCase() + page.slice(1);
+  var navEl = document.getElementById(navId);
+  if (navEl) { navEl.classList.add('active'); }
+  else if (page === 'compare' || page === 'formatjson' || page === 'batchdeletefile' || page === 'batchoverride' || page === 'batchedit' || page === 'batchupload' || page === 'batchdownload' || page === 'formattime' || page === 'cardgen' || page === 'patterncomb' || page === 'patterncalc' || page === 'repeatnumpos' || page === 'statisticanalysis') {
+    document.getElementById('navPlugin').classList.add('active');
+  }
+  // Move File Sync panel into batch pages (reuses existing unique-ID DOM)
+  _relocateFileSyncForPage(page);
+  if (page === 'history') histLoadAll();
+  if (page === 'workers') pgRenderWorkers();
+  if (page === 'config') pgLoadConfig();
+  if (page === 'sha1') loadSha1History();
+  if (page === 'family') loadFamilyGallery();
+  if (page === 'cicd') cicdInit();
+  if (page === 'cicdsettings') cicdLoadSettingsPage();
+  if (page === 'patterncalc') pcalcLoadMachines();
+  if (page === 'play') playLoadMachines();
+  if (page === 'iam') iamInit();
+}
+
+var _batchPagesWithFileSync = ['batchdeletefile', 'batchoverride', 'batchedit', 'batchupload', 'batchdownload', 'statisticanalysis'];
+var _fileSyncOriginalParent = null;
+var _fileSyncOriginalNextSibling = null;
+
+function _relocateFileSyncForPage(page) {
+  var fileSyncEl = document.getElementById('sectionFileSync');
+  if (!fileSyncEl) return;
+
+  // Remember original position on first call
+  if (!_fileSyncOriginalParent) {
+    _fileSyncOriginalParent = fileSyncEl.parentNode;
+    _fileSyncOriginalNextSibling = fileSyncEl.nextSibling;
+  }
+
+  if (_batchPagesWithFileSync.indexOf(page) >= 0) {
+    // Move File Sync into the active batch page's side panel
+    var pageId = 'page' + page.charAt(0).toUpperCase() + page.slice(1);
+    var panel = document.querySelector('#' + pageId + ' .batch-file-sync-panel');
+    if (panel && fileSyncEl.parentNode !== panel) {
+      panel.appendChild(fileSyncEl);
+    }
+  } else {
+    // Return File Sync to its original Home position
+    if (fileSyncEl.parentNode !== _fileSyncOriginalParent) {
+      if (_fileSyncOriginalNextSibling) {
+        _fileSyncOriginalParent.insertBefore(fileSyncEl, _fileSyncOriginalNextSibling);
+      } else {
+        _fileSyncOriginalParent.appendChild(fileSyncEl);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Workers Page Functions
+// ---------------------------------------------------------------------------
+function pgRenderWorkers() {
+  var el = document.getElementById('pgWorkerList');
+  var html = '';
+  // Master node first
+  html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+  html += '<input type="radio" name="pgWmNodeRadio" class="pg-wm-node-radio" value="master" data-is-master="true">';
+  html += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#27ae60;"></span>';
+  html += '<span style="flex:1;">Master <span style="color:#999;font-size:11px;">(local)</span></span>';
+  html += '<span style="font-size:11px;color:#27ae60;font-weight:600;">online</span>';
+  html += '</label>';
+  // Worker nodes
+  nodes.forEach(function(n) {
+    if (n.addr === 'master') return;
+    var isHealthy = !!workerHealthMap[n.addr];
+    var dotColor = isHealthy ? '#27ae60' : '#e74c3c';
+    var statusText = isHealthy ? 'online' : 'offline';
+    var statusColor = isHealthy ? '#27ae60' : '#e74c3c';
+    var label = n.alias || n.addr;
+    html += '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\'#f8f9fa\'" onmouseout="this.style.background=\'\'">';
+    html += '<input type="radio" name="pgWmNodeRadio" class="pg-wm-node-radio" value="' + n.addr + '" data-is-master="false" data-vcpu="' + n.vcpu + '" data-alias="' + (n.alias||'') + '">';
+    html += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>';
+    html += '<span style="flex:1;">' + label + ' <span style="color:#999;font-size:11px;">(' + n.addr + ', vCPU: ' + n.vcpu + ')</span></span>';
+    html += '<span style="font-size:11px;color:' + statusColor + ';font-weight:600;">' + statusText + '</span>';
+    html += '</label>';
+  });
+  el.innerHTML = html;
+  el.querySelectorAll('.pg-wm-node-radio').forEach(function(r) {
+    r.addEventListener('change', pgWmOnNodeSelect);
+  });
+}
+
+function pgWmOnNodeSelect() {
+  var selected = document.querySelector('.pg-wm-node-radio:checked');
+  var editBtn = document.getElementById('pgWmEditBtn');
+  var deleteBtn = document.getElementById('pgWmDeleteBtn');
+  var detailEl = document.getElementById('pgWmNodeDetail');
+
+  if (!selected) {
+    editBtn.disabled = true;
+    deleteBtn.disabled = true;
+    detailEl.innerHTML = '';
+    return;
+  }
+
+  var isMaster = selected.getAttribute('data-is-master') === 'true';
+  editBtn.disabled = isMaster;
+  deleteBtn.disabled = isMaster;
+
+  // Show node detail with tabs
+  var addr = selected.value;
+  var label = isMaster ? 'Master (local)' : (selected.getAttribute('data-alias') || addr);
+  var html = '<div style="border:1px solid #ddd;border-radius:8px;padding:16px;margin-top:8px;">';
+  html += '<div style="font-weight:600;font-size:14px;margin-bottom:12px;">' + label + (isMaster ? '' : ' (' + addr + ')') + '</div>';
+  html += '<div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid #eee;padding-bottom:8px;">';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;background:#4a90d9;color:#fff;" onclick="pgWmShowTab(\'' + addr + '\',\'monitor\')">monitor</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">Detailed information</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">Status and Alarms</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">Safety</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">networking</span>';
+  html += '<span style="padding:4px 12px;font-size:12px;cursor:pointer;border-radius:4px;color:#666;" onclick="showAlert(\'Coming soon\')">storage</span>';
+  html += '</div>';
+  if (!isMaster) {
+    html += renderLauncherControls(addr, 'pgWm');
+  }
+  html += '<div id="pgWmTabContent" style="min-height:120px;"><div style="color:#888;font-size:12px;">Loading...</div></div>';
+  html += '</div>';
+  detailEl.innerHTML = html;
+  pgWmShowTab(addr, 'monitor');
+  if (!isMaster) refreshLauncherStatus(addr, 'pgWm');
+}
+
+async function pgWmShowTab(addr, tab) {
+  var contentEl = document.getElementById('pgWmTabContent');
+  if (!contentEl) return;
+  if (tab === 'monitor') {
+    await wmLoadMonitor(addr, contentEl);
+  }
+}
+
+function pgWmEditSelected() {
+  var selected = document.querySelector('.pg-wm-node-radio:checked');
+  if (!selected || selected.getAttribute('data-is-master') === 'true') return;
+  var addr = selected.value;
+  var vcpu = parseInt(selected.getAttribute('data-vcpu')) || 1;
+  var alias = selected.getAttribute('data-alias') || '';
+  editWorker(addr, vcpu, alias);
+}
+
+function pgWmDeleteSelected() {
+  var selected = document.querySelector('.pg-wm-node-radio:checked');
+  if (!selected || selected.getAttribute('data-is-master') === 'true') return;
+  pgDelWorker(selected.value);
+}
+
+async function pgAddWorker() {
+  var addr = document.getElementById('pgNewWorkerAddr').value.trim();
+  var vcpu = parseInt(document.getElementById('pgNewWorkerVcpu').value) || 1;
+  var alias = document.getElementById('pgNewWorkerAlias').value.trim();
+  if (!validateWorkerInput(addr, vcpu, alias)) return;
+  var r = await api('/add_worker', 'POST', { addr: addr, vcpu: vcpu, alias: alias });
+  if (r.ok) {
+    log('✅ Worker ' + addr + ' added');
+    document.getElementById('pgNewWorkerAddr').value = '';
+    document.getElementById('pgNewWorkerAlias').value = '';
+    nodes = r.data.workers;
+    pgRenderWorkers();
+    renderWorkers();
+    renderPercentageInputs();
+  }
+}
+
+async function pgDelWorker(addr) {
+  if (!confirm('Delete Worker ' + addr + '?')) return;
+  var r = await api('/del_worker', 'POST', { addr: addr });
+  if (r.ok) {
+    log('✅ Worker ' + addr + ' deleted');
+    nodes = r.data.workers;
+    pgRenderWorkers();
+    renderWorkers();
+    renderPercentageInputs();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Config Page Functions
+// ---------------------------------------------------------------------------
+function pgLoadConfig() {
+  document.getElementById('pgPollInterval').value = document.getElementById('pollInterval').value;
+  document.getElementById('pgAllocationMode').value = document.getElementById('allocationMode').value;
+  pgOnModeChange();
+  pgRenderPercentageInputs();
+}
+
+function pgOnModeChange() {
+  var mode = document.getElementById('pgAllocationMode').value;
+  var section = document.getElementById('pgPercentageSection');
+  if (mode === 'percentage') {
+    section.classList.remove('hidden');
+    pgRenderPercentageInputs();
+  } else {
+    section.classList.add('hidden');
+  }
+}
+
+function pgRenderPercentageInputs() {
+  var container = document.getElementById('pgPercentageInputs');
+  var html = '';
+  nodes.forEach(function(n) {
+    var label = n.addr === 'master' ? 'Master' : 'Worker(' + n.addr + ')';
+    html += '<div class="pct-row">';
+    html += '<span>' + label + '</span>';
+    html += '<input type="number" class="pg-pct-input" data-addr="' + n.addr + '" value="' + (n.percentage || 0) + '" min="0" max="100" step="0.1">';
+    html += '<span>%</span>';
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+
+async function pgSetPollInterval() {
+  var val = parseFloat(document.getElementById('pgPollInterval').value);
+  if (!val || val <= 0) { showAlert('Please enter a valid poll interval'); return; }
+  var r = await api('/config/poll-interval', 'POST', { interval: val });
+  if (r.ok) {
+    log('✅ Poll interval updated to ' + r.data.interval + 's');
+    document.getElementById('pollInterval').value = val;
+  }
+}
+
+async function pgSetAllocationMode() {
+  var mode = document.getElementById('pgAllocationMode').value;
+  var r = await api('/config/allocation-mode', 'POST', { mode: mode });
+  if (r.ok) {
+    log('✅ Allocation mode switched to ' + r.data.mode);
+    document.getElementById('allocationMode').value = mode;
+    onModeChange();
+  }
+}
+
+async function pgSavePercentages() {
+  var inputs = document.querySelectorAll('.pg-pct-input');
+  var percentages = {};
+  inputs.forEach(function(inp) { percentages[inp.dataset.addr] = parseFloat(inp.value) || 0; });
+  var sum = Object.values(percentages).reduce(function(a, b) { return a + b; }, 0);
+  if (Math.abs(sum - 100) > 0.01) {
+    showAlert('Percentages sum to ' + sum.toFixed(2) + '%, must be 100%');
+    return;
+  }
+  var r = await api('/config/percentages', 'POST', { percentages: percentages });
+  if (r.ok) {
+    log('✅ Percentage config saved');
+    renderPercentageInputs();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// History Page Functions
+// ---------------------------------------------------------------------------
+var _histChartCounter = 0;
+
+async function histLoadAll() {
+  var r = await fetch('/history/list');
+  var data = await r.json();
+  histRenderRuns(data.runs || []);
+}
+
+async function histSearch() {
+  var model = document.getElementById('histFilterModel').value;
+  var start = document.getElementById('histFilterStart').value;
+  var end = document.getElementById('histFilterEnd').value;
+  var params = new URLSearchParams();
+  if (model) params.set('model', model);
+  if (start) params.set('start', start);
+  if (end) params.set('end', end);
+  var r = await fetch('/history/query?' + params.toString());
+  var data = await r.json();
+  histRenderQueryResults(data.results || []);
+}
+
+function histRenderRuns(runs) {
+  var el = document.getElementById('histResults');
+  if (!runs.length) { el.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">No history data found</div>'; return; }
+  var html = '<div style="margin-bottom:8px;display:flex;gap:4px;">';
+  html += '<button class="btn-primary btn-sm" onclick="histBatchDownload()">⬇ Download Selected</button>';
+  html += '<button class="btn-danger btn-sm" onclick="histBatchDelete()">🗑 Delete Selected</button>';
+  html += '<label style="font-size:12px;display:flex;align-items:center;gap:4px;margin-left:8px;cursor:pointer;color:#666;"><input type="checkbox" onchange="histToggleAll(this)"> Select All</label>';
+  html += '</div>';
+  runs.forEach(function(run, i) {
+    var ts = run.timestamp ? new Date(run.timestamp).toLocaleString() : run.filename;
+    html += '<div class="card" style="margin-bottom:8px;padding:10px;">';
+    html += '<div style="display:flex;align-items:center;gap:8px;">';
+    html += '<input type="checkbox" class="hist-cb" value="' + run.filename + '">';
+    html += '<span style="flex:1;cursor:pointer;font-weight:600;font-size:13px;" onclick="histToggleRun(\'hrun_' + i + '\', \'' + run.filename + '\')">📅 ' + ts + '</span>';
+    html += '<span style="font-size:11px;color:#888;">' + run.model_count + ' models</span>';
+    html += '<button class="btn-success btn-sm" onclick="event.stopPropagation();histDownloadRun(\'' + run.filename + '\')">⬇</button>';
+    html += '<button class="btn-danger btn-sm" onclick="event.stopPropagation();histDeleteOne(\'' + run.filename + '\',' + i + ')">🗑</button>';
+    html += '</div>';
+    html += '<div id="hrun_' + i + '" style="display:none;margin-top:8px;"></div>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function histRenderQueryResults(results) {
+  window._histQueryResults = results;
+  var el = document.getElementById('histResults');
+  if (!results.length) { el.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">No matching results</div>'; return; }
+  var html = '';
+  results.forEach(function(record, i) {
+    var ts = record.timestamp ? new Date(record.timestamp).toLocaleString() : '';
+    html += '<div class="card" style="margin-bottom:12px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="histToggleInline(\'hqrun_' + i + '\')">';
+    html += '<h2 style="border:none;margin:0;padding:0;">📅 ' + ts + '</h2>';
+    html += '<span style="font-size:12px;color:#888;">' + Object.keys(record.models || {}).length + ' models</span>';
+    html += '</div>';
+    html += '<div style="margin-top:4px;"><button class="btn-success btn-sm" onclick="event.stopPropagation();histDownloadQueryResult(' + i + ')">⬇ Download</button></div>';
+    html += '<div id="hqrun_' + i + '" style="display:none;margin-top:12px;">' + histRenderModels(record.models || {}) + '</div>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+async function histToggleRun(divId, filename) {
+  var el = document.getElementById(divId);
+  if (el.style.display === 'block') { el.style.display = 'none'; return; }
+  if (el.dataset.loaded) { el.style.display = 'block'; return; }
+  var r = await fetch('/history/load?filename=' + encodeURIComponent(filename));
+  var data = await r.json();
+  el.innerHTML = histRenderModels(data.models || {});
+  el.dataset.loaded = '1';
+  el.style.display = 'block';
+}
+
+function histToggleInline(divId) {
+  var el = document.getElementById(divId);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function histRenderModels(models) {
+  var html = '';
+  var names = Object.keys(models).sort();
+  names.forEach(function(name) {
+    var m = models[name];
+    var latest = m.latest || m;
+    var history = m.history || [];
+    var mid = 'hm_' + (_histChartCounter++);
+    var detailId = mid + '_detail';
+    var histId = mid + '_hist';
+    var chartId = mid + '_chart';
+    var tableId = mid + '_table';
+
+    html += '<div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px;margin-bottom:8px;">';
+    html += '<div style="display:flex;align-items:center;gap:8px;">';
+    html += '<span style="font-weight:600;font-size:13px;cursor:pointer;" onclick="histToggleEl(\'' + detailId + '\')">▶ ' + name + '</span>';
+    html += '<button class="btn-primary btn-sm" onclick="event.stopPropagation();histCopyTable(\'' + tableId + '\',this)">📋 Copy</button>';
+    if (history.length > 1) {
+      html += '<button class="btn-primary btn-sm" onclick="histToggleVolcano(\'' + chartId + '\',\'' + mid + '\')">📊 Volcano</button>';
+    }
+    html += '</div>';
+
+    html += '<div id="' + chartId + '" style="display:none;margin:8px 0;"><canvas id="canvas_' + mid + '" width="600" height="200" style="width:100%;border:1px solid #ddd;border-radius:4px;"></canvas></div>';
+
+    html += '<div id="' + detailId + '" style="display:none;">';
+    html += '<table class="result-table" id="' + tableId + '"><tr><th>Metric</th><th>Value</th></tr>';
+    html += '<tr><td>SPIN COUNT</td><td>' + fmt(latest.spin_count) + '</td></tr>';
+    html += '<tr><td>TOTAL RTP</td><td>' + fmtPct(latest.total_rtp) + '</td></tr>';
+    html += '<tr><td>BASE RTP</td><td>' + fmtPct(latest.base_rtp) + '</td></tr>';
+    html += '<tr><td>EB RTP</td><td>' + fmtPct(latest.eb_rtp) + '</td></tr>';
+    html += '</table>';
+
+    if (history.length > 0) {
+      html += '<div style="margin-top:6px;"><span style="font-size:12px;cursor:pointer;color:#666;" onclick="histToggleEl(\'' + histId + '\')">▶ History (' + history.length + ' snapshots)</span>';
+      html += '<div id="' + histId + '" style="display:none;">';
+      html += '<table class="result-table" style="margin-top:4px;"><tr><th>SPIN COUNT</th><th>TOTAL RTP</th><th>BASE RTP</th><th>EB RTP</th></tr>';
+      history.forEach(function(h) {
+        html += '<tr><td>' + fmt(h.spin_count) + '</td><td>' + fmtPct(h.total_rtp) + '</td><td>' + fmtPct(h.base_rtp) + '</td><td>' + fmtPct(h.eb_rtp) + '</td></tr>';
+      });
+      html += '</table></div></div>';
+    }
+
+    html += '</div></div>';
+
+    if (!window._histModels) window._histModels = {};
+    window._histModels[mid] = history;
+  });
+  return html;
+}
+
+function histToggleEl(id) {
+  var el = document.getElementById(id);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function histCopyTable(tableId, btnEl) {
+  copyTable(tableId, btnEl);
+}
+
+function histToggleVolcano(chartId, mid) {
+  var el = document.getElementById(chartId);
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    histDrawVolcano('canvas_' + mid, mid);
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function histDrawVolcano(canvasId, mid) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas || !window._histModels || !window._histModels[mid]) return;
+  var hist = window._histModels[mid];
+  if (hist.length < 2) return;
+  // Reuse the main drawVolcanoChart logic
+  var ctx = canvas.getContext('2d');
+  var w = canvas.width, h = canvas.height;
+  var pad = {top:20,right:20,bottom:30,left:60};
+  var plotW = w-pad.left-pad.right, plotH = h-pad.top-pad.bottom;
+  ctx.clearRect(0,0,w,h); ctx.fillStyle='#fafafa'; ctx.fillRect(0,0,w,h);
+  var spins = hist.map(function(h){return h.spin_count||0;});
+  var maxS=Math.max.apply(null,spins), minS=Math.min.apply(null,spins);
+  if(maxS===minS)maxS=minS+1;
+  var series=[{key:'total_rtp',label:'TOTAL RTP',color:'#e74c3c'},{key:'base_rtp',label:'BASE RTP',color:'#2980b9'},{key:'eb_rtp',label:'EB RTP',color:'#27ae60'}];
+  var allV=[]; series.forEach(function(s){hist.forEach(function(h){allV.push(h[s.key]||0);});});
+  var minR=Math.min.apply(null,allV)*0.998, maxR=Math.max.apply(null,allV)*1.002;
+  if(maxR===minR)maxR=minR+0.01;
+  ctx.strokeStyle='#999';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad.left,pad.top);ctx.lineTo(pad.left,h-pad.bottom);ctx.lineTo(w-pad.right,h-pad.bottom);ctx.stroke();
+  ctx.fillStyle='#666';ctx.font='10px sans-serif';ctx.textAlign='right';
+  for(var i=0;i<=4;i++){var yV=minR+(maxR-minR)*i/4;var yP=h-pad.bottom-(i/4)*plotH;ctx.fillText((yV*100).toFixed(2)+'%',pad.left-4,yP+3);ctx.strokeStyle='#eee';ctx.beginPath();ctx.moveTo(pad.left,yP);ctx.lineTo(w-pad.right,yP);ctx.stroke();}
+  series.forEach(function(s){var vals=hist.map(function(h){return h[s.key]||0;});ctx.strokeStyle=s.color;ctx.lineWidth=2;ctx.beginPath();for(var j=0;j<vals.length;j++){var x=pad.left+(spins[j]-minS)/(maxS-minS)*plotW;var y=h-pad.bottom-(vals[j]-minR)/(maxR-minR)*plotH;if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.stroke();ctx.fillStyle=s.color;for(var k=0;k<vals.length;k++){var dx=pad.left+(spins[k]-minS)/(maxS-minS)*plotW;var dy=h-pad.bottom-(vals[k]-minR)/(maxR-minR)*plotH;ctx.beginPath();ctx.arc(dx,dy,3,0,Math.PI*2);ctx.fill();}});
+  var lx=pad.left+10,ly=pad.top+4;series.forEach(function(s,i){ctx.fillStyle=s.color;ctx.fillRect(lx,ly+i*14,10,10);ctx.fillStyle='#333';ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillText(s.label,lx+14,ly+i*14+9);});
+  ctx.fillStyle='#666';ctx.textAlign='center';ctx.fillText('SPIN COUNT',w/2,h-4);
+}
+
+async function histDownloadRun(filename) {
+  var r = await fetch('/history/load?filename=' + encodeURIComponent(filename));
+  var data = await r.json();
+  histDownloadJson(JSON.stringify(data, null, 2), filename);
+}
+
+function histDownloadQueryResult(index) {
+  if (!window._histQueryResults || !window._histQueryResults[index]) return;
+  var record = window._histQueryResults[index];
+  var ts = record.timestamp ? record.timestamp.replace(/[:.]/g, '-') : 'result_' + index;
+  histDownloadJson(JSON.stringify(record, null, 2), ts + '.json');
+}
+
+function histDownloadJson(jsonStr, filename) {
+  var blob = new Blob([jsonStr], {type: 'application/json'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function histToggleAll(masterCb) {
+  document.querySelectorAll('.hist-cb').forEach(function(cb) { cb.checked = masterCb.checked; });
+}
+
+async function histDeleteOne(filename) {
+  if (!confirm('Delete history record ' + filename + '?')) return;
+  var r = await api('/history/delete', 'POST', {filenames: [filename]});
+  if (r.ok) { log('✅ Deleted ' + filename); histLoadAll(); }
+}
+
+async function histBatchDelete() {
+  var selected = [];
+  document.querySelectorAll('.hist-cb:checked').forEach(function(cb) { selected.push(cb.value); });
+  if (!selected.length) { showAlert('Please select records to delete'); return; }
+  if (!confirm('Delete ' + selected.length + ' record(s)?')) return;
+  var r = await api('/history/delete', 'POST', {filenames: selected});
+  if (r.ok) { log('✅ Deleted ' + selected.length + ' record(s)'); histLoadAll(); }
+}
+
+async function histBatchDownload() {
+  var selected = [];
+  document.querySelectorAll('.hist-cb:checked').forEach(function(cb) { selected.push(cb.value); });
+  if (!selected.length) { showAlert('Please select records to download'); return; }
+  log('⬇ Downloading ' + selected.length + ' record(s) as zip...');
+  try {
+    var res = await fetch('/history/export', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({filenames: selected}),
+    });
+    var blob = await res.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'history_export.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    log('✅ Downloaded ' + selected.length + ' record(s)');
+  } catch(e) {
+    log('❌ Download failed: ' + e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SHA1 Computation
+// ---------------------------------------------------------------------------
+var sha1DataA = [];
+var sha1DataB = [];
+var _dirPickerTarget = null;
+
+async function browseDirFor(inputId) {
+  _dirPickerTarget = inputId;
+  var currentVal = document.getElementById(inputId).value.trim();
+  var path = currentVal || '';
+  await showDirPicker(path);
+}
+
+async function showDirPicker(path) {
+  var r = await api('/files/local/browse?path=' + encodeURIComponent(path), 'GET');
+  if (!r.ok) return;
+  var data = r.data;
+  var html = '<div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center;" id="dirPickerModal">';
+  html += '<div style="background:#fff;border-radius:8px;width:500px;max-height:70vh;display:flex;flex-direction:column;box-shadow:0 4px 20px rgba(0,0,0,0.3);">';
+  html += '<div style="padding:12px 16px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">';
+  html += '<span style="font-weight:600;">📁 Select Directory</span>';
+  html += '<button onclick="closeDirPicker()" style="background:#e74c3c;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;">✕</button>';
+  html += '</div>';
+  html += '<div style="padding:8px 16px;font-size:12px;color:#666;border-bottom:1px solid #f0f0f0;">' + (data.path || '') + '</div>';
+  html += '<div style="padding:8px 16px;display:flex;gap:4px;border-bottom:1px solid #f0f0f0;">';
+  html += '<button class="btn-primary btn-sm" onclick="selectCurrentDir(\'' + (data.path || '').replace(/'/g, "\\'") + '\')">✅ Select This Dir</button>';
+  if (data.parent) html += '<button class="btn-sm" style="background:#888;" onclick="showDirPicker(\'' + data.parent.replace(/'/g, "\\'") + '\')">⬆ Up</button>';
+  html += '</div>';
+  html += '<div style="flex:1;overflow-y:auto;padding:8px 16px;">';
+  (data.entries || []).forEach(function(e) {
+    if (e.type === 'dir') {
+      html += '<div class="file-item" onclick="showDirPicker(\'' + (e.full_path || '').replace(/'/g, "\\'") + '\')"><span class="icon">📁</span> ' + e.name + '</div>';
+    }
+  });
+  html += '</div></div></div>';
+  // Remove old modal if exists
+  closeDirPicker();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function selectCurrentDir(path) {
+  if (_dirPickerTarget) {
+    document.getElementById(_dirPickerTarget).value = path;
+  }
+  closeDirPicker();
+}
+
+function closeDirPicker() {
+  var m = document.getElementById('dirPickerModal');
+  if (m) m.remove();
+}
+
+// --- MD5 Generator ---
+function generateMd5() {
+  var input = document.getElementById('md5Input').value;
+  if (!input) { showAlert('Please enter some content'); return; }
+  var hash = md5(input);
+  var resultEl = document.getElementById('md5Result');
+  var textEl = document.getElementById('md5ResultText');
+  textEl.textContent = hash;
+  resultEl.style.display = 'block';
+  // Reset copy button state
+  document.getElementById('md5CopyIcon').style.display = '';
+  document.getElementById('md5CheckIcon').style.display = 'none';
+}
+
+function copyMd5Result() {
+  var text = document.getElementById('md5ResultText').textContent;
+  if (!text) return;
+  var copyIcon = document.getElementById('md5CopyIcon');
+  var checkIcon = document.getElementById('md5CheckIcon');
+  // Try clipboard API first, fallback to execCommand
+  var done = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function() {
+        showCopySuccess();
+      }).catch(function() {
+        fallbackCopy(text);
+      });
+      return;
+    }
+  } catch(e) {}
+  fallbackCopy(text);
+
+  function fallbackCopy(str) {
+    var ta = document.createElement('textarea');
+    ta.value = str;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); showCopySuccess(); } catch(e) {}
+    document.body.removeChild(ta);
+  }
+
+  function showCopySuccess() {
+    copyIcon.style.display = 'none';
+    checkIcon.style.display = '';
+    setTimeout(function() {
+      copyIcon.style.display = '';
+      checkIcon.style.display = 'none';
+    }, 2000);
+  }
+}
+
+// MD5 implementation (RFC 1321)
+function md5(string) {
+  function md5cycle(x, k) {
+    var a = x[0], b = x[1], c = x[2], d = x[3];
+    a = ff(a, b, c, d, k[0], 7, -680876936); d = ff(d, a, b, c, k[1], 12, -389564586);
+    c = ff(c, d, a, b, k[2], 17, 606105819); b = ff(b, c, d, a, k[3], 22, -1044525330);
+    a = ff(a, b, c, d, k[4], 7, -176418897); d = ff(d, a, b, c, k[5], 12, 1200080426);
+    c = ff(c, d, a, b, k[6], 17, -1473231341); b = ff(b, c, d, a, k[7], 22, -45705983);
+    a = ff(a, b, c, d, k[8], 7, 1770035416); d = ff(d, a, b, c, k[9], 12, -1958414417);
+    c = ff(c, d, a, b, k[10], 17, -42063); b = ff(b, c, d, a, k[11], 22, -1990404162);
+    a = ff(a, b, c, d, k[12], 7, 1804603682); d = ff(d, a, b, c, k[13], 12, -40341101);
+    c = ff(c, d, a, b, k[14], 17, -1502002290); b = ff(b, c, d, a, k[15], 22, 1236535329);
+    a = gg(a, b, c, d, k[1], 5, -165796510); d = gg(d, a, b, c, k[6], 9, -1069501632);
+    c = gg(c, d, a, b, k[11], 14, 643717713); b = gg(b, c, d, a, k[0], 20, -373897302);
+    a = gg(a, b, c, d, k[5], 5, -701558691); d = gg(d, a, b, c, k[10], 9, 38016083);
+    c = gg(c, d, a, b, k[15], 14, -660478335); b = gg(b, c, d, a, k[4], 20, -405537848);
+    a = gg(a, b, c, d, k[9], 5, 568446438); d = gg(d, a, b, c, k[14], 9, -1019803690);
+    c = gg(c, d, a, b, k[3], 14, -187363961); b = gg(b, c, d, a, k[8], 20, 1163531501);
+    a = gg(a, b, c, d, k[13], 5, -1444681467); d = gg(d, a, b, c, k[2], 9, -51403784);
+    c = gg(c, d, a, b, k[7], 14, 1735328473); b = gg(b, c, d, a, k[12], 20, -1926607734);
+    a = hh(a, b, c, d, k[5], 4, -378558); d = hh(d, a, b, c, k[8], 11, -2022574463);
+    c = hh(c, d, a, b, k[11], 16, 1839030562); b = hh(b, c, d, a, k[14], 23, -35309556);
+    a = hh(a, b, c, d, k[1], 4, -1530992060); d = hh(d, a, b, c, k[4], 11, 1272893353);
+    c = hh(c, d, a, b, k[7], 16, -155497632); b = hh(b, c, d, a, k[10], 23, -1094730640);
+    a = hh(a, b, c, d, k[13], 4, 681279174); d = hh(d, a, b, c, k[0], 11, -358537222);
+    c = hh(c, d, a, b, k[3], 16, -722521979); b = hh(b, c, d, a, k[6], 23, 76029189);
+    a = hh(a, b, c, d, k[9], 4, -640364487); d = hh(d, a, b, c, k[12], 11, -421815835);
+    c = hh(c, d, a, b, k[15], 16, 530742520); b = hh(b, c, d, a, k[2], 23, -995338651);
+    a = ii(a, b, c, d, k[0], 6, -198630844); d = ii(d, a, b, c, k[7], 10, 1126891415);
+    c = ii(c, d, a, b, k[14], 15, -1416354905); b = ii(b, c, d, a, k[5], 21, -57434055);
+    a = ii(a, b, c, d, k[12], 6, 1700485571); d = ii(d, a, b, c, k[3], 10, -1894986606);
+    c = ii(c, d, a, b, k[10], 15, -1051523); b = ii(b, c, d, a, k[1], 21, -2054922799);
+    a = ii(a, b, c, d, k[8], 6, 1873313359); d = ii(d, a, b, c, k[15], 10, -30611744);
+    c = ii(c, d, a, b, k[6], 15, -1560198380); b = ii(b, c, d, a, k[13], 21, 1309151649);
+    a = ii(a, b, c, d, k[4], 6, -145523070); d = ii(d, a, b, c, k[11], 10, -1120210379);
+    c = ii(c, d, a, b, k[2], 15, 718787259); b = ii(b, c, d, a, k[9], 21, -343485551);
+    x[0] = add32(a, x[0]); x[1] = add32(b, x[1]); x[2] = add32(c, x[2]); x[3] = add32(d, x[3]);
+  }
+  function cmn(q, a, b, x, s, t) { a = add32(add32(a, q), add32(x, t)); return add32((a << s) | (a >>> (32 - s)), b); }
+  function ff(a, b, c, d, x, s, t) { return cmn((b & c) | ((~b) & d), a, b, x, s, t); }
+  function gg(a, b, c, d, x, s, t) { return cmn((b & d) | (c & (~d)), a, b, x, s, t); }
+  function hh(a, b, c, d, x, s, t) { return cmn(b ^ c ^ d, a, b, x, s, t); }
+  function ii(a, b, c, d, x, s, t) { return cmn(c ^ (b | (~d)), a, b, x, s, t); }
+  function md51(s) {
+    var n = s.length, state = [1732584193, -271733879, -1732584194, 271733878], i;
+    for (i = 64; i <= n; i += 64) { md5cycle(state, md5blk(s.substring(i - 64, i))); }
+    s = s.substring(i - 64);
+    var tail = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    for (i = 0; i < s.length; i++) tail[i >> 2] |= s.charCodeAt(i) << ((i % 4) << 3);
+    tail[i >> 2] |= 0x80 << ((i % 4) << 3);
+    if (i > 55) { md5cycle(state, tail); tail = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]; }
+    tail[14] = n * 8;
+    md5cycle(state, tail);
+    return state;
+  }
+  function md5blk(s) {
+    var md5blks = [], i;
+    for (i = 0; i < 64; i += 4) { md5blks[i >> 2] = s.charCodeAt(i) + (s.charCodeAt(i+1) << 8) + (s.charCodeAt(i+2) << 16) + (s.charCodeAt(i+3) << 24); }
+    return md5blks;
+  }
+  var hex_chr = '0123456789abcdef'.split('');
+  function rhex(n) { var s = '', j = 0; for (; j < 4; j++) s += hex_chr[(n >> (j * 8 + 4)) & 0x0F] + hex_chr[(n >> (j * 8)) & 0x0F]; return s; }
+  function hex(x) { for (var i = 0; i < x.length; i++) x[i] = rhex(x[i]); return x.join(''); }
+  function add32(a, b) { return (a + b) & 0xFFFFFFFF; }
+  // Encode UTF-8
+  var utf8 = unescape(encodeURIComponent(string));
+  return hex(md51(utf8));
+}
+
+async function computeSha1(group) {
+  var dirInput = document.getElementById('sha1Dir' + group);
+  var resultEl = document.getElementById('sha1Result' + group);
+  var dir = dirInput.value.trim();
+  if (!dir) { showAlert('Please enter a directory path or PDF file path'); return; }
+  resultEl.innerHTML = '<span style="color:#888;">Computing...</span>';
+  var r = await api('/sha1/compute', 'POST', {path: dir});
+  if (!r.ok) { resultEl.innerHTML = '<span style="color:#e74c3c;">Error: ' + (r.data.error || 'failed') + '</span>'; return; }
+  var results = r.data.results || [];
+  var source = r.data.source || 'directory';
+  if (group === 'A') sha1DataA = results;
+  else sha1DataB = results;
+  var sourceLabel = source === 'pdf' ? '📄 PDF' : '📁 Directory';
+  var html = '<div style="margin-bottom:4px;color:#888;">' + sourceLabel + ' - Found ' + results.length + ' files (saved: ' + r.data.saved_to + ')</div>';
+  html += '<table class="result-table"><tr><th>File</th><th>SHA1</th></tr>';
+  results.forEach(function(item) {
+    html += '<tr><td>' + item.filename + '</td><td style="font-family:monospace;font-size:11px;">' + item.sha1 + '</td></tr>';
+  });
+  html += '</table>';
+  resultEl.innerHTML = html;
+}
+
+function compareSha1() {
+  var el = document.getElementById('sha1Compare');
+  if (!sha1DataA.length || !sha1DataB.length) { showAlert('Please compute both Group A and Group B first'); return; }
+  var mapA = {}; sha1DataA.forEach(function(item) { mapA[item.filename] = item.sha1.trim(); });
+  var mapB = {}; sha1DataB.forEach(function(item) { mapB[item.filename] = item.sha1.trim(); });
+  var allFiles = new Set([...Object.keys(mapA), ...Object.keys(mapB)]);
+  var html = '<table class="result-table"><tr><th>File</th><th>Status</th><th>SHA1 A</th><th>SHA1 B</th></tr>';
+  var same = 0, diff = 0, onlyA = 0, onlyB = 0;
+  Array.from(allFiles).sort().forEach(function(f) {
+    var a = mapA[f] || '';
+    var b = mapB[f] || '';
+    var status, color;
+    if (a && b && a === b) { status = '✅ Same'; color = '#27ae60'; same++; }
+    else if (a && b) { status = '❌ Different'; color = '#e74c3c'; diff++; }
+    else if (a && !b) { status = '⚠️ Only in A'; color = '#f39c12'; onlyA++; }
+    else { status = '⚠️ Only in B'; color = '#f39c12'; onlyB++; }
+    html += '<tr><td>' + f + '</td><td style="color:' + color + ';">' + status + '</td>';
+    html += '<td style="font-family:monospace;font-size:10px;">' + (a || '-') + '</td>';
+    html += '<td style="font-family:monospace;font-size:10px;">' + (b || '-') + '</td></tr>';
+  });
+  html += '</table>';
+  html += '<div style="margin-top:8px;">Summary: <span style="color:#27ae60;">' + same + ' same</span>, <span style="color:#e74c3c;">' + diff + ' different</span>, <span style="color:#f39c12;">' + onlyA + ' only A, ' + onlyB + ' only B</span></div>';
+  el.innerHTML = html;
+}
+
+async function loadSha1History() {
+  var r = await api('/sha1/history', 'GET');
+  if (!r.ok) return;
+  var records = r.data.records || [];
+  var el = document.getElementById('sha1HistoryList');
+  if (!records.length) { el.innerHTML = '<span style="color:#999;">No history</span>'; return; }
+  var html = '<table class="result-table"><tr><th></th><th>Time</th><th>Directory</th><th>Files</th><th>Filename</th></tr>';
+  records.forEach(function(rec) {
+    var ts = rec.timestamp.replace('_', ' ');
+    html += '<tr>';
+    html += '<td><input type="checkbox" class="sha1-hist-cb" value="' + rec.filename + '"></td>';
+    html += '<td>' + ts + '</td><td>' + rec.directory + '</td><td>' + rec.file_count + '</td>';
+    html += '<td><a href="javascript:void(0)" onclick="viewSha1File(\'' + rec.filename + '\')" style="color:#4a90d9;">' + rec.filename + '</a></td>';
+    html += '</tr>';
+  });
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+async function viewSha1File(filename) {
+  openPreviewModal(filename);
+  var r = await api('/sha1/load?filename=' + encodeURIComponent(filename), 'GET');
+  if (r.ok) {
+    var content = JSON.stringify(r.data, null, 2);
+    var el = document.getElementById('previewContent');
+    el.value = content;
+    el.readOnly = true;
+    document.getElementById('previewLoading').style.display = 'none';
+    el.style.display = 'block';
+    document.getElementById('previewSaveBtn').style.display = 'none';
+  } else {
+    document.getElementById('previewLoading').textContent = 'Error: ' + (r.data.error || 'failed');
+  }
+}
+
+async function compareSha1History() {
+  var cbs = document.querySelectorAll('.sha1-hist-cb:checked');
+  if (cbs.length !== 2) { showAlert('Please select exactly 2 records to compare'); return; }
+  var files = Array.from(cbs).map(function(cb) { return cb.value; });
+
+  // Load both files
+  var r1 = await api('/sha1/load?filename=' + encodeURIComponent(files[0]), 'GET');
+  var r2 = await api('/sha1/load?filename=' + encodeURIComponent(files[1]), 'GET');
+  if (!r1.ok || !r2.ok) { showAlert('Failed to load files'); return; }
+
+  var dataA = r1.data.results || [];
+  var dataB = r2.data.results || [];
+  var mapA = {}; dataA.forEach(function(item) { mapA[item.filename] = item.sha1.trim(); });
+  var mapB = {}; dataB.forEach(function(item) { mapB[item.filename] = item.sha1.trim(); });
+  var allFiles = new Set([...Object.keys(mapA), ...Object.keys(mapB)]);
+
+  var html = '<div style="margin-bottom:8px;font-size:13px;"><b>A:</b> ' + (r1.data.directory || files[0]) + '<br><b>B:</b> ' + (r2.data.directory || files[1]) + '</div>';
+  html += '<table class="result-table"><tr><th>Filename</th><th>Status</th><th>SHA1 A</th><th>SHA1 B</th></tr>';
+  var same = 0, diff = 0, onlyA = 0, onlyB = 0;
+  Array.from(allFiles).sort().forEach(function(f) {
+    var a = mapA[f] || '', b = mapB[f] || '';
+    var status, color;
+    if (a && b && a === b) { status = '✅ Same'; color = '#27ae60'; same++; }
+    else if (a && b) { status = '❌ Different'; color = '#e74c3c'; diff++; }
+    else if (a && !b) { status = '⚠️ Only in A'; color = '#f39c12'; onlyA++; }
+    else { status = '⚠️ Only in B'; color = '#f39c12'; onlyB++; }
+    html += '<tr><td>' + f + '</td><td style="color:' + color + ';">' + status + '</td>';
+    html += '<td style="font-family:monospace;font-size:10px;">' + (a || '-') + '</td>';
+    html += '<td style="font-family:monospace;font-size:10px;">' + (b || '-') + '</td></tr>';
+  });
+  html += '</table>';
+  html += '<div style="margin-top:8px;">Summary: <span style="color:#27ae60;">' + same + ' same</span>, <span style="color:#e74c3c;">' + diff + ' different</span>, <span style="color:#f39c12;">' + onlyA + ' only A, ' + onlyB + ' only B</span></div>';
+
+  // Show in modal
+  var modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center;';
+  modal.onclick = function(e) { if (e.target === modal) document.body.removeChild(modal); };
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border-radius:8px;width:85%;max-width:900px;max-height:80vh;overflow-y:auto;padding:20px;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+  box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><h3>🔍 SHA1 Compare</h3><button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:#e74c3c;color:#fff;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;">✕</button></div>' + html;
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+}
+
+// ---------------------------------------------------------------------------
+// Family Gallery
+// ---------------------------------------------------------------------------
+async function loadFamilyGallery() {
+  var r = await api('/family/images', 'GET');
+  if (!r.ok) return;
+  var images = r.data.images || [];
+  var gallery = document.getElementById('familyGallery');
+  if (!images.length) {
+    gallery.innerHTML = '<div style="text-align:center;padding:60px;color:#999;">No photos yet. Add images to master/static/family/</div>';
+    return;
+  }
+  var html = '';
+  images.forEach(function(img, i) {
+    var rotate = (Math.random() * 20 - 10).toFixed(1);
+    var left = (Math.random() * 70 + 5).toFixed(1);
+    var top = (Math.random() * 70 + 5).toFixed(1);
+    html += '<div style="position:absolute;left:' + left + '%;top:' + top + '%;transform:rotate(' + rotate + 'deg);cursor:pointer;transition:transform 0.3s;box-shadow:2px 4px 12px rgba(0,0,0,0.2);border:4px solid #fff;border-radius:4px;background:#fff;" ';
+    html += 'onmouseenter="this.style.transform=\'rotate(0deg) scale(1.1)\';this.style.zIndex=10;" ';
+    html += 'onmouseleave="this.style.transform=\'rotate(' + rotate + 'deg) scale(1)\';this.style.zIndex=1;" ';
+    html += 'onclick="showFamilyPhoto(\'/static/family/' + img + '\')">';
+    html += '<img src="/static/family/' + img + '" style="width:150px;height:120px;object-fit:cover;display:block;border-radius:2px;">';
+    html += '</div>';
+  });
+  gallery.innerHTML = html;
+}
+
+function showFamilyPhoto(src) {
+  var modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:2000;display:flex;align-items:center;justify-content:center;cursor:pointer;';
+  modal.onclick = function() { document.body.removeChild(modal); };
+  var img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:90%;max-height:90%;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.5);';
+  modal.appendChild(img);
+  document.body.appendChild(modal);
+}
+
+async function checkWorkersHealth() {
+  var r = await api('/workers/health', 'GET');
+  if (r.ok) {
+    workerHealthMap = r.data;
+    renderWorkers();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Quick Access Toolbar
+// ---------------------------------------------------------------------------
+var _quickAccessNameToPage = {
+  'Batch Delete File': 'batchdeletefile',
+  'Batch Override File': 'batchoverride',
+  'Batch Edit File': 'batchedit',
+  'Batch Upload File': 'batchupload',
+  'Batch Download File': 'batchdownload',
+  'Compare': 'compare',
+  'Format JSON': 'formatjson',
+  'Format Time': 'formattime',
+  'Card Generation': 'cardgen',
+  'Pattern Combination': 'patterncomb',
+  'Pattern Calculation': 'patterncalc',
+  'Repeat Number Position': 'repeatnumpos',
+  'Statistic Analysis': 'statisticanalysis'
+};
+
+var _quickAccessNameToIcon = {
+  'Batch Delete File': '🗑️',
+  'Batch Override File': '📦',
+  'Batch Edit File': '✏️',
+  'Batch Upload File': '⬆️',
+  'Batch Download File': '⬇️',
+  'Compare': '🔍',
+  'Format JSON': '📋',
+  'Format Time': '🕐',
+  'Card Generation': '🃏',
+  'Pattern Combination': '🧩',
+  'Pattern Calculation': '🎯',
+  'Repeat Number Position': '🔢',
+  'Statistic Analysis': '📊'
+};
+
+async function loadQuickAccessToolbar() {
+  var container = document.getElementById('quickAccessToolbar');
+  var r = await api('/config/quick-access-toolbar', 'GET');
+  if (!r.ok || !r.data.items || !r.data.items.length) {
+    container.innerHTML = '<span style="color:#888;font-size:13px;">No quick access items configured.</span>';
+    return;
+  }
+  var html = '';
+  r.data.items.forEach(function(name) {
+    var page = _quickAccessNameToPage[name];
+    var icon = _quickAccessNameToIcon[name] || '🔗';
+    if (page) {
+      html += '<button class="btn-primary" onclick="switchPage(\'' + page + '\')" style="font-size:12px;padding:6px 12px;border-radius:6px;cursor:pointer;">' + icon + ' ' + name + '</button>';
+    }
+  });
+  container.innerHTML = html || '<span style="color:#888;font-size:13px;">No valid quick access items.</span>';
+  // Also render into batch-page quick access bars
+  document.querySelectorAll('.batch-quick-access').forEach(function(el) {
+    el.innerHTML = html;
+  });
+}
+
+async function loadFooterLinks() {
+  var container = document.getElementById('footerLinks');
+  var r = await api('/config/footer-links', 'GET');
+  if (!r.ok || !r.data.links || !r.data.links.length) {
+    container.innerHTML = '<span style="color:#888;">No links configured.</span>';
+    return;
+  }
+  var html = '';
+  var perRow = 6;
+  r.data.links.forEach(function(link, idx) {
+    if (idx > 0 && idx % perRow === 0) {
+      html += '<br style="margin-bottom:6px;">';
+    } else if (idx > 0) {
+      html += '<span style="margin:0 12px;color:#ddd;">|</span>';
+    }
+    if (link.page) {
+      html += '<a href="javascript:void(0)" onclick="switchPage(\'' + link.page + '\')" style="color:#4a90d9;text-decoration:none;">' + link.name + '</a>';
+    } else {
+      html += '<a href="' + link.url + '" target="_blank" style="color:#4a90d9;text-decoration:none;">' + link.name + '</a>';
+    }
+  });
+  container.innerHTML = html;
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic paired Batch / Single Start modules
+// ---------------------------------------------------------------------------
+function escapeDynamicHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function dynamicDomToken(moduleId) {
+  var text = String(moduleId || 'module');
+  var parts = [];
+  for (var i = 0; i < text.length; i++) parts.push(text.charCodeAt(i).toString(16));
+  return parts.join('-');
+}
+
+function makeDynamicModuleId(prefix) {
+  return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+function positiveDynamicNumber(value, fallback) {
+  var parsed = parseInt(value);
+  return parsed > 0 ? parsed : fallback;
+}
+
+function makeDynamicStartModule(type, pairId, source) {
+  source = source || {};
+  var isBatch = type === 'batch';
+  var fallbackSpins = isBatch ? 1000000 : 100000;
+  var module = {
+    id: source.id || makeDynamicModuleId(type + '-start'),
+    pair_id: pairId,
+    type: type,
+    sim_type: source.sim_type === 'test' ? 'test' : 'production',
+    game_name: typeof source.game_name === 'string' ? source.game_name : '',
+    override_spin_settings: source.override_spin_settings === true,
+    interval_count: positiveDynamicNumber(source.interval_count, fallbackSpins)
+  };
+  if (isBatch) {
+    module.total_spins = positiveDynamicNumber(source.total_spins, fallbackSpins);
+    module.selected_nodes = Array.isArray(source.selected_nodes) ? source.selected_nodes.slice() : [];
+  } else {
+    module.spins = positiveDynamicNumber(source.spins, fallbackSpins);
+    module.selected_node = typeof source.selected_node === 'string' ? source.selected_node : '';
+  }
+  return module;
+}
+
+function normalizeDynamicStartPairs(rawModules) {
+  var raw = Array.isArray(rawModules) ? rawModules : [];
+  var batches = raw.filter(function(m) { return m && m.type === 'batch'; });
+  var singles = raw.filter(function(m) { return m && m.type === 'single'; });
+  var pairCount = Math.max(batches.length, singles.length);
+  var normalized = [];
+  var usedPairIds = {};
+
+  for (var i = 0; i < pairCount; i++) {
+    var batchSource = batches[i] || null;
+    var singleSource = singles[i] || null;
+    var pairId = (batchSource && batchSource.pair_id) ||
+                 (singleSource && singleSource.pair_id) ||
+                 makeDynamicModuleId('start-pair');
+    if (usedPairIds[pairId]) pairId = makeDynamicModuleId('start-pair');
+    usedPairIds[pairId] = true;
+    normalized.push(makeDynamicStartModule('batch', pairId, batchSource || {}));
+    normalized.push(makeDynamicStartModule('single', pairId, singleSource || {}));
+  }
+  return normalized;
+}
+
+function dynamicGameOptions(selectedGame) {
+  var games = availableGames.slice();
+  if (selectedGame && games.indexOf(selectedGame) < 0) games.unshift(selectedGame);
+  var html = '<option value="">-- Select Game --</option>';
+  games.forEach(function(game) {
+    html += '<option value="' + escapeDynamicHtml(game) + '"' +
+            (game === selectedGame ? ' selected' : '') + '>' +
+            escapeDynamicHtml(game) + '</option>';
+  });
+  return html;
+}
+
+function dynamicCpuMarkup(module) {
+  var token = dynamicDomToken(module.id);
+  return '<div id="dynamicCpuWarn-' + token + '" data-role="cpu-warn" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(231,76,60,0.08);z-index:5;border-radius:8px;pointer-events:none;align-items:center;justify-content:center;">' +
+    '<div style="text-align:center;"><canvas id="dynamicCpuCanvas-' + token + '" width="120" height="120"></canvas>' +
+    '<div id="dynamicCpuText-' + token + '" style="font-size:11px;color:#e74c3c;margin-top:4px;font-weight:600;"></div></div></div>';
+}
+
+function renderDynamicStartModule(module) {
+  var column = document.getElementById(module.type === 'batch' ? 'batchStartModules' : 'singleStartModules');
+  if (!column) return;
+  var token = dynamicDomToken(module.id);
+  var card = document.createElement('div');
+  card.className = 'card dynamic-start-module';
+  card.id = 'dynamicStartModule-' + token;
+  card.setAttribute('data-module-id', module.id);
+  card.setAttribute('data-pair-id', module.pair_id);
+  card.setAttribute('data-module-type', module.type);
+  card.style.position = 'relative';
+
+  if (module.type === 'batch') {
+    card.innerHTML = dynamicCpuMarkup(module) +
+      '<h2 class="start-module-title"><span>📦 Batch Start</span><span class="start-module-title-controls">' +
+      '<button type="button" class="start-module-add" data-action="add" title="Add Batch/Single Start pair">+</button>' +
+      '<button type="button" class="start-module-remove" data-action="remove" title="Remove this Batch/Single Start pair">−</button></span></h2>' +
+      '<label>Type</label><select data-role="sim-type"><option value="production"' + (module.sim_type === 'production' ? ' selected' : '') + '>Production</option><option value="test"' + (module.sim_type === 'test' ? ' selected' : '') + '>Test</option></select>' +
+      '<label>Game</label><select data-role="game-name" class="game-select">' + dynamicGameOptions(module.game_name) + '</select>' +
+      '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-role="override-spin-settings"' + (module.override_spin_settings ? ' checked' : '') + ' style="width:auto;margin:0;"> Total Spins (override stresstest.properties)</label><input type="number" data-role="spins" value="' + module.total_spins + '" min="1">' +
+      '<label>Interval Count</label><input type="number" data-role="interval-count" value="' + module.interval_count + '" min="1">' +
+      '<label>Select nodes for batch execution</label><div data-role="nodes" style="margin-bottom:8px;"></div>' +
+      '<div style="position:relative;z-index:6;"><button class="btn-success" data-action="start">▶ Start (batch)</button>' +
+      '<button class="btn-danger" data-action="stop" disabled>⏹ Stop (batch)</button></div>';
+  } else {
+    card.innerHTML = dynamicCpuMarkup(module) +
+      '<h2 class="start-module-title"><span>🚀 Single Start</span></h2>' +
+      '<label>Type</label><select data-role="sim-type"><option value="production"' + (module.sim_type === 'production' ? ' selected' : '') + '>Production</option><option value="test"' + (module.sim_type === 'test' ? ' selected' : '') + '>Test</option></select>' +
+      '<label>Game</label><select data-role="game-name" class="game-select">' + dynamicGameOptions(module.game_name) + '</select>' +
+      '<div class="row"><div><label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-role="override-spin-settings"' + (module.override_spin_settings ? ' checked' : '') + ' style="width:auto;margin:0;"> Spins (override stresstest.properties)</label><input type="number" data-role="spins" value="' + module.spins + '" min="1"></div>' +
+      '<div><label>Interval Count</label><input type="number" data-role="interval-count" value="' + module.interval_count + '" min="1"></div></div>' +
+      '<label>Select a node</label><div data-role="nodes" style="margin-bottom:8px;"></div>' +
+      '<div style="position:relative;z-index:6;"><button class="btn-primary" data-action="start" disabled>▶ Start</button>' +
+      '<button class="btn-danger" data-action="stop" disabled>⏹ Stop</button></div>';
+  }
+
+  column.appendChild(card);
+  card.querySelector('[data-action="start"]').addEventListener('click', function() {
+    if (module.type === 'batch') startDynamicBatch(module.id);
+    else startDynamicSingle(module.id);
+  });
+  card.querySelector('[data-action="stop"]').addEventListener('click', function() {
+    if (module.type === 'batch') stopDynamicBatch(module.id);
+    else stopDynamicSingle(module.id);
+  });
+  if (module.type === 'batch') {
+    card.querySelector('[data-action="add"]').addEventListener('click', createDynamicStartPair);
+    card.querySelector('[data-action="remove"]').addEventListener('click', function() {
+      removeDynamicStartPair(module.pair_id);
+    });
+  }
+
+  card.querySelectorAll('select[data-role], input[data-role]').forEach(function(input) {
+    var eventName = input.tagName === 'SELECT' || input.type === 'checkbox' ? 'change' : 'input';
+    input.addEventListener(eventName, function() {
+      if (module.type === 'batch' && input.getAttribute('data-role') === 'spins') {
+        card.querySelector('[data-role="interval-count"]').value = input.value;
+      }
+      syncDynamicStartModuleFromDom(module);
+      scheduleDynamicStartModulesSave();
+      updateDynamicStartModuleState(module.id);
+      scheduleStartModuleAlignment();
+    });
+  });
+  renderDynamicStartModuleNodes(module);
+}
+
+function dynamicNodeLabel(node, inputHtml, isRunning) {
+  var label = node.addr === 'master' ? 'Master' : (node.alias || node.addr);
+  var addrDisplay = node.addr === 'master' ? 'local' : node.addr;
+  var statusText = isRunning ? 'running' : 'stopped';
+  var statusColor = isRunning ? '#27ae60' : '#888';
+  var dotColor = isRunning ? '#27ae60' : '#e74c3c';
+  return '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #eee;border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:13px;">' +
+    inputHtml + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>' +
+    '<span style="flex:1;">' + escapeDynamicHtml(label) + ' <span style="color:#999;font-size:11px;">(' + escapeDynamicHtml(addrDisplay) + ')</span></span>' +
+    '<span style="font-size:11px;color:' + statusColor + ';font-weight:600;">' + statusText + '</span></label>';
+}
+
+function renderDynamicStartModuleNodes(module) {
+  var card = document.getElementById('dynamicStartModule-' + dynamicDomToken(module.id));
+  if (!card) return;
+  var container = card.querySelector('[data-role="nodes"]');
+  if (!container) return;
+  var html = '';
+  if (module.type === 'batch') {
+    var selectedNodes = module.selected_nodes || [];
+    nodes.forEach(function(node) {
+      var selected = selectedNodes.indexOf(node.addr) >= 0;
+      html += dynamicNodeLabel(node,
+        '<input type="checkbox" class="dynamic-batch-node-cb" value="' + escapeDynamicHtml(node.addr) + '"' + (selected ? ' checked' : '') + '>',
+        !!runningNodes[node.addr]);
+    });
+  } else {
+    var radioName = 'dynamic-single-' + dynamicDomToken(module.id);
+    nodes.forEach(function(node) {
+      html += dynamicNodeLabel(node,
+        '<input type="radio" name="' + radioName + '" class="dynamic-single-node-radio" value="' + escapeDynamicHtml(node.addr) + '"' + (module.selected_node === node.addr ? ' checked' : '') + '>',
+        !!runningNodes[node.addr]);
+    });
+  }
+  container.innerHTML = html;
+  container.querySelectorAll('input').forEach(function(input) {
+    input.addEventListener('change', function() {
+      syncDynamicStartModuleFromDom(module);
+      scheduleDynamicStartModulesSave();
+      updateDynamicStartModuleState(module.id);
+    });
+  });
+  updateDynamicStartModuleState(module.id);
+  scheduleStartModuleAlignment();
+}
+
+function syncDynamicStartModuleFromDom(module) {
+  var card = document.getElementById('dynamicStartModule-' + dynamicDomToken(module.id));
+  if (!card) return module;
+  module.sim_type = card.querySelector('[data-role="sim-type"]').value;
+  module.game_name = card.querySelector('[data-role="game-name"]').value;
+  module.override_spin_settings = card.querySelector('[data-role="override-spin-settings"]').checked;
+  module.interval_count = positiveDynamicNumber(card.querySelector('[data-role="interval-count"]').value, module.interval_count || 1);
+  if (module.type === 'batch') {
+    module.total_spins = positiveDynamicNumber(card.querySelector('[data-role="spins"]').value, module.total_spins || 1);
+    module.selected_nodes = Array.from(card.querySelectorAll('.dynamic-batch-node-cb:checked')).map(function(input) { return input.value; });
+  } else {
+    module.spins = positiveDynamicNumber(card.querySelector('[data-role="spins"]').value, module.spins || 1);
+    var selected = card.querySelector('.dynamic-single-node-radio:checked');
+    module.selected_node = selected ? selected.value : '';
+  }
+  return module;
+}
+
+function serializeDynamicStartModules() {
+  dynamicStartModules.forEach(syncDynamicStartModuleFromDom);
+  return {
+    version: 1,
+    modules: dynamicStartModules.map(function(module) {
+      var clean = {
+        id: module.id, pair_id: module.pair_id, type: module.type,
+        sim_type: module.sim_type, game_name: module.game_name,
+        override_spin_settings: module.override_spin_settings,
+        interval_count: module.interval_count
+      };
+      if (module.type === 'batch') {
+        clean.total_spins = module.total_spins;
+        clean.selected_nodes = (module.selected_nodes || []).slice();
+      } else {
+        clean.spins = module.spins;
+        clean.selected_node = module.selected_node || '';
+      }
+      return clean;
+    })
+  };
+}
+
+function saveDynamicStartModules() {
+  var payload = JSON.parse(JSON.stringify(serializeDynamicStartModules()));
+  var saveOperation = async function() {
+    var result = await api('/config/dynamic-start-modules', 'PUT', payload);
+    return result.ok;
+  };
+  _dynamicStartSaveChain = _dynamicStartSaveChain.catch(function() { return false; }).then(saveOperation);
+  return _dynamicStartSaveChain;
+}
+
+function scheduleDynamicStartModulesSave() {
+  if (_dynamicStartSaveTimer) clearTimeout(_dynamicStartSaveTimer);
+  _dynamicStartSaveTimer = setTimeout(function() {
+    _dynamicStartSaveTimer = null;
+    saveDynamicStartModules();
+  }, 300);
+}
+
+function updateDynamicStartModuleState(moduleId) {
+  var module = dynamicStartModules.find(function(item) { return item.id === moduleId; });
+  var card = document.getElementById('dynamicStartModule-' + dynamicDomToken(moduleId));
+  if (!module || !card) return;
+  var startButton = card.querySelector('[data-action="start"]');
+  var stopButton = card.querySelector('[data-action="stop"]');
+  var selected = module.type === 'batch' ?
+    Array.from(card.querySelectorAll('.dynamic-batch-node-cb:checked')) :
+    Array.from(card.querySelectorAll('.dynamic-single-node-radio:checked'));
+  if (!selected.length) {
+    startButton.disabled = true;
+    stopButton.disabled = true;
+    return;
+  }
+  var hasRunning = selected.some(function(input) { return !!runningNodes[input.value]; });
+  var hasStopped = selected.some(function(input) { return !runningNodes[input.value]; });
+  startButton.disabled = hasRunning;
+  stopButton.disabled = hasStopped;
+}
+
+function updateAllDynamicStartModules() {
+  dynamicStartModules.forEach(function(module) { updateDynamicStartModuleState(module.id); });
+}
+
+async function createDynamicStartPair() {
+  if (_dynamicStartSaveTimer) { clearTimeout(_dynamicStartSaveTimer); _dynamicStartSaveTimer = null; }
+  if (dynamicStartModules.length + 2 > 100) {
+    showAlert('At most 50 dynamic Batch/Single pairs are allowed');
+    return;
+  }
+  var pairId = makeDynamicModuleId('start-pair');
+  var batch = makeDynamicStartModule('batch', pairId, {});
+  var single = makeDynamicStartModule('single', pairId, {});
+  dynamicStartModules.push(batch, single);
+  renderDynamicStartModule(batch);
+  renderDynamicStartModule(single);
+  scheduleStartModuleAlignment();
+
+  if (!await saveDynamicStartModules()) {
+    dynamicStartModules = dynamicStartModules.filter(function(item) { return item.pair_id !== pairId; });
+    [batch, single].forEach(function(item) {
+      var card = document.getElementById('dynamicStartModule-' + dynamicDomToken(item.id));
+      if (card) card.remove();
+    });
+    scheduleStartModuleAlignment();
+    showAlert('Failed to save the new Start module pair');
+  }
+}
+
+async function removeDynamicStartPair(pairId) {
+  if (!confirm('Remove this Batch Start and Single Start pair? Running simulations will not be stopped.')) return;
+  if (_dynamicStartSaveTimer) { clearTimeout(_dynamicStartSaveTimer); _dynamicStartSaveTimer = null; }
+  var previousModules = dynamicStartModules.slice();
+  var removed = dynamicStartModules.filter(function(item) { return item.pair_id === pairId; });
+  if (!removed.length) return;
+  dynamicStartModules = dynamicStartModules.filter(function(item) { return item.pair_id !== pairId; });
+  var batch = removed.find(function(item) { return item.type === 'batch'; });
+  var batchCard = batch && document.getElementById('dynamicStartModule-' + dynamicDomToken(batch.id));
+  var removeButton = batchCard && batchCard.querySelector('[data-action="remove"]');
+  if (removeButton) removeButton.disabled = true;
+
+  if (await saveDynamicStartModules()) {
+    removed.forEach(function(item) {
+      var card = document.getElementById('dynamicStartModule-' + dynamicDomToken(item.id));
+      if (card) card.remove();
+    });
+    scheduleStartModuleAlignment();
+  } else {
+    dynamicStartModules = previousModules;
+    if (removeButton) removeButton.disabled = false;
+    showAlert('Failed to remove the Start module pair');
+  }
+}
+
+async function loadDynamicStartModules() {
+  var result = await api('/config/dynamic-start-modules', 'GET');
+  if (!result.ok) return;
+  var rawModules = Array.isArray(result.data.modules) ? result.data.modules : [];
+  dynamicStartModules = normalizeDynamicStartPairs(rawModules);
+  document.querySelectorAll('.dynamic-start-module').forEach(function(card) { card.remove(); });
+  dynamicStartModules.forEach(renderDynamicStartModule);
+  scheduleStartModuleAlignment();
+
+  var normalizedPayload = serializeDynamicStartModules();
+  if (JSON.stringify(normalizedPayload.modules) !== JSON.stringify(rawModules)) {
+    await saveDynamicStartModules();
+  }
+}
+
+async function startDynamicBatch(moduleId) {
+  var module = dynamicStartModules.find(function(item) { return item.id === moduleId && item.type === 'batch'; });
+  if (!module) return;
+  syncDynamicStartModuleFromDom(module);
+  if (!module.game_name) { showAlert('Please select a game'); return; }
+  if (!module.total_spins || module.total_spins <= 0) { showAlert('Please enter a valid Spins value'); return; }
+  if (!module.selected_nodes.length) { showAlert('Please select at least one simulator'); return; }
+  var previouslyRunning = {};
+  module.selected_nodes.forEach(function(addr) { previouslyRunning[addr] = !!runningNodes[addr]; setNodeRunning(addr, true); });
+  activateCpuMonitor();
+  log('🚀 Dynamic batch start: type=' + module.sim_type + ', game=' + module.game_name + ', spins=' + module.total_spins + ', nodes=' + module.selected_nodes.join(','));
+  var result = await api('/start', 'POST', {
+    total_spins: module.total_spins,
+    interval_count: module.interval_count,
+    mode: document.getElementById('allocationMode').value,
+    game_name: module.game_name,
+    selected_nodes: module.selected_nodes,
+    sim_type: module.sim_type,
+    override_spin_settings: module.override_spin_settings
+  });
+  if (!result.ok) {
+    module.selected_nodes.forEach(function(addr) { if (!previouslyRunning[addr]) setNodeRunning(addr, false); });
+    return;
+  }
+  log('✅ Dynamic batch start completed: ' + result.data.status);
+  if (result.data.results) {
+    result.data.results.forEach(function(item) {
+      if (item.success) setNodeRunning(item.node, true);
+      else if (!previouslyRunning[item.node]) setNodeRunning(item.node, false);
+    });
+  }
+}
+
+async function stopDynamicBatch(moduleId) {
+  var module = dynamicStartModules.find(function(item) { return item.id === moduleId && item.type === 'batch'; });
+  if (!module) return;
+  syncDynamicStartModuleFromDom(module);
+  if (!module.selected_nodes.length) { showAlert('Please select at least one simulator'); return; }
+  for (var i = 0; i < module.selected_nodes.length; i++) {
+    if (module.selected_nodes[i] === 'master') await stopMaster();
+    else await stopWorker(module.selected_nodes[i]);
+  }
+}
+
+async function startDynamicSingle(moduleId) {
+  var module = dynamicStartModules.find(function(item) { return item.id === moduleId && item.type === 'single'; });
+  if (!module) return;
+  syncDynamicStartModuleFromDom(module);
+  if (!module.selected_node) { showAlert('Please select a node'); return; }
+  if (!module.game_name) { showAlert('Please select a game'); return; }
+  var addr = module.selected_node;
+  var endpoint = addr === 'master' ? '/start-master' : '/start-worker';
+  var body = {spins: module.spins, game_name: module.game_name, interval_count: module.interval_count, sim_type: module.sim_type, override_spin_settings: module.override_spin_settings};
+  if (addr !== 'master') body.worker_addr = addr;
+  var wasRunning = !!runningNodes[addr];
+  setNodeRunning(addr, true);
+  activateCpuMonitor();
+  log('▶ Dynamic single start: ' + addr + ', game=' + module.game_name + ', spins=' + module.spins);
+  var result = await api(endpoint, 'POST', body);
+  if (!result.ok && !wasRunning) setNodeRunning(addr, false);
+  else if (result.ok) log('✅ Dynamic single start request sent: ' + addr);
+}
+
+async function stopDynamicSingle(moduleId) {
+  var module = dynamicStartModules.find(function(item) { return item.id === moduleId && item.type === 'single'; });
+  if (!module) return;
+  syncDynamicStartModuleFromDom(module);
+  if (!module.selected_node) { showAlert('Please select a node'); return; }
+  if (module.selected_node === 'master') await stopMaster();
+  else await stopWorker(module.selected_node);
+}
+
+function hideDynamicCpuWarnings() {
+  dynamicStartModules.forEach(function(module) {
+    hideCpuWarn('dynamicCpuWarn-' + dynamicDomToken(module.id));
+  });
+}
+
+function updateDynamicCpuWarnings(avgCpu, healthy) {
+  dynamicStartModules.forEach(function(module) {
+    var token = dynamicDomToken(module.id);
+    showCpuWarn('dynamicCpuWarn-' + token, 'dynamicCpuCanvas-' + token, 'dynamicCpuText-' + token, avgCpu, healthy);
+  });
+}
+
+function alignStartModuleRows() {
+  var batchColumn = document.getElementById('batchStartModules');
+  var singleColumn = document.getElementById('singleStartModules');
+  if (!batchColumn || !singleColumn) return;
+  var batchCards = Array.from(batchColumn.children);
+  var singleCards = Array.from(singleColumn.children);
+  batchCards.concat(singleCards).forEach(function(card) { card.style.minHeight = ''; });
+  if (window.innerWidth <= 800) return;
+  var pairCount = Math.min(batchCards.length, singleCards.length);
+  for (var i = 0; i < pairCount; i++) {
+    var height = Math.max(batchCards[i].offsetHeight, singleCards[i].offsetHeight);
+    batchCards[i].style.minHeight = height + 'px';
+    singleCards[i].style.minHeight = height + 'px';
+  }
+}
+
+function scheduleStartModuleAlignment() {
+  if (_startModuleAlignmentFrame) cancelAnimationFrame(_startModuleAlignmentFrame);
+  _startModuleAlignmentFrame = requestAnimationFrame(function() {
+    _startModuleAlignmentFrame = null;
+    alignStartModuleRows();
+  });
+}
+
+var _staticRenderWorkers = renderWorkers;
+renderWorkers = function() {
+  _staticRenderWorkers();
+  dynamicStartModules.forEach(renderDynamicStartModuleNodes);
+  scheduleStartModuleAlignment();
+};
+var _staticSetNodeRunning = setNodeRunning;
+setNodeRunning = function(addr, running) {
+  _staticSetNodeRunning(addr, running);
+  updateAllDynamicStartModules();
+};
+var _staticUpdateButtonStates = updateButtonStates;
+updateButtonStates = function() {
+  _staticUpdateButtonStates();
+  updateAllDynamicStartModules();
+};
+window.addEventListener('resize', scheduleStartModuleAlignment);
+
+// ---------------------------------------------------------------------------
+// Init: load node list from /config/nodes on page load
+// ---------------------------------------------------------------------------
+async function init() {
+  log('🔄 Loading node list...');
+  const r = await api('/config/nodes', 'GET');
+  if (r.ok && r.data.nodes) {
+    nodes = r.data.nodes;
+    if (r.data.allocation_mode) {
+      document.getElementById('allocationMode').value = r.data.allocation_mode;
+      onModeChange();
+    }
+    if (r.data.poll_interval) {
+      document.getElementById('pollInterval').value = r.data.poll_interval;
+    }
+    if (r.data.sysinfo_refresh_interval) {
+      _wmSysinfoInterval = r.data.sysinfo_refresh_interval;
+    }
+    if (r.data.cpu_healthy_threshold) {
+      _cpuHealthyThreshold = r.data.cpu_healthy_threshold;
+    }
+  }
+  if (!nodes.length) {
+    nodes = [{ addr: 'master', vcpu: 1, percentage: 100 }];
+  }
+  renderWorkers();
+  renderPercentageInputs();
+  initFileSyncWorkerSelect();
+  initBatchPluginNodeSelects();
+  renderBatchMultiNodeCheckboxes();
+  loadLocalDir('');
+  loadQuickAccessToolbar();
+  loadFooterLinks();
+
+  // Load game list
+  const gr = await api('/games', 'GET');
+  if (gr.ok && gr.data.games) {
+    availableGames = gr.data.games.slice();
+    const selects = document.querySelectorAll('.game-select');
+    selects.forEach(function(sel) {
+      sel.innerHTML = '<option value="">-- Select Game --</option>';
+      availableGames.forEach(function(g) {
+        sel.innerHTML += '<option value="' + escapeDynamicHtml(g) + '">' + escapeDynamicHtml(g) + '</option>';
+      });
+    });
+    log('✅ Loaded ' + availableGames.length + ' games');
+  }
+
+  await loadDynamicStartModules();
+  log('✅ Page loaded, ' + nodes.length + ' nodes');
+  await checkWorkersHealth();
+  loadUserInfo();
+
+  // Fetch initial status to sync runningNodes
+  try {
+    var statusR = await api('/status', 'GET');
+    if (statusR.ok && statusR.data.nodes && statusR.data.nodes.length > 0) {
+      statusR.data.nodes.forEach(function(n) {
+        runningNodes[n.addr] = (n.status === 'running');
+      });
+    }
+  } catch(e) {}
+  // Final render with correct runningNodes
+  renderWorkers();
+  updateButtonStates();
+  // Remove batch loading mask
+  var batchMask = document.getElementById('batchLoadingMask');
+  if (batchMask) batchMask.style.display = 'none';
+  // Activate CPU monitor if nodes already running
+  var anyRunning = Object.values(runningNodes).some(function(v) { return v; });
+  if (anyRunning) activateCpuMonitor();
+}
+
+// ---------------------------------------------------------------------------
+// Compare Files (client-side only)
+// ---------------------------------------------------------------------------
+var compareTextA = '', compareTextB = '', compareFileNameA = '', compareFileNameB = '';
+
+function loadCompareFile(file, side) {
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var text = e.target.result;
+    if (side === 'A') { compareTextA = text; compareFileNameA = file.name; document.getElementById('compareNameA').textContent = file.name; document.getElementById('compareContentA').textContent = text; }
+    else { compareTextB = text; compareFileNameB = file.name; document.getElementById('compareNameB').textContent = file.name; document.getElementById('compareContentB').textContent = text; }
+  };
+  reader.readAsText(file);
+}
+
+function dropCompareFile(event, side) {
+  event.preventDefault();
+  event.currentTarget.style.borderColor = '#ccc';
+  if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+    loadCompareFile(event.dataTransfer.files[0], side);
+  }
+}
+
+function runCompare() {
+  if (!compareTextA || !compareTextB) { showAlert('Please upload both files first'); return; }
+  if (compareTextA === compareTextB) {
+    showAlert('File "' + compareFileNameA + '" and "' + compareFileNameB + '" match.');
+    document.getElementById('compareDiffResult').style.display = 'none';
+    return;
+  }
+  // Show diff
+  var linesA = compareTextA.split('\n');
+  var linesB = compareTextB.split('\n');
+  var maxLines = Math.max(linesA.length, linesB.length);
+  var html = '<table style="width:100%;border-collapse:collapse;font-family:monospace;font-size:12px;">';
+  html += '<tr style="background:#eee;"><th style="width:30px;">#</th><th style="width:50%;">File A</th><th style="width:50%;">File B</th></tr>';
+  for (var i = 0; i < maxLines; i++) {
+    var a = linesA[i] !== undefined ? linesA[i] : '';
+    var b = linesB[i] !== undefined ? linesB[i] : '';
+    var bg = (a === b) ? '' : 'background:#ffeaea;';
+    var aHtml = a.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    var bHtml = b.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    if (a !== b) { aHtml = '<span style="background:#ffcccc;">' + aHtml + '</span>'; bHtml = '<span style="background:#ccffcc;">' + bHtml + '</span>'; }
+    html += '<tr style="' + bg + 'border-bottom:1px solid #eee;"><td style="color:#999;text-align:right;padding:1px 4px;">' + (i+1) + '</td><td style="padding:1px 4px;white-space:pre-wrap;word-break:break-all;">' + aHtml + '</td><td style="padding:1px 4px;white-space:pre-wrap;word-break:break-all;">' + bHtml + '</td></tr>';
+  }
+  html += '</table>';
+  var el = document.getElementById('compareDiffResult');
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+// ---------------------------------------------------------------------------
+// Format JSON (client-side only)
+// ---------------------------------------------------------------------------
+function loadFormatJsonFile(file) {
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) { document.getElementById('formatJsonArea').value = e.target.result; };
+  reader.readAsText(file);
+}
+
+function dropFormatJsonFile(event) {
+  event.preventDefault();
+  event.currentTarget.style.borderColor = '#ccc';
+  if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+    loadFormatJsonFile(event.dataTransfer.files[0]);
+  }
+}
+
+function formatJsonValidate() {
+  var text = document.getElementById('formatJsonArea').value.trim();
+  if (!text) { showAlert('Please enter or upload JSON content'); return; }
+  document.getElementById('formatJsonError').style.display = 'none';
+  try {
+    JSON.parse(text);
+    showAlert('✅ Valid JSON!');
+  } catch(e) {
+    var msg = e.message;
+    // Try to extract line number from error
+    var lineMatch = msg.match(/position (\d+)/);
+    var errorLine = -1;
+    if (lineMatch) {
+      var pos = parseInt(lineMatch[1]);
+      var lines = text.substring(0, pos).split('\n');
+      errorLine = lines.length;
+    }
+    var errEl = document.getElementById('formatJsonError');
+    errEl.textContent = 'There was an error while parsing JSON, refer the current selection for possible problematic area. ' + msg;
+    errEl.style.display = 'block';
+    // Highlight the problematic line
+    if (errorLine > 0) {
+      var ta = document.getElementById('formatJsonArea');
+      var allLines = text.split('\n');
+      var start = 0;
+      for (var i = 0; i < errorLine - 1; i++) start += allLines[i].length + 1;
+      var end = start + (allLines[errorLine - 1] || '').length;
+      ta.focus();
+      ta.setSelectionRange(start, end);
+    }
+  }
+}
+
+function formatJsonPrettify() {
+  var text = document.getElementById('formatJsonArea').value.trim();
+  if (!text) { showAlert('Please enter or upload JSON content'); return; }
+  document.getElementById('formatJsonError').style.display = 'none';
+  try {
+    var obj = JSON.parse(text);
+    document.getElementById('formatJsonArea').value = JSON.stringify(obj, null, 2);
+    showAlert('✅ JSON formatted!');
+  } catch(e) {
+    formatJsonValidate(); // Show error
+  }
+}
+
+function clearFormatJson() {
+  document.getElementById('formatJsonArea').value = '';
+  document.getElementById('formatJsonError').style.display = 'none';
+}
+
+// Format Time - loaded from external JS file
+// Bingo Card Generation - loaded from external JS file
+// Pattern Combination - loaded from external JS file
+// Pattern Calculation - loaded from external JS file
+// Batch Override File - loaded from external JS file
+
+// Call init on page load
+init();
+
+// ---------------------------------------------------------------------------
+// Network connectivity monitor
+// ---------------------------------------------------------------------------
+(function() {
+  var overlay = document.getElementById('networkOverlay');
+  var retryEl = document.getElementById('networkRetryCount');
+  var titleEl = document.getElementById('networkTitle');
+  var msgEl = document.getElementById('networkMsg');
+  var iconEl = document.getElementById('networkIcon');
+  var spinnerEl = document.getElementById('networkSpinner');
+  var isOffline = false;
+  var retryCount = 0;
+  var checkInterval = null;
+
+  function showOffline() {
+    if (isOffline) return;
+    isOffline = true;
+    retryCount = 0;
+    overlay.style.display = 'flex';
+    titleEl.textContent = 'Connection Lost';
+    msgEl.textContent = 'Unable to reach the server. Attempting to reconnect...';
+    iconEl.textContent = '🔌';
+    spinnerEl.style.display = 'inline-block';
+    retryEl.textContent = '';
+    if (!checkInterval) checkInterval = setInterval(tryReconnect, 3000);
+  }
+
+  function showOnline() {
+    if (!isOffline) return;
+    isOffline = false;
+    titleEl.textContent = 'Reconnected!';
+    msgEl.textContent = 'Connection restored successfully.';
+    iconEl.textContent = '✅';
+    spinnerEl.style.display = 'none';
+    retryEl.textContent = '';
+    if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
+    setTimeout(function() { overlay.style.display = 'none'; }, 1500);
+  }
+
+  async function tryReconnect() {
+    retryCount++;
+    retryEl.textContent = 'Retry #' + retryCount + '...';
+    try {
+      var r = await fetch('/auth/me', {method: 'GET', cache: 'no-store'});
+      if (r.ok || r.status === 401) { showOnline(); }
+    } catch(e) { /* still offline */ }
+  }
+
+  // Detect browser offline/online events
+  window.addEventListener('offline', showOffline);
+  window.addEventListener('online', function() { tryReconnect(); });
+
+  // Periodic heartbeat check (every 15s)
+  setInterval(async function() {
+    if (isOffline) return;
+    try {
+      var r = await fetch('/auth/me', {method: 'GET', cache: 'no-store'});
+      if (!r.ok && r.status !== 401) showOffline();
+    } catch(e) { showOffline(); }
+  }, 15000);
+})();
