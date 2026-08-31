@@ -69,6 +69,12 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .file-item.selected { background: #d4edda; }
 .file-item[draggable="true"] { cursor: grab; }
 .file-item .icon { width: 16px; text-align: center; }
+.file-item .fs-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Copy name/path buttons on file items */
+.fs-copy-btns { margin-left: auto; display: none; gap: 4px; flex-shrink: 0; }
+.file-item:hover .fs-copy-btns { display: inline-flex; }
+.fs-copy-btn { font-size: 11px; padding: 1px 6px; border: 1px solid #bbb; background: #fff; color: #444; border-radius: 3px; cursor: pointer; line-height: 1.4; }
+.fs-copy-btn:hover { background: #4a90d9; color: #fff; border-color: #4a90d9; }
 /* Sidebar navigation */
 .app-layout { display: flex; gap: 12px; max-width: 1260px; margin: 0 auto; align-items: flex-start; }
 .sidebar { width: 60px; background: #1a1a2e; border-radius: 8px; padding: 6px 0; display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; }

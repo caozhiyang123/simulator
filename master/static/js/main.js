@@ -1501,6 +1501,50 @@ var localCurrentPath = '';  // absolute path
 var remoteCurrentPath = '';
 var selectedLocalFiles = [];
 
+// Copy text to clipboard (clipboard API with execCommand fallback)
+function fsCopyToClipboard(text) {
+  function done() { log('📋 Copied: ' + text); }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(function() { fsCopyFallback(text); done(); });
+  } else {
+    fsCopyFallback(text);
+    done();
+  }
+}
+
+function fsCopyFallback(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+// Copy file/dir name (last path segment) to clipboard
+function fsCopyName(event, name) {
+  if (event) event.stopPropagation();
+  fsCopyToClipboard(name);
+}
+
+// Copy full path to clipboard
+function fsCopyPath(event, fullPath) {
+  if (event) event.stopPropagation();
+  fsCopyToClipboard(fullPath);
+}
+
+// Build the copy name/path button HTML for a file item
+function fsCopyBtns(name, fullPath) {
+  var n = name.replace(/'/g, "\\'");
+  var p = fullPath.replace(/'/g, "\\'");
+  return '<span class="fs-copy-btns">' +
+    '<button class="fs-copy-btn" title="Copy name" onclick="fsCopyName(event,\'' + n + '\')">copy name</button>' +
+    '<button class="fs-copy-btn" title="Copy path" onclick="fsCopyPath(event,\'' + p + '\')">copy path</button>' +
+    '</span>';
+}
+
 // Upload progress helpers — fake animated progress
 var _uploadTimers = {};
 
@@ -1576,9 +1620,9 @@ async function loadLocalDir(path) {
   (r.data.entries || []).forEach(function(e) {
     var fp = e.full_path;
     if (e.type === 'dir') {
-      html += '<div class="file-item local-selectable" data-path="' + fp + '" onclick="if(!event.detail||event.detail===1){toggleSelectFile(this)}" ondblclick="loadLocalDir(\'' + fp.replace(/'/g, "\\'") + '\')"><span class="icon">📁</span> ' + e.name + '</div>';
+      html += '<div class="file-item local-selectable" data-path="' + fp + '" onclick="if(!event.detail||event.detail===1){toggleSelectFile(this)}" ondblclick="loadLocalDir(\'' + fp.replace(/'/g, "\\'") + '\')"><span class="icon">📁</span> <span class="fs-name">' + e.name + '</span>' + fsCopyBtns(e.name, fp) + '</div>';
     } else {
-      html += '<div class="file-item local-selectable" draggable="true" data-path="' + fp + '" data-name="' + e.name + '" onclick="toggleSelectFile(this)" ondblclick="previewLocalFile(\'' + fp.replace(/'/g, "\\'") + '\',\'' + e.name.replace(/'/g, "\\'") + '\')" ondragstart="onDragStart(event)"><span class="icon">📄</span> ' + e.name + '</div>';
+      html += '<div class="file-item local-selectable" draggable="true" data-path="' + fp + '" data-name="' + e.name + '" onclick="toggleSelectFile(this)" ondblclick="previewLocalFile(\'' + fp.replace(/'/g, "\\'") + '\',\'' + e.name.replace(/'/g, "\\'") + '\')" ondragstart="onDragStart(event)"><span class="icon">📄</span> <span class="fs-name">' + e.name + '</span>' + fsCopyBtns(e.name, fp) + '</div>';
     }
   });
   el.innerHTML = html || '<span style="color:#999;">Empty</span>';
@@ -1603,9 +1647,9 @@ async function loadRemoteDir(path) {
   (r.data.entries || []).forEach(function(e) {
     var fp = e.full_path || e.name;
     if (e.type === 'dir') {
-      html += '<div class="file-item remote-selectable" data-path="' + fp + '" onclick="if(!event.detail||event.detail===1){toggleSelectFile(this)}" ondblclick="loadRemoteDir(\'' + fp.replace(/'/g, "\\'") + '\')" ondragover="event.preventDefault();event.dataTransfer.dropEffect=\'copy\';this.style.background=\'#d4edda\'" ondragleave="this.style.background=\'\'" ondrop="handleDropOnDir(event,\'' + fp.replace(/'/g, "\\'") + '\')"><span class="icon">📁</span> ' + e.name + '</div>';
+      html += '<div class="file-item remote-selectable" data-path="' + fp + '" onclick="if(!event.detail||event.detail===1){toggleSelectFile(this)}" ondblclick="loadRemoteDir(\'' + fp.replace(/'/g, "\\'") + '\')" ondragover="event.preventDefault();event.dataTransfer.dropEffect=\'copy\';this.style.background=\'#d4edda\'" ondragleave="this.style.background=\'\'" ondrop="handleDropOnDir(event,\'' + fp.replace(/'/g, "\\'") + '\')"><span class="icon">📁</span> <span class="fs-name">' + e.name + '</span>' + fsCopyBtns(e.name, fp) + '</div>';
     } else {
-      html += '<div class="file-item remote-selectable" data-path="' + fp + '" onclick="toggleSelectFile(this)" ondblclick="previewRemoteFile(\'' + fp.replace(/'/g, "\\'") + '\',\'' + e.name.replace(/'/g, "\\'") + '\')"><span class="icon">📄</span> ' + e.name + ' <span style="color:#999;font-size:11px;">(' + (e.size/1024).toFixed(1) + 'KB)</span></div>';
+      html += '<div class="file-item remote-selectable" data-path="' + fp + '" onclick="toggleSelectFile(this)" ondblclick="previewRemoteFile(\'' + fp.replace(/'/g, "\\'") + '\',\'' + e.name.replace(/'/g, "\\'") + '\')"><span class="icon">📄</span> <span class="fs-name">' + e.name + '</span> <span style="color:#999;font-size:11px;">(' + (e.size/1024).toFixed(1) + 'KB)</span>' + fsCopyBtns(e.name, fp) + '</div>';
     }
   });
   el.innerHTML = html || '<span style="color:#999;">Empty</span>';
