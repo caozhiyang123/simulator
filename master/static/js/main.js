@@ -2357,7 +2357,7 @@ function switchPage(page) {
   if (page === 'iam') iamInit();
 }
 
-var _batchPagesWithFileSync = ['batchdeletefile', 'batchoverride', 'batchedit', 'batchupload', 'batchdownload', 'statisticanalysis'];
+var _batchPagesWithFileSync = [];
 var _fileSyncOriginalParent = null;
 var _fileSyncOriginalNextSibling = null;
 
