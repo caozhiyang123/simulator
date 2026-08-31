@@ -4,6 +4,41 @@
 var _playSessionToken = '';
 var _playCurrentMachine = null;
 
+// Generate an RFC4122 version-4 UUID (with a crypto fallback for older browsers).
+function playGenerateUuid() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0;
+    var v = (c === 'x') ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+// Wrap a WebSocket's send() so every outgoing JSON command automatically
+// gets a unique `uuid` field. This lets each request/response pair form a
+// one-to-one correspondence. Non-JSON payloads are sent through unchanged.
+function playWrapWsSend(ws) {
+  if (!ws || ws.__uuidWrapped) return;
+  var originalSend = ws.send.bind(ws);
+  ws.send = function(data) {
+    if (typeof data === 'string') {
+      try {
+        var obj = JSON.parse(data);
+        if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+          if (!obj.uuid) obj.uuid = playGenerateUuid();
+          return originalSend(JSON.stringify(obj));
+        }
+      } catch (e) {
+        // Not JSON — send as-is
+      }
+    }
+    return originalSend(data);
+  };
+  ws.__uuidWrapped = true;
+}
+
 function playLog(msg) {
   var panel = document.getElementById('playLogPanel');
   if (!panel) return;
@@ -152,6 +187,10 @@ async function playSelectMachine(machineId, enabled, machineType) {
   try {
     _playWs = new WebSocket(connUrl);
   } catch(e) { playLog('<<< [WS CONNECT] error: ' + e.message); playHideLoading(); showAlert('WebSocket connection failed: ' + e.message); return; }
+
+  // Wrap the send method so every outgoing command gets a unique `uuid`.
+  // This lets each request/response form a one-to-one correspondence.
+  playWrapWsSend(_playWs);
 
   _playWs.onopen = function() {
     playLog('<<< [WS CONNECT] connected');
