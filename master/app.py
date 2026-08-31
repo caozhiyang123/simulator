@@ -46,6 +46,7 @@ DYNAMIC_START_MODULES_PATH = os.path.join(
 
 # Read port from config.json, fallback to env var, then default 5000
 import json as _json
+json_module = _json
 _raw_config = {}
 if os.path.isfile(CONFIG_PATH):
     with open(CONFIG_PATH, "r", encoding="utf-8") as _cf:
