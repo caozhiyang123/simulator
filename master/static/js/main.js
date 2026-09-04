@@ -1501,6 +1501,39 @@ var localCurrentPath = '';  // absolute path
 var remoteCurrentPath = '';
 var selectedLocalFiles = [];
 
+// File Sync name-sort state.
+// direction: 'asc' | 'desc'. Cached entries let us re-sort without re-fetching.
+var localSortDir = 'asc';
+var remoteSortDir = 'asc';
+var localEntries = [];
+var remoteEntries = [];
+var localParentPath = '';
+var remoteParentPath = '';
+
+// Sort a list of entries by name using locale-aware (dictionary) comparison.
+// Directories and files are sorted together purely by name, per requirement.
+function fsSortEntriesByName(entries, dir) {
+  var sorted = entries.slice();
+  sorted.sort(function(a, b) {
+    var cmp = (a.name || '').localeCompare((b.name || ''), undefined, {
+      numeric: true,
+      sensitivity: 'base'
+    });
+    return dir === 'desc' ? -cmp : cmp;
+  });
+  return sorted;
+}
+
+// Build the clickable "Name" header row. Shows a sort-direction arrow.
+function fsNameHeaderHtml(side, dir) {
+  var arrow = dir === 'desc' ? ' ▼' : ' ▲';
+  var handler = (side === 'local') ? 'toggleLocalSort()' : 'toggleRemoteSort()';
+  return '<div class="file-sync-header" onclick="' + handler + '" ' +
+    'style="font-size:12px;font-weight:700;color:#333;padding:4px 2px;' +
+    'border-bottom:1px solid #ddd;margin-bottom:4px;cursor:pointer;' +
+    'user-select:none;">Name' + arrow + '</div>';
+}
+
 // Copy text to clipboard (clipboard API with execCommand fallback)
 function fsCopyToClipboard(text) {
   function done() { log('📋 Copied: ' + text); }
@@ -1604,20 +1637,26 @@ async function loadLocalDir(path) {
   var r = await api('/files/local/browse?path=' + encodeURIComponent(path), 'GET');
   if (!r.ok) return;
   localCurrentPath = r.data.path || '';
-  var parentPath = r.data.parent || '';
+  localParentPath = r.data.parent || '';
+  localEntries = r.data.entries || [];
 
   // Breadcrumb
   var bcEl = document.getElementById('localBreadcrumb');
   bcEl.innerHTML = '<span style="font-size:12px;color:#666;">' + localCurrentPath + '</span>';
 
+  renderLocalFileList();
+}
+
+// Render the local file list from cached entries, applying the current sort.
+function renderLocalFileList() {
   var el = document.getElementById('localFileList');
-  var html = '';
+  var html = fsNameHeaderHtml('local', localSortDir);
   // Always show parent navigation
-  var parentPath = r.data.parent || '';
-  if (parentPath) {
-    html += '<div class="file-item" onclick="loadLocalDir(\'' + parentPath.replace(/'/g, "\\'") + '\')"><span class="icon">⬆</span> ..</div>';
+  if (localParentPath) {
+    html += '<div class="file-item" onclick="loadLocalDir(\'' + localParentPath.replace(/'/g, "\\'") + '\')"><span class="icon">⬆</span> ..</div>';
   }
-  (r.data.entries || []).forEach(function(e) {
+  var entries = fsSortEntriesByName(localEntries, localSortDir);
+  entries.forEach(function(e) {
     var fp = e.full_path;
     if (e.type === 'dir') {
       html += '<div class="file-item local-selectable" data-path="' + fp + '" onclick="if(!event.detail||event.detail===1){toggleSelectFile(this)}" ondblclick="loadLocalDir(\'' + fp.replace(/'/g, "\\'") + '\')"><span class="icon">📁</span> <span class="fs-name">' + e.name + '</span>' + fsCopyBtns(e.name, fp) + '</div>';
@@ -1625,7 +1664,13 @@ async function loadLocalDir(path) {
       html += '<div class="file-item local-selectable" draggable="true" data-path="' + fp + '" data-name="' + e.name + '" onclick="toggleSelectFile(this)" ondblclick="previewLocalFile(\'' + fp.replace(/'/g, "\\'") + '\',\'' + e.name.replace(/'/g, "\\'") + '\')" ondragstart="onDragStart(event)"><span class="icon">📄</span> <span class="fs-name">' + e.name + '</span>' + fsCopyBtns(e.name, fp) + '</div>';
     }
   });
-  el.innerHTML = html || '<span style="color:#999;">Empty</span>';
+  el.innerHTML = html;
+}
+
+// Toggle local list sort direction and re-render (no re-fetch needed).
+function toggleLocalSort() {
+  localSortDir = (localSortDir === 'asc') ? 'desc' : 'asc';
+  renderLocalFileList();
 }
 
 async function loadRemoteDir(path) {
@@ -1634,17 +1679,24 @@ async function loadRemoteDir(path) {
   var r = await api('/files/worker/browse?addr=' + encodeURIComponent(addr) + '&path=' + encodeURIComponent(path || 'default'), 'GET');
   if (!r.ok) return;
   remoteCurrentPath = r.data.path || '';
-  var parentPath = r.data.parent || '';
+  remoteParentPath = r.data.parent || '';
+  remoteEntries = r.data.entries || [];
 
   var bcEl = document.getElementById('remoteBreadcrumb');
   bcEl.innerHTML = '<span style="font-size:12px;color:#666;">' + remoteCurrentPath + '</span>';
 
+  renderRemoteFileList();
+}
+
+// Render the remote file list from cached entries, applying the current sort.
+function renderRemoteFileList() {
   var el = document.getElementById('remoteFileList');
-  var html = '';
-  if (parentPath) {
-    html += '<div class="file-item" onclick="loadRemoteDir(\'' + parentPath.replace(/'/g, "\\'") + '\')"><span class="icon">⬆</span> ..</div>';
+  var html = fsNameHeaderHtml('remote', remoteSortDir);
+  if (remoteParentPath) {
+    html += '<div class="file-item" onclick="loadRemoteDir(\'' + remoteParentPath.replace(/'/g, "\\'") + '\')"><span class="icon">⬆</span> ..</div>';
   }
-  (r.data.entries || []).forEach(function(e) {
+  var entries = fsSortEntriesByName(remoteEntries, remoteSortDir);
+  entries.forEach(function(e) {
     var fp = e.full_path || e.name;
     if (e.type === 'dir') {
       html += '<div class="file-item remote-selectable" data-path="' + fp + '" onclick="if(!event.detail||event.detail===1){toggleSelectFile(this)}" ondblclick="loadRemoteDir(\'' + fp.replace(/'/g, "\\'") + '\')" ondragover="event.preventDefault();event.dataTransfer.dropEffect=\'copy\';this.style.background=\'#d4edda\'" ondragleave="this.style.background=\'\'" ondrop="handleDropOnDir(event,\'' + fp.replace(/'/g, "\\'") + '\')"><span class="icon">📁</span> <span class="fs-name">' + e.name + '</span>' + fsCopyBtns(e.name, fp) + '</div>';
@@ -1652,7 +1704,13 @@ async function loadRemoteDir(path) {
       html += '<div class="file-item remote-selectable" data-path="' + fp + '" onclick="toggleSelectFile(this)" ondblclick="previewRemoteFile(\'' + fp.replace(/'/g, "\\'") + '\',\'' + e.name.replace(/'/g, "\\'") + '\')"><span class="icon">📄</span> <span class="fs-name">' + e.name + '</span> <span style="color:#999;font-size:11px;">(' + (e.size/1024).toFixed(1) + 'KB)</span>' + fsCopyBtns(e.name, fp) + '</div>';
     }
   });
-  el.innerHTML = html || '<span style="color:#999;">Empty</span>';
+  el.innerHTML = html;
+}
+
+// Toggle remote list sort direction and re-render (no re-fetch needed).
+function toggleRemoteSort() {
+  remoteSortDir = (remoteSortDir === 'asc') ? 'desc' : 'asc';
+  renderRemoteFileList();
 }
 
 function toggleSelectFile(el) {
