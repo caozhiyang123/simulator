@@ -182,16 +182,34 @@ def index():
 
 @simulations_bp.route("/games", methods=["GET"])
 def list_games():
-    """List games from JSON filenames in data/machine."""
-    if not os.path.isdir(_machine_data_dir):
-        return jsonify({"games": []})
-    try:
-        with os.scandir(_machine_data_dir) as entries:
-            games = [os.path.splitext(e.name)[0] for e in entries if e.is_file() and e.name.lower().endswith(".json")]
-    except OSError as exc:
-        logger.warning("Unable to scan machine data directory %s: %s", _machine_data_dir, exc)
-        return jsonify({"games": []})
-    return jsonify({"games": sorted(games, key=str.casefold)})
+    """List games from JSON filenames in data/machine.
+
+    The response is marked non-cacheable so the browser never reuses a
+    stale/empty list (which previously required a full master restart to
+    clear before the Game dropdowns would populate).
+    """
+    games = []
+    if os.path.isdir(_machine_data_dir):
+        try:
+            with os.scandir(_machine_data_dir) as entries:
+                games = [
+                    os.path.splitext(e.name)[0]
+                    for e in entries
+                    if e.is_file() and e.name.lower().endswith(".json")
+                ]
+        except OSError as exc:
+            logger.warning(
+                "Unable to scan machine data directory %s: %s",
+                _machine_data_dir,
+                exc,
+            )
+            games = []
+
+    resp = jsonify({"games": sorted(games, key=str.casefold)})
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 @simulations_bp.route("/start", methods=["POST"])

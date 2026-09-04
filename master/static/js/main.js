@@ -3447,6 +3447,19 @@ function dynamicGameOptions(selectedGame) {
   return html;
 }
 
+// Repopulate every Game dropdown (static and dynamic) from availableGames,
+// preserving each dropdown's current selection. Safe to call multiple times.
+function refreshAllGameSelects() {
+  document.querySelectorAll('.game-select').forEach(function(sel) {
+    var current = sel.value;
+    sel.innerHTML = dynamicGameOptions(current);
+    // Restore selection if it still exists in the option list
+    if (current && sel.querySelector('option[value="' + current.replace(/"/g, '\\"') + '"]')) {
+      sel.value = current;
+    }
+  });
+}
+
 function dynamicCpuMarkup(module) {
   var token = dynamicDomToken(module.id);
   return '<div id="dynamicCpuWarn-' + token + '" data-role="cpu-warn" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(231,76,60,0.08);z-index:5;border-radius:8px;pointer-events:none;align-items:center;justify-content:center;">' +
@@ -3876,21 +3889,18 @@ async function init() {
   loadQuickAccessToolbar();
   loadFooterLinks();
 
-  // Load game list
-  const gr = await api('/games', 'GET');
+  // Load game list (cache-busted so a stale/empty response is never reused)
+  const gr = await api('/games?_=' + Date.now(), 'GET');
   if (gr.ok && gr.data.games) {
     availableGames = gr.data.games.slice();
-    const selects = document.querySelectorAll('.game-select');
-    selects.forEach(function(sel) {
-      sel.innerHTML = '<option value="">-- Select Game --</option>';
-      availableGames.forEach(function(g) {
-        sel.innerHTML += '<option value="' + escapeDynamicHtml(g) + '">' + escapeDynamicHtml(g) + '</option>';
-      });
-    });
+    refreshAllGameSelects();
     log('✅ Loaded ' + availableGames.length + ' games');
   }
 
   await loadDynamicStartModules();
+  // Dynamic modules render their Game dropdowns from availableGames. In case
+  // they rendered before games finished loading, refresh them all now.
+  refreshAllGameSelects();
   log('✅ Page loaded, ' + nodes.length + ' nodes');
   await checkWorkersHealth();
   loadUserInfo();
