@@ -51,7 +51,7 @@ def _load_authorities() -> list:
 
 def _load_resources() -> list:
     if not os.path.isfile(RESOURCES_PATH):
-        return ["Home", "Workers", "Config", "History", "MD5", "SHA1", "Plugin", "CICD", "Play", "IAM", "Family"]
+        return ["Home", "Version", "Workers", "Config", "History", "MD5", "SHA1", "Plugin", "CICD", "Play", "IAM", "Family"]
     with open(RESOURCES_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -446,8 +446,8 @@ def iam_menus():
                 break
 
     all_menus_order = [
-        "Home", "Workers", "Config", "History", "MD5", "SHA1",
-        "Plugin", "CICD", "Play", "IAM", "Family", "Settings",
+        "Home", "Version", "Workers", "Config", "History", "MD5",
+        "SHA1", "Plugin", "CICD", "Play", "IAM", "Family", "Settings",
     ]
     menus = [m for m in all_menus_order if m in menus_set]
     for m in menus_set:

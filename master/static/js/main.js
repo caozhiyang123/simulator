@@ -2448,6 +2448,7 @@ function switchPage(page) {
   // Move File Sync panel into batch pages (reuses existing unique-ID DOM)
   _relocateFileSyncForPage(page);
   if (page === 'history') histLoadAll();
+  if (page === 'version') versionInit();
   if (page === 'workers') pgRenderWorkers();
   if (page === 'config') pgLoadConfig();
   if (page === 'sha1') loadSha1History();

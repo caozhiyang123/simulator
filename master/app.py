@@ -120,6 +120,7 @@ from blueprints.cicd import cicd_bp, init_cicd, cleanup_old_builds
 from blueprints.simulations import simulations_bp, init_simulations
 from blueprints.workers import workers_bp, init_workers
 from blueprints.files import files_bp, init_files
+from blueprints.version import version_bp, init_version
 
 init_history(history_store, poller)
 init_cicd(_base_dir, config=config, worker_session=_worker_session)
@@ -133,6 +134,7 @@ init_simulations(
 )
 init_workers(config=config, worker_client=worker_client, raw_config=_raw_config)
 init_files(config=config, worker_client=worker_client, base_dir=_base_dir, bundle_dir=_bundle_dir, raw_config=_raw_config)
+init_version(config=config, base_dir=_base_dir)
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(iam_bp)
@@ -141,6 +143,7 @@ app.register_blueprint(cicd_bp)
 app.register_blueprint(simulations_bp)
 app.register_blueprint(workers_bp)
 app.register_blueprint(files_bp)
+app.register_blueprint(version_bp)
 
 app.before_request(require_login)
 

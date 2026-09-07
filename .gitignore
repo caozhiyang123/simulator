@@ -15,3 +15,4 @@ master/cicd/logs
 __pycache__
 launcher/build
 launcher/dist
+master/versions

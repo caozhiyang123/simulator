@@ -117,8 +117,8 @@ def auth_login():
                         menus_set.update(a.get("menus", []))
                         break
             all_menus_order = [
-                "Home", "Workers", "Config", "History", "MD5", "SHA1",
-                "Plugin", "CICD", "Play", "IAM", "Family",
+                "Home", "Version", "Workers", "Config", "History",
+                "MD5", "SHA1", "Plugin", "CICD", "Play", "IAM", "Family",
             ]
             menus = [m for m in all_menus_order if m in menus_set]
             for m in menus_set:

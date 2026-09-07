@@ -45,6 +45,7 @@
   <!-- Sidebar -->
   <div class="sidebar" style="margin-top:0;">
     <button class="sidebar-btn active" onclick="switchPage('home')" id="navHome">🏠<span>Home</span></button>
+    <button class="sidebar-btn" onclick="switchPage('version')" id="navVersion">🏷️<span>Version</span></button>
     <button class="sidebar-btn" onclick="switchPage('workers')" id="navWorkers">👷<span>Workers</span></button>
     <button class="sidebar-btn" onclick="switchPage('config')" id="navConfig">⚙️<span>Config</span></button>
     <button class="sidebar-btn" onclick="switchPage('history')" id="navHistory">📜<span>History</span></button>
@@ -313,6 +314,8 @@
 
 </div>
     </div><!-- end pageHome -->
+
+    {% include 'version.html' %}
 
     <!-- WORKERS PAGE -->
     <div class="page-panel" id="pageWorkers">
@@ -1735,6 +1738,7 @@
 <script src="/static/js/plugins-batch.js?v=1"></script>
 <script src="/static/js/plugins-multi.js?v=1"></script>
 <script src="/static/js/iam.js?v=1"></script>
+<script src="/static/js/version.js?v=1"></script>
 <script src="/static/js/main.js?v=1"></script>
 
 </body>
