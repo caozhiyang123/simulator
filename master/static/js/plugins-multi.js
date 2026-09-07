@@ -56,6 +56,36 @@ function hideBatchUpMultiProgress() {
   setTimeout(function() { mask.style.display = 'none'; bar.style.transition = 'none'; bar.style.width = '0%'; }, 800);
 }
 
+function showBatchOverrideMultiProgress() {
+  var mask = document.getElementById('batchOverrideMultiProgressMask');
+  var bar = document.getElementById('batchOverrideMultiProgressBar');
+  var text = document.getElementById('batchOverrideMultiProgressText');
+  bar.style.transition = 'none'; bar.style.width = '0%'; text.textContent = 'Overriding...';
+  mask.style.display = 'block';
+}
+function hideBatchOverrideMultiProgress() {
+  var mask = document.getElementById('batchOverrideMultiProgressMask');
+  var bar = document.getElementById('batchOverrideMultiProgressBar');
+  var text = document.getElementById('batchOverrideMultiProgressText');
+  bar.style.transition = 'width 0.3s ease'; bar.style.width = '100%'; text.textContent = '100%';
+  setTimeout(function() { mask.style.display = 'none'; bar.style.transition = 'none'; bar.style.width = '0%'; }, 800);
+}
+
+function showBatchDelMultiProgress() {
+  var mask = document.getElementById('batchDelMultiProgressMask');
+  var bar = document.getElementById('batchDelMultiProgressBar');
+  var text = document.getElementById('batchDelMultiProgressText');
+  bar.style.transition = 'none'; bar.style.width = '0%'; text.textContent = 'Deleting...';
+  mask.style.display = 'block';
+}
+function hideBatchDelMultiProgress() {
+  var mask = document.getElementById('batchDelMultiProgressMask');
+  var bar = document.getElementById('batchDelMultiProgressBar');
+  var text = document.getElementById('batchDelMultiProgressText');
+  bar.style.transition = 'width 0.3s ease'; bar.style.width = '100%'; text.textContent = '100%';
+  setTimeout(function() { mask.style.display = 'none'; bar.style.transition = 'none'; bar.style.width = '0%'; }, 800);
+}
+
 function renderBatchMultiResultByNode(results, actionLabel, listKeys) {
   // results: {addr: {copied|replaced|found: [...], errors: [...]} | {error: "..."}}
   var html = '';
@@ -213,16 +243,23 @@ async function doBatchOverrideMultiOverride() {
   if (!sources.length) { showAlert('Please enter at least one source file path'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
   var resultEl = document.getElementById('batchOverrideMultiResult');
-  resultEl.innerHTML = '<div style="color:#888;">Overriding on ' + addrs.length + ' node(s)...</div>';
+  resultEl.innerHTML = '';
 
-  var res = await fetch('/files/batch-multi-override', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({sources: sources, target_dirs: dirs, exclude_dirs: excludes, addrs: addrs})
-  });
-  var data = await res.json();
-  if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
-  resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">📦 Override results per node:</div>' +
-    renderBatchMultiResultByNode(data.results || {}, 'Overridden', ['replaced']);
+  showBatchOverrideMultiProgress();
+  try {
+    var res = await fetch('/files/batch-multi-override', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({sources: sources, target_dirs: dirs, exclude_dirs: excludes, addrs: addrs})
+    });
+    var data = await res.json();
+    hideBatchOverrideMultiProgress();
+    if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+    resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">📦 Override results per node:</div>' +
+      renderBatchMultiResultByNode(data.results || {}, 'Overridden', ['replaced']);
+  } catch (e) {
+    hideBatchOverrideMultiProgress();
+    resultEl.innerHTML = '<div style="color:#e74c3c;">❌ Override failed: ' + e.message + '</div>';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -461,24 +498,38 @@ async function doBatchDelMultiDelete() {
   if (!confirm('⚠️ Are you sure you want to DELETE ' + totalCount + ' file(s) across ' + addrs.length + ' node(s)?\n\nThis operation cannot be undone!')) return;
 
   var resultEl = document.getElementById('batchDelMultiResult');
-  resultEl.innerHTML = '<div style="color:#888;">Deleting files on ' + addrs.length + ' node(s)...</div>';
+  resultEl.innerHTML = '';
 
-  // Delete sequentially per node using the existing single-node endpoint
+  showBatchDelMultiProgress();
+
+  // Delete sequentially per node using the existing single-node endpoint.
+  // Advance the progress bar as each node completes.
   var allNodeResults = {};
-  for (var i = 0; i < addrs.length; i++) {
-    var addr = addrs[i];
-    var files = _batchDelMultiFoundByNode[addr] || [];
-    if (!files.length) continue;
-    try {
-      var res = await fetch('/files/batch-delete', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({files: files, addr: addr})
-      });
-      var data = await res.json();
-      allNodeResults[addr] = data;
-    } catch (e) {
-      allNodeResults[addr] = {error: e.message};
+  var barEl = document.getElementById('batchDelMultiProgressBar');
+  var textEl = document.getElementById('batchDelMultiProgressText');
+  if (barEl) barEl.style.transition = 'width 0.3s ease';
+  try {
+    for (var i = 0; i < addrs.length; i++) {
+      var addr = addrs[i];
+      var files = _batchDelMultiFoundByNode[addr] || [];
+      if (files.length) {
+        try {
+          var res = await fetch('/files/batch-delete', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({files: files, addr: addr})
+          });
+          var data = await res.json();
+          allNodeResults[addr] = data;
+        } catch (e) {
+          allNodeResults[addr] = {error: e.message};
+        }
+      }
+      var pct = Math.round(((i + 1) / addrs.length) * 100);
+      if (barEl) barEl.style.width = pct + '%';
+      if (textEl) textEl.textContent = pct + '%';
     }
+  } finally {
+    hideBatchDelMultiProgress();
   }
   resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">🗑️ Delete results per node:</div>' +
     renderBatchMultiResultByNode(allNodeResults, 'Deleted', ['deleted']);

@@ -42,6 +42,36 @@ def _worker_proxy_post(addr, path, json_body=None, timeout=30, stream=False):
     return _worker_client.proxy_post(addr, path, json_body, timeout, stream)
 
 
+# Invisible Unicode characters that get injected when copying a path from
+# Windows Explorer ("Copy as path" / file properties) or pasting from some
+# editors. They make os.path.isfile fail even though the file exists.
+# Includes bidirectional formatting marks, zero-width chars and BOM.
+_INVISIBLE_PATH_CHARS = (
+    "\u200b\u200c\u200d\u200e\u200f"  # ZWSP, ZWNJ, ZWJ, LRM, RLM
+    "\u202a\u202b\u202c\u202d\u202e"  # LRE, RLE, PDF, LRO, RLO
+    "\u2066\u2067\u2068\u2069"        # LRI, RLI, FSI, PDI
+    "\ufeff"                          # BOM / ZWNBSP
+)
+_INVISIBLE_TRANSLATE = {ord(c): None for c in _INVISIBLE_PATH_CHARS}
+
+
+def _clean_path(value):
+    """Strip invisible/bidirectional control characters and surrounding
+    whitespace/quotes from a path string.
+
+    Handles paths pasted from Windows Explorer, which may be prefixed with a
+    LEFT-TO-RIGHT EMBEDDING (U+202A) or similar, causing os.path lookups to
+    fail even when the file exists.
+    """
+    if not isinstance(value, str):
+        return value
+    cleaned = value.translate(_INVISIBLE_TRANSLATE).strip()
+    # Some users paste paths wrapped in quotes.
+    if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in ('"', "'"):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
+
+
 # ---------------------------------------------------------------------------
 # Routes (extracted from app.py)
 # ---------------------------------------------------------------------------
@@ -846,6 +876,13 @@ def _batch_override_core(addr, sources, target_dirs, exclude_dirs):
     """
     import shutil
 
+    # Sanitize inputs: strip invisible/bidirectional control characters that
+    # Windows Explorer injects when copying a path (e.g. leading U+202A),
+    # which otherwise make os.path.isfile fail on an existing file.
+    sources = [_clean_path(s) for s in (sources or [])]
+    target_dirs = [_clean_path(d) for d in (target_dirs or [])]
+    exclude_dirs = [_clean_path(d) for d in (exclude_dirs or [])]
+
     resolved_dirs, err_body, status = _resolve_glob_dirs_core(addr, target_dirs, exclude_dirs)
     if err_body is not None:
         return err_body, status
@@ -1464,6 +1501,11 @@ def _batch_up_upload_core(addr, src_files, target_dirs):
     Returns: (body_dict, http_status)
     """
     import shutil
+
+    # Sanitize inputs: strip invisible/bidirectional control characters that
+    # Windows Explorer injects when copying a path (e.g. leading U+202A).
+    src_files = [_clean_path(s) for s in (src_files or [])]
+    target_dirs = [_clean_path(d) for d in (target_dirs or [])]
 
     if _is_remote_addr(addr):
         # Source File paths are interpreted relative to the SELECTED NODE's
