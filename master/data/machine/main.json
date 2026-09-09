@@ -79,7 +79,7 @@
         "name": "CarnavalBingo",
         "config_file": "CarnavalBingo.json",
         "machine_id": 197,
-        "connection_url": "ws://localhost:9090/wildBall?authorization=drq03FEIUoZEa2MleOuVLyWGKabXxGSmDfHimrNBzPQ=&reconnect=false",
+        "connection_url": "ws://localhost:9090/wildWest?authorization=drq03FEIUoZEa2MleOuVLyWGKabXxGSmDfHimrNBzPQ=&reconnect=false",
         "enabled": true,
         "type": "bingo",
         "choose_quantity": true
