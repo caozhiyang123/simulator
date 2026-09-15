@@ -114,7 +114,7 @@ def launcher_status():
         return jsonify({"error": "addr (worker addr) is required"}), 400
     launcher = _launcher_addr(addr)
     try:
-        r = _worker_client.get(launcher, "/launcher/status", timeout=5)
+        r = _worker_client.get(launcher, "/launcher/status", headers=_launcher_headers(), timeout=5)
         try:
             return jsonify(r.json()), r.status_code
         except ValueError:
@@ -136,7 +136,7 @@ def launcher_start_worker():
         return jsonify({"error": "addr (worker addr) is required"}), 400
     launcher = _launcher_addr(addr)
     try:
-        r = _worker_client.post(launcher, "/launcher/start-worker", timeout=15)
+        r = _worker_client.post(launcher, "/launcher/start-worker", headers=_launcher_headers(), timeout=15)
         try:
             return jsonify(r.json()), r.status_code
         except ValueError:
@@ -158,7 +158,7 @@ def launcher_stop_worker():
         return jsonify({"error": "addr (worker addr) is required"}), 400
     launcher = _launcher_addr(addr)
     try:
-        r = _worker_client.post(launcher, "/launcher/stop-worker", timeout=15)
+        r = _worker_client.post(launcher, "/launcher/stop-worker", headers=_launcher_headers(), timeout=15)
         try:
             return jsonify(r.json()), r.status_code
         except ValueError:

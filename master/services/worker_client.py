@@ -27,14 +27,14 @@ class WorkerClient:
         """True if addr refers to a remote worker node (not master/local)."""
         return bool(addr) and addr != "master"
 
-    def get(self, addr: str, path: str, *, params=None, timeout: int = 5) -> http_requests.Response:
+    def get(self, addr: str, path: str, *, params=None, headers=None, timeout: int = 5) -> http_requests.Response:
         """Send GET to a worker."""
-        return self._session.get(f"http://{addr}{path}", params=params, timeout=timeout)
+        return self._session.get(f"http://{addr}{path}", params=params, headers=headers, timeout=timeout)
 
-    def post(self, addr: str, path: str, *, json=None, timeout: int = 10, stream: bool = False) -> http_requests.Response:
+    def post(self, addr: str, path: str, *, json=None, headers=None, timeout: int = 10, stream: bool = False) -> http_requests.Response:
         """Send POST to a worker."""
         return self._session.post(
-            f"http://{addr}{path}", json=json, timeout=timeout, stream=stream
+            f"http://{addr}{path}", json=json, headers=headers, timeout=timeout, stream=stream
         )
 
     # ------------------------------------------------------------------
