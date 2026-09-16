@@ -15,3 +15,7 @@ master/cicd/logs
 __pycache__
 launcher/build
 launcher/dist
+master/node_modules
+master/tests
+master/package.json
+master/package-lock.json

@@ -146,8 +146,14 @@ function slotRenderUI() {
   // Bottom controls bar — all on same line with equal spacing
   html += '<div id="slotControlsBar" style="position:absolute;top:80%;left:0;width:100%;display:flex;align-items:center;justify-content:space-evenly;padding:0 8px;">';
 
-  // BET controls
+  // BET controls (info button prepended with 0 gap to the minus button)
   html += '<div style="display:flex;align-items:center;gap:3px;">';
+  html += '<div id="slotInfoBtn" onclick="window.playShowInfoModal(_slotState.config, \'slot\')" '
+        + 'style="width:28px;height:28px;border-radius:50%;border:none;margin-right:0;'
+        + 'background:linear-gradient(to bottom,#e84a80 0%,#c0003a 45%,#8a0028 100%);'
+        + 'box-shadow:inset 0 1px 1px rgba(255,255,255,0.35),0 4px 0 #4a0015,0 5px 8px rgba(0,0,0,0.5);'
+        + 'color:#fff;font-size:14px;font-weight:700;cursor:pointer;display:flex;'
+        + 'align-items:center;justify-content:center;flex-shrink:0;" title="Machine Info">!</div>';
   html += '<div class="slot-btn-3d" onclick="slotChangeBet(-1)" style="width:28px;height:28px;">-</div>';
   var betVal = (st.betList[st.betIndex] || 0) * st.activeLines;
   html += '<div id="slotBetDisplay" style="min-width:52px;height:28px;background:#0a0a0a;border:2px solid #f5d742;border-radius:4px;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:28px;box-shadow:inset 0 2px 6px rgba(0,0,0,0.8);">' + betVal.toFixed(st.displayPrecision) + '</div>';

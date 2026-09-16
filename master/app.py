@@ -5306,6 +5306,96 @@ def play_disconnect():
     return jsonify({"status": "ok"})
 
 
+@app.route("/play/info/upload", methods=["POST"])
+def play_info_upload():
+    """Upload a feature info image for a given machine + feature_id.
+
+    Form data:
+        machine_name  — e.g. "Halloween20"
+        feature_id    — numeric id from the feature config, e.g. "2"
+    File:
+        file          — image file (png / jpg / gif / webp)
+
+    Saves to  data/info/{machine_name}_feature{feature_id}.{ext}
+    Returns   { "url": "/play/info/image?machine_name=...&feature_id=..." }
+    """
+    machine_name = request.form.get("machine_name", "").strip()
+    feature_id   = request.form.get("feature_id", "").strip()
+
+    if not machine_name or not feature_id:
+        return jsonify({"error": "machine_name and feature_id are required"}), 400
+
+    # Sanitise inputs — allow only alphanumerics, underscores and hyphens
+    import re as _re
+    if not _re.match(r'^[\w\-]+$', machine_name) or not _re.match(r'^[\w\-]+$', feature_id):
+        return jsonify({"error": "Invalid machine_name or feature_id"}), 400
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    uploaded = request.files["file"]
+    if not uploaded.filename:
+        return jsonify({"error": "Empty filename"}), 400
+
+    # Derive extension from original filename; default to .png
+    original_ext = os.path.splitext(uploaded.filename)[1].lower()
+    allowed_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+    if original_ext not in allowed_exts:
+        return jsonify({"error": f"Unsupported file type: {original_ext}"}), 400
+
+    info_dir = os.path.join(_base_dir, "data", "info")
+    os.makedirs(info_dir, exist_ok=True)
+
+    # Remove any previously uploaded image for this machine+feature (any ext)
+    stem = f"{machine_name}_feature{feature_id}"
+    for existing in os.listdir(info_dir):
+        name, ext = os.path.splitext(existing)
+        if name == stem and ext in allowed_exts:
+            try:
+                os.remove(os.path.join(info_dir, existing))
+            except OSError:
+                pass
+
+    filename  = f"{stem}{original_ext}"
+    dest_path = os.path.join(info_dir, filename)
+    try:
+        uploaded.save(dest_path)
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    url = f"/play/info/image?machine_name={machine_name}&feature_id={feature_id}"
+    return jsonify({"status": "ok", "url": url})
+
+
+@app.route("/play/info/image", methods=["GET"])
+def play_info_image():
+    """Serve a feature info image.
+
+    Query params:
+        machine_name  — e.g. "Halloween20"
+        feature_id    — e.g. "2"
+
+    Returns the image file, or 404 if not found.
+    """
+    machine_name = request.args.get("machine_name", "").strip()
+    feature_id   = request.args.get("feature_id", "").strip()
+
+    if not machine_name or not feature_id:
+        return jsonify({"error": "machine_name and feature_id are required"}), 400
+
+    info_dir = os.path.join(_base_dir, "data", "info")
+    stem     = f"{machine_name}_feature{feature_id}"
+    allowed_exts = [".png", ".jpg", ".jpeg", ".gif", ".webp"]
+
+    for ext in allowed_exts:
+        candidate = os.path.join(info_dir, f"{stem}{ext}")
+        if os.path.isfile(candidate):
+            from flask import send_file as _send_file
+            return _send_file(candidate)
+
+    return jsonify({"error": "Image not found"}), 404
+
+
 # ---------------------------------------------------------------------------
 # IAM Routes
 # ---------------------------------------------------------------------------

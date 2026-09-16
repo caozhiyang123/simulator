@@ -553,6 +553,13 @@ function playRenderGame(resp, machineConfig) {
   window._playMaxCards = qtd;
 
   html += '<div style="display:flex;align-items:center;padding:10px 12px;background:linear-gradient(180deg,#2a2a3e,#1a1a2e);border-radius:6px;gap:8px;border:1px solid #444;">';
+  // Info button (leftmost element in Bet_Control_Row)
+  html += '<div id="playInfoBtn" onclick="window.playShowInfoModal(_playCurrentMachine.config, \'bingo\')" '
+        + 'style="width:28px;height:28px;border-radius:50%;border:none;'
+        + 'background:linear-gradient(to bottom,#e84a80 0%,#c0003a 45%,#8a0028 100%);'
+        + 'box-shadow:inset 0 1px 1px rgba(255,255,255,0.35),0 4px 0 #4a0015,0 5px 8px rgba(0,0,0,0.5);'
+        + 'color:#fff;font-size:14px;font-weight:700;cursor:pointer;display:flex;'
+        + 'align-items:center;justify-content:center;flex-shrink:0;" title="Machine Info">!</div>';
   // Bet controls
   html += '<div class="slot-btn-3d" onclick="playChangeBet(-1)" style="width:28px;height:28px;">-</div>';
   html += '<div id="playBetDisplay" style="min-width:52px;height:28px;background:#0a0a0a;border:2px solid #f5d742;border-radius:4px;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:28px;box-shadow:inset 0 2px 6px rgba(0,0,0,0.8);">' + (defaultBet * activeCards).toFixed(2) + '</div>';
