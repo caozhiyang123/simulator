@@ -705,14 +705,20 @@ function wildWestHandleGoldenWheelResponse(resp) {
     data = (typeof resp.golden_badge === 'string') ? JSON.parse(resp.golden_badge) : (resp.golden_badge || {});
   } catch (e) { data = {}; }
 
-  var value1 = data.golden_wheel_value_1 || 0;
-  var value2 = data.golden_wheel_value_2 || 0;
+  // Support new golden_wheel_values array (any number of wheels)
+  // Fall back to legacy golden_wheel_value_1 / golden_wheel_value_2 fields
+  var wheelValues;
+  if (Array.isArray(data.golden_wheel_values)) {
+    wheelValues = data.golden_wheel_values;
+  } else {
+    wheelValues = [data.golden_wheel_value_1 || 0, data.golden_wheel_value_2 || 0];
+  }
   var prize = data.golden_wheel_bonus_prize || 0;
 
-  playLog('[WildWestBingo] golden wheel result: wheel1=' + value1 + ', wheel2=' + value2 + ', prize=' + prize);
+  playLog('[WildWestBingo] golden wheel result: values=' + JSON.stringify(wheelValues) + ', prize=' + prize);
 
-  // Animate both wheels to stop at the correct values
-  wildWestAnimateGoldenWheels(value1, value2, prize, resp.balance);
+  // Animate wheels to stop at the correct values (pass full array)
+  wildWestAnimateGoldenWheels(wheelValues, prize, resp.balance);
 }
 
 // ---------------------------------------------------------------------------
@@ -768,7 +774,10 @@ function wildWestOpenGoldenWheel() {
   document.body.appendChild(modal);
 
   // Store wheel segments for animation
+  // wheelSegments is the canonical array used by wildWestAnimateGoldenWheels.
+  // Legacy outerSegments/innerSegments kept for backwards compatibility.
   window._wwGoldenWheelState = {
+    wheelSegments: wheelData.map(function(layer) { return layer || []; }),
     outerSegments: outerSegments,
     innerSegments: innerSegments,
     multiplier: multiplier,
@@ -823,33 +832,44 @@ function wildWestGoldenWheelPlay() {
   wildWestGoldenWheelSpin();
 }
 
-// Animate wheels to stop at server-given values
-function wildWestAnimateGoldenWheels(value1, value2, prize, balance) {
+// Animate wheels to stop at server-given values.
+// wheelValues: array of target values, one per wheel layer (e.g. [outerVal, innerVal, ...])
+// Supports any number of wheel layers to match future multi-wheel designs.
+function wildWestAnimateGoldenWheels(wheelValues, prize, balance) {
   var state = window._wwGoldenWheelState;
   if (!state) return;
 
-  var outerSegments = state.outerSegments;
-  var innerSegments = state.innerSegments;
+  // state.wheelSegments is an array of segment arrays, one per layer.
+  // For backwards compatibility also support legacy outerSegments/innerSegments.
+  var allSegments = state.wheelSegments || [state.outerSegments, state.innerSegments];
 
-  // Find indices of target values
-  var outerIdx = 0, innerIdx = 0;
-  for (var i = 0; i < outerSegments.length; i++) { if (outerSegments[i] === value1) { outerIdx = i; break; } }
-  for (var i = 0; i < innerSegments.length; i++) { if (innerSegments[i] === value2) { innerIdx = i; break; } }
+  var wheelIds = ['wwOuterWheel', 'wwInnerWheel'];
+  var baseSpins  = [5, 6]; // extra full rotations before stopping
 
-  var outerAnglePerSeg = 360 / outerSegments.length;
-  var innerAnglePerSeg = 360 / innerSegments.length;
+  for (var w = 0; w < allSegments.length; w++) {
+    var segments   = allSegments[w];
+    var targetVal  = (wheelValues && wheelValues[w] !== undefined) ? wheelValues[w] : 0;
+    var anglePerSeg = 360 / segments.length;
 
-  // Calculate stop angles
-  var outerStop = 360 - (outerIdx * outerAnglePerSeg + outerAnglePerSeg / 2);
-  var innerStop = 360 - (innerIdx * innerAnglePerSeg + innerAnglePerSeg / 2);
+    // Find the index of the target value in this wheel's segments
+    var stopIdx = 0;
+    for (var i = 0; i < segments.length; i++) {
+      if (segments[i] === targetVal) { stopIdx = i; break; }
+    }
 
-  var outerTotal = (5 + Math.floor(Math.random() * 3)) * 360 + outerStop;
-  var innerTotal = (6 + Math.floor(Math.random() * 3)) * 360 + innerStop;
+    var stopAngle = 360 - (stopIdx * anglePerSeg + anglePerSeg / 2);
+    var totalAngle = (baseSpins[w] + Math.floor(Math.random() * 3)) * 360 + stopAngle;
 
-  var outerWheel = document.getElementById('wwOuterWheel');
-  var innerWheel = document.getElementById('wwInnerWheel');
-  if (outerWheel) outerWheel.style.transform = 'rotate(' + outerTotal + 'deg)';
-  if (innerWheel) innerWheel.style.transform = 'translate(-50%,-50%) rotate(' + innerTotal + 'deg)';
+    var wheelEl = document.getElementById(wheelIds[w]);
+    if (!wheelEl) continue;
+
+    if (w === 0) {
+      wheelEl.style.transform = 'rotate(' + totalAngle + 'deg)';
+    } else {
+      // Inner wheels keep their centering translate
+      wheelEl.style.transform = 'translate(-50%,-50%) rotate(' + totalAngle + 'deg)';
+    }
+  }
 
   // After animation completes (~4.5s)
   setTimeout(function() {
