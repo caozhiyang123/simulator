@@ -118,6 +118,9 @@ function renderBatchMultiResultByNode(results, actionLabel, listKeys) {
   return html || '<div style="color:#888;">No results.</div>';
 }
 
+// {addr: [dirPath, ...]} — populated by doBatchUpMultiCheck
+var _batchUpMultiFoundByNode = {};
+
 async function doBatchUpMultiCheck() {
   _saveAllBatchInputHistory();
   var addrs = getBatchMultiNodeAddrs('batchUpMultiNodeCbs');
@@ -136,8 +139,68 @@ async function doBatchUpMultiCheck() {
   });
   var data = await res.json();
   if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
-  resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">🔍 Check results per node:</div>' +
-    renderBatchMultiResultByNode(data.results || {}, 'Found', ['found']);
+
+  // Store found dirs per node and render checkboxes
+  var results = data.results || {};
+  _batchUpMultiFoundByNode = {};
+  var totalFound = 0;
+  Object.keys(results).forEach(function(addr) {
+    var found = (results[addr] && results[addr].found) || [];
+    _batchUpMultiFoundByNode[addr] = found;
+    totalFound += found.length;
+  });
+
+  var html = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">🔍 Found ' + totalFound + ' director' + (totalFound === 1 ? 'y' : 'ies') + ' across ' + addrs.length + ' node(s):</div>';
+  html += '<div style="margin-bottom:8px;">';
+  html += '<button class="btn-primary btn-sm" onclick="batchUpMultiSelectAll()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select All</button>';
+  html += '<button class="btn-primary btn-sm" onclick="batchUpMultiSelectNone()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select None</button>';
+  html += '<button class="btn-primary btn-sm" onclick="batchUpMultiSelectInverse()" style="font-size:11px;padding:3px 8px;">Inverse</button>';
+  html += '</div>';
+  Object.keys(results).forEach(function(addr) {
+    var found = _batchUpMultiFoundByNode[addr] || [];
+    html += '<div style="margin-bottom:12px;">';
+    html += '<div style="font-weight:600;margin-bottom:4px;">🖥 ' + addr + ' (' + found.length + ' director' + (found.length === 1 ? 'y' : 'ies') + ')</div>';
+    if (found.length > 0) {
+      html += '<div style="background:#1e1e2e;color:#cdd6f4;padding:10px;border-radius:6px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto;">';
+      found.forEach(function(dirPath, idx) {
+        html += '<label style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;">';
+        html += '<input type="checkbox" class="batch-up-multi-dir-cb" data-addr="' + addr + '" data-idx="' + idx + '" checked>';
+        html += '<span>' + dirPath + '</span></label>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div style="color:#888;font-size:11px;">No matching directories.</div>';
+    }
+    html += '</div>';
+  });
+  resultEl.innerHTML = html;
+}
+
+function batchUpMultiSelectAll() {
+  document.querySelectorAll('.batch-up-multi-dir-cb').forEach(function(cb) { cb.checked = true; });
+}
+function batchUpMultiSelectNone() {
+  document.querySelectorAll('.batch-up-multi-dir-cb').forEach(function(cb) { cb.checked = false; });
+}
+function batchUpMultiSelectInverse() {
+  document.querySelectorAll('.batch-up-multi-dir-cb').forEach(function(cb) { cb.checked = !cb.checked; });
+}
+
+function getSelectedBatchUpMultiDirs() {
+  // Returns {addr: [dirPath, ...]} for all checked checkboxes
+  var selected = {};
+  document.querySelectorAll('.batch-up-multi-dir-cb').forEach(function(cb) {
+    if (cb.checked) {
+      var addr = cb.getAttribute('data-addr');
+      var idx = parseInt(cb.getAttribute('data-idx'));
+      var dirs = _batchUpMultiFoundByNode[addr] || [];
+      if (dirs[idx] !== undefined) {
+        if (!selected[addr]) selected[addr] = [];
+        selected[addr].push(dirs[idx]);
+      }
+    }
+  });
+  return selected;
 }
 
 async function doBatchUpMultiUpload() {
@@ -150,18 +213,59 @@ async function doBatchUpMultiUpload() {
   if (!srcFiles.length) { showAlert('Please enter at least one source file name'); return; }
   if (!dirs.length) { showAlert('Please enter at least one target directory'); return; }
 
+  // Use checked checkboxes if available, otherwise fall back to batch-multi-up-upload
+  var hasCbs = document.querySelectorAll('.batch-up-multi-dir-cb').length > 0;
+  var selectedByNode = hasCbs ? getSelectedBatchUpMultiDirs() : null;
+
   showBatchUpMultiProgress();
   var resultEl = document.getElementById('batchUpMultiResult');
+  resultEl.innerHTML = '';
+
   try {
-    var res = await fetch('/files/batch-multi-up-upload', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({src_files: srcFiles, target_dirs: dirs, exclude_dirs: excludes, addrs: addrs})
-    });
-    var data = await res.json();
-    hideBatchUpMultiProgress();
-    if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
-    resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">⬆️ Upload results per node:</div>' +
-      renderBatchMultiResultByNode(data.results || {}, 'Uploaded', ['copied']);
+    if (selectedByNode) {
+      var hasItems = Object.values(selectedByNode).some(function(arr) { return arr.length > 0; });
+      if (!hasItems) {
+        hideBatchUpMultiProgress();
+        showAlert('No directories selected for upload.');
+        return;
+      }
+      var allNodeResults = {};
+      var targetAddrs = Object.keys(selectedByNode).filter(function(a) { return (selectedByNode[a] || []).length > 0; });
+      var barEl = document.getElementById('batchUpMultiProgressBar');
+      var textEl = document.getElementById('batchUpMultiProgressText');
+      if (barEl) barEl.style.transition = 'width 0.3s ease';
+      for (var i = 0; i < targetAddrs.length; i++) {
+        var addr = targetAddrs[i];
+        var selectedDirs = selectedByNode[addr] || [];
+        try {
+          var res = await fetch('/files/batch-up-upload', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({src_files: srcFiles, target_dirs: selectedDirs, addr: addr})
+          });
+          var data = await res.json();
+          allNodeResults[addr] = data;
+        } catch (e) {
+          allNodeResults[addr] = {error: e.message};
+        }
+        var pct = Math.round(((i + 1) / targetAddrs.length) * 100);
+        if (barEl) barEl.style.width = pct + '%';
+        if (textEl) textEl.textContent = pct + '%';
+      }
+      hideBatchUpMultiProgress();
+      resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">⬆️ Upload results per node:</div>' +
+        renderBatchMultiResultByNode(allNodeResults, 'Uploaded', ['copied']);
+    } else {
+      // No checkbox list — fall back to original full-scan upload
+      var res = await fetch('/files/batch-multi-up-upload', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({src_files: srcFiles, target_dirs: dirs, exclude_dirs: excludes, addrs: addrs})
+      });
+      var data = await res.json();
+      hideBatchUpMultiProgress();
+      if (data.error) { resultEl.innerHTML = '<div style="color:#e74c3c;">❌ ' + data.error + '</div>'; return; }
+      resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">⬆️ Upload results per node:</div>' +
+        renderBatchMultiResultByNode(data.results || {}, 'Uploaded', ['copied']);
+    }
   } catch (e) {
     hideBatchUpMultiProgress();
     resultEl.innerHTML = '<div style="color:#e74c3c;">❌ Upload failed: ' + e.message + '</div>';
