@@ -16,3 +16,7 @@ __pycache__
 launcher/build
 launcher/dist
 master/versions
+master/node_modules
+master/tests
+master/package.json
+master/package-lock.json
