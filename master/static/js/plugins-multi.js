@@ -482,20 +482,85 @@ async function doBatchDelMultiCheck() {
     allResults[addr].count = allResults[addr].found.length;
     _batchDelMultiFoundByNode[addr] = allResults[addr].found;
   });
-  resultEl.innerHTML = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">🔍 Search results per node (all found files will be deleted):</div>' +
-    renderBatchMultiResultByNode(allResults, 'Found', ['found']);
+
+  // Render results with per-file checkboxes and Select All / Select None / Inverse
+  var totalFound = Object.values(allResults).reduce(function(s, r) { return s + r.found.length; }, 0);
+  var html = '<div style="font-weight:600;color:#4a90d9;margin-bottom:8px;">🔍 Found ' + totalFound + ' file(s) across ' + addrs.length + ' node(s):</div>';
+  html += '<div style="margin-bottom:8px;">';
+  html += '<button class="btn-primary btn-sm" onclick="batchDelMultiSelectAll()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select All</button>';
+  html += '<button class="btn-primary btn-sm" onclick="batchDelMultiSelectNone()" style="margin-right:4px;font-size:11px;padding:3px 8px;">Select None</button>';
+  html += '<button class="btn-primary btn-sm" onclick="batchDelMultiSelectInverse()" style="font-size:11px;padding:3px 8px;">Inverse</button>';
+  html += '</div>';
+  Object.keys(allResults).forEach(function(addr) {
+    var files = allResults[addr].found || [];
+    html += '<div style="margin-bottom:12px;">';
+    html += '<div style="font-weight:600;margin-bottom:4px;">🖥 ' + addr + ' (' + files.length + ' file(s))</div>';
+    if (files.length > 0) {
+      html += '<div style="background:#1e1e2e;color:#cdd6f4;padding:10px;border-radius:6px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto;">';
+      files.forEach(function(fp) {
+        html += '<label style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;">';
+        html += '<input type="checkbox" class="batch-del-multi-file-cb" data-addr="' + addr + '" data-path="' + fp.replace(/"/g, '&quot;') + '" checked>';
+        html += '<span>' + fp + '</span></label>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div style="color:#888;font-size:11px;">No matching files.</div>';
+    }
+    html += '</div>';
+  });
+  resultEl.innerHTML = html;
+}
+
+function batchDelMultiSelectAll() {
+  document.querySelectorAll('.batch-del-multi-file-cb').forEach(function(cb) { cb.checked = true; });
+}
+function batchDelMultiSelectNone() {
+  document.querySelectorAll('.batch-del-multi-file-cb').forEach(function(cb) { cb.checked = false; });
+}
+function batchDelMultiSelectInverse() {
+  document.querySelectorAll('.batch-del-multi-file-cb').forEach(function(cb) { cb.checked = !cb.checked; });
+}
+
+function getSelectedBatchDelMultiFiles() {
+  // Returns {addr: [filePath, ...]} for all checked checkboxes
+  var selected = {};
+  document.querySelectorAll('.batch-del-multi-file-cb').forEach(function(cb) {
+    if (cb.checked) {
+      var addr = cb.getAttribute('data-addr');
+      var path = cb.getAttribute('data-path');
+      if (!selected[addr]) selected[addr] = [];
+      selected[addr].push(path);
+    }
+  });
+  return selected;
 }
 
 async function doBatchDelMultiDelete() {
   _saveAllBatchInputHistory();
   var addrs = getBatchMultiNodeAddrs('batchDelMultiNodeCbs');
   if (!addrs.length) { showAlert('Please select at least one node'); return; }
-  var hasFiles = addrs.some(function(a) { return (_batchDelMultiFoundByNode[a] || []).length > 0; });
-  if (!hasFiles) { showAlert('No files found yet. Please run Check All Files first.'); return; }
+
+  // Use checked checkboxes if available, otherwise fall back to _batchDelMultiFoundByNode
+  var hasCbs = document.querySelectorAll('.batch-del-multi-file-cb').length > 0;
+  var selectedByNode = hasCbs ? getSelectedBatchDelMultiFiles() : null;
+
+  var hasFiles;
+  if (selectedByNode) {
+    hasFiles = Object.values(selectedByNode).some(function(arr) { return arr.length > 0; });
+  } else {
+    hasFiles = addrs.some(function(a) { return (_batchDelMultiFoundByNode[a] || []).length > 0; });
+  }
+  if (!hasFiles) { showAlert('No files selected for deletion. Please run Check All Files first.'); return; }
 
   var totalCount = 0;
-  addrs.forEach(function(a) { totalCount += (_batchDelMultiFoundByNode[a] || []).length; });
-  if (!confirm('⚠️ Are you sure you want to DELETE ' + totalCount + ' file(s) across ' + addrs.length + ' node(s)?\n\nThis operation cannot be undone!')) return;
+  if (selectedByNode) {
+    Object.values(selectedByNode).forEach(function(arr) { totalCount += arr.length; });
+  } else {
+    addrs.forEach(function(a) { totalCount += (_batchDelMultiFoundByNode[a] || []).length; });
+  }
+
+  var nodeCount = selectedByNode ? Object.keys(selectedByNode).filter(function(a) { return (selectedByNode[a] || []).length > 0; }).length : addrs.length;
+  if (!confirm('⚠️ Are you sure you want to DELETE ' + totalCount + ' file(s) across ' + nodeCount + ' node(s)?\n\nThis operation cannot be undone!')) return;
 
   var resultEl = document.getElementById('batchDelMultiResult');
   resultEl.innerHTML = '';
@@ -508,10 +573,13 @@ async function doBatchDelMultiDelete() {
   var barEl = document.getElementById('batchDelMultiProgressBar');
   var textEl = document.getElementById('batchDelMultiProgressText');
   if (barEl) barEl.style.transition = 'width 0.3s ease';
+  var targetAddrs = selectedByNode
+    ? Object.keys(selectedByNode).filter(function(a) { return (selectedByNode[a] || []).length > 0; })
+    : addrs;
   try {
-    for (var i = 0; i < addrs.length; i++) {
-      var addr = addrs[i];
-      var files = _batchDelMultiFoundByNode[addr] || [];
+    for (var i = 0; i < targetAddrs.length; i++) {
+      var addr = targetAddrs[i];
+      var files = selectedByNode ? (selectedByNode[addr] || []) : (_batchDelMultiFoundByNode[addr] || []);
       if (files.length) {
         try {
           var res = await fetch('/files/batch-delete', {
@@ -524,7 +592,7 @@ async function doBatchDelMultiDelete() {
           allNodeResults[addr] = {error: e.message};
         }
       }
-      var pct = Math.round(((i + 1) / addrs.length) * 100);
+      var pct = Math.round(((i + 1) / targetAddrs.length) * 100);
       if (barEl) barEl.style.width = pct + '%';
       if (textEl) textEl.textContent = pct + '%';
     }
