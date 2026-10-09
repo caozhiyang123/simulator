@@ -59,8 +59,24 @@ function slotRenderGame(resp, machineConfig, machineName) {
   window._playJackpotRates = jackpotRates;
   window._playJackpotMinBet = jackpotMinBet;
   window._playDisplayPrecision = st.displayPrecision;
-  slotRandomizeReels();
+
+  // Reconnect: if round is not yet over and server sent the current reel icons,
+  // use them directly instead of randomising, then restore pattern highlights.
+  if (resp.round_is_over === false &&
+      resp.icons && resp.icons.length >= st.rowCount * st.colCount) {
+    st.reelIcons = resp.icons.slice();
+    playLog('🔄 [SLOT RECONNECT] round_is_over=false, restoring icons: ' + JSON.stringify(st.reelIcons));
+  } else {
+    slotRandomizeReels();
+  }
+
   slotRenderUI();
+
+  // After UI is in the DOM, restore winning lines for the reconnect case.
+  if (resp.round_is_over === false && resp.icons &&
+      resp.icons.length >= st.rowCount * st.colCount) {
+    slotReconnectRestore(resp);
+  }
 }
 
 function slotRandomizeReels() {
@@ -69,6 +85,50 @@ function slotRandomizeReels() {
   st.reelIcons = [];
   for (var i = 0; i < st.rowCount * st.colCount; i++)
     st.reelIcons.push(icons[Math.floor(Math.random() * icons.length)]);
+}
+
+/**
+ * Called after slotRenderUI when reconnecting with round_is_over=false.
+ * Scrolls each reel strip to show the restored icons, then draws the
+ * winning pattern lines parsed from won_pattern.
+ */
+function slotReconnectRestore(resp) {
+  var st = _slotState;
+
+  // The reel strips are already rendered with the correct icons at
+  // resultPosition (index 14). We just need to snap each strip to that
+  // position (no animation — instant, to signal it's a restored state).
+  var cellHeight = 80;
+  var resultPosition = 14;
+  var targetOffset = resultPosition * cellHeight;
+
+  for (var col = 0; col < st.colCount; col++) {
+    var strip = document.querySelector('.slot-reel-strip[data-col="' + col + '"]');
+    if (strip) {
+      strip.style.transition = 'none';
+      strip.style.transform = 'translateY(-' + targetOffset + 'px)';
+    }
+  }
+
+  // Show winning amount if any
+  var totalWon = resp.total_won || 0;
+  if (totalWon > 0) {
+    var winAmtEl = document.getElementById('slotWinAmount');
+    if (winAmtEl) winAmtEl.textContent = totalWon.toFixed(st.displayPrecision);
+    var winDispEl = document.getElementById('slotWinDisplay');
+    if (winDispEl) {
+      winDispEl.innerHTML = '<span style="color:#f39c12;font-size:18px;font-weight:800;text-shadow:0 0 10px #f5d742,0 2px 4px #000;">WIN: ' +
+        totalWon.toFixed(st.displayPrecision) + '</span>';
+    }
+  }
+
+  // Draw winning pattern lines from won_pattern
+  // Delay slightly to ensure the SVG overlay is in the DOM
+  setTimeout(function() {
+    slotShowWinningLines(resp);
+    playLog('🔄 [SLOT RECONNECT] restored icons + ' +
+      (totalWon > 0 ? 'won_pattern lines drawn' : 'no win to display'));
+  }, 50);
 }
 
 function slotRenderUI() {

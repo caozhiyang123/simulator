@@ -94,6 +94,22 @@ MachineRegistry.register('BingoAmazonia', {
 
     // BingoMini card — render to the right of reels
     bingoAmazoniaRenderMiniCard(resp, config);
+
+    // Reconnection recovery: if round is not yet over and BingoMini data is present,
+    // the player disconnected during the cage phase. Restore the cage UI immediately
+    // so they can continue clicking cages and then collect the round.
+    if (resp.round_is_over === false &&
+        resp.base_ball_numbers_per_cage &&
+        resp.base_ball_numbers_per_cage.length > 0) {
+      playLog('🔄 [BA BINGO MINI] Reconnect detected — restoring cage state');
+      _playBonusPending = true;
+      var alreadyReleased = resp.bingo_mini_bonus_positions || [];
+      bingoAmazoniaStartCageAnimation(
+        resp.base_ball_numbers_per_cage,
+        resp.bingo_mini_prize || 0,
+        alreadyReleased
+      );
+    }
   },
 
   onSpinResponse: function(resp) {
@@ -122,7 +138,9 @@ MachineRegistry.register('BingoAmazonia', {
 // ---------------------------------------------------------------------------
 function bingoAmazoniaRenderMiniCard(resp, config) {
   var cardsNumber = resp.cardsNumber || [];
-  if (cardsNumber.length === 0) return;
+  // Note: cardsNumber may be empty on reconnect. Do NOT return early — the
+  // container must still be created so bingoAmazoniaStartCageAnimation can
+  // find #baMiniCardArea.
 
   // Get BingoMiniFeature config
   var mathModel = (config.math_model && config.math_model[0]) || {};
@@ -201,14 +219,29 @@ function bingoAmazoniaResetMiniCard() {
   if (cageArea) cageArea.remove();
 }
 
-function bingoAmazoniaStartCageAnimation(cages, prize) {
+function bingoAmazoniaStartCageAnimation(cages, prize, doneCageIndices) {
   _baCage.cages = cages;
   _baCage.prize = prize;
-  _baCage.currentCage = 0;
   _baCage.allBalls = [];
   _baCage.waitingResponse = false;
 
-  playLog('🎱 [BA BINGO MINI] triggered: ' + cages.length + ' cages, prize: ' + prize);
+  // Build a Set of done cage indices (bingo_mini_bonus_positions = cage index list)
+  var doneSet = new Set(doneCageIndices || []);
+
+  // Collect balls from completed cages and find first pending cage
+  var firstPending = 0;
+  for (var i = 0; i < cages.length; i++) {
+    if (doneSet.has(i)) {
+      cages[i].forEach(function(b) { _baCage.allBalls.push(b); });
+      firstPending = i + 1;
+    } else {
+      break;
+    }
+  }
+  _baCage.currentCage = firstPending;
+
+  playLog('🎱 [BA BINGO MINI] triggered: ' + cages.length + ' cages, prize: ' + prize +
+    (firstPending > 0 ? ' (resuming from cage ' + (firstPending + 1) + ', ' + _baCage.allBalls.length + ' balls pre-marked)' : ''));
 
   var container = document.getElementById('baMiniCardArea');
   if (!container) return;
@@ -222,14 +255,40 @@ function bingoAmazoniaStartCageAnimation(cages, prize) {
 
   var html = '<div style="display:flex;gap:3px;justify-content:center;flex-wrap:wrap;margin-bottom:3px;">';
   for (var i = 0; i < cages.length; i++) {
-    html += '<div class="ba-cage-btn" data-cage="' + i + '" onclick="bingoAmazoniaClickCage(' + i + ')" style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#f5d742,#c8960c);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:7px;font-weight:700;color:#333;border:1px solid #f5d742;' + (i === 0 ? 'animation:bsCagePulse 1s infinite;' : 'opacity:0.5;pointer-events:none;') + '">' + (i + 1) + '</div>';
+    var isDone = doneSet.has(i);
+    var isNext = i === firstPending;
+    var style = 'width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;color:#333;border:1px solid #f5d742;';
+    if (isDone) {
+      style += 'background:#27ae60;border-color:#27ae60;color:#fff;cursor:default;pointer-events:none;';
+    } else if (isNext) {
+      style += 'background:linear-gradient(135deg,#f5d742,#c8960c);cursor:pointer;animation:bsCagePulse 1s infinite;';
+    } else {
+      style += 'background:linear-gradient(135deg,#f5d742,#c8960c);cursor:pointer;opacity:0.5;pointer-events:none;';
+    }
+    html += '<div class="ba-cage-btn" data-cage="' + i + '" onclick="bingoAmazoniaClickCage(' + i + ')" style="' + style + '">' + (i + 1) + '</div>';
   }
   html += '</div>';
-  html += '<div id="baCageStatus" style="color:#aaa;font-size:8px;text-align:center;">Click 1</div>';
-  html += '<div id="baBallArea" style="display:flex;flex-wrap:wrap;gap:2px;padding:2px;background:rgba(0,0,0,0.3);border-radius:3px;min-height:16px;margin-top:3px;"></div>';
+
+  var statusText = firstPending < cages.length ? 'Click ' + (firstPending + 1) : 'All done';
+  html += '<div id="baCageStatus" style="color:#aaa;font-size:8px;text-align:center;">' + statusText + '</div>';
+
+  // Ball area — pre-populate with balls from done cages (green = restored)
+  html += '<div id="baBallArea" style="display:flex;flex-wrap:wrap;gap:2px;padding:2px;background:rgba(0,0,0,0.3);border-radius:3px;min-height:16px;margin-top:3px;">';
+  _baCage.allBalls.forEach(function(b) {
+    html += '<div style="width:16px;height:16px;border-radius:50%;background:linear-gradient(135deg,#27ae60,#1a8a4a);display:inline-flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;color:#fff;">' + b + '</div>';
+  });
+  html += '</div>';
 
   cageArea.innerHTML = html;
   container.insertBefore(cageArea, container.firstChild);
+
+  // Pre-mark balls from done cages on the mini card (silent, no animation)
+  _baCage.allBalls.forEach(function(b) { bingoAmazoniaMarkBall(b); });
+
+  // Edge case: all cages already done
+  if (firstPending >= cages.length) {
+    bingoAmazoniaCageComplete();
+  }
 }
 
 function bingoAmazoniaClickCage(cageIdx) {
@@ -245,8 +304,9 @@ function bingoAmazoniaClickCage(cageIdx) {
   if (btn) { btn.style.animation = 'none'; btn.style.opacity = '0.6'; btn.style.pointerEvents = 'none'; }
 
   var status = document.getElementById('baCageStatus');
-  if (status) status.textContent = 'Sending...';
+  if (status) status.textContent = 'Sending cage ' + (cageIdx + 1) + '...';
 
+  // position = cage index the player clicked
   var st = _slotState;
   var featureId = bingoAmazoniaGetMiniFeatureId();
   var cmd = {
@@ -264,14 +324,19 @@ function bingoAmazoniaClickCage(cageIdx) {
 }
 
 function bingoAmazoniaHandleBonusSpinResponse(resp) {
-  playLog('<<< [BA BONUS SPIN] response');
+  playLog('<<< [BA BONUS SPIN] response: ' + JSON.stringify(resp));
   _baCage.waitingResponse = false;
 
   var cageIdx = _baCage.currentCage;
   var balls = _baCage.cages[cageIdx];
 
+  // Mark cage button as done
   var btn = document.querySelector('.ba-cage-btn[data-cage="' + cageIdx + '"]');
   if (btn) { btn.style.background = '#27ae60'; btn.style.borderColor = '#27ae60'; btn.style.color = '#fff'; btn.style.opacity = '1'; }
+
+  // Update status
+  var status = document.getElementById('baCageStatus');
+  if (status) status.textContent = 'Releasing balls from cage ' + (cageIdx + 1) + '...';
 
   bingoAmazoniaReleaseBalls(balls, function() {
     _baCage.currentCage++;
@@ -281,7 +346,7 @@ function bingoAmazoniaHandleBonusSpinResponse(resp) {
       var nextBtn = document.querySelector('.ba-cage-btn[data-cage="' + _baCage.currentCage + '"]');
       if (nextBtn) { nextBtn.style.opacity = '1'; nextBtn.style.pointerEvents = ''; nextBtn.style.animation = 'bsCagePulse 1s infinite'; }
       var st = document.getElementById('baCageStatus');
-      if (st) st.textContent = 'Click ' + (_baCage.currentCage + 1);
+      if (st) st.textContent = 'Click cage ' + (_baCage.currentCage + 1) + ' to release balls';
     }
   });
 }
@@ -316,10 +381,13 @@ function bingoAmazoniaMarkBall(ballNum) {
 }
 
 function bingoAmazoniaCageComplete() {
-  playLog('🎱 [BA BINGO MINI] complete');
+  playLog('🎱 [BA BINGO MINI] all cages done, checking patterns');
   bingoAmazoniaCheckPatterns();
   var status = document.getElementById('baCageStatus');
-  if (status) { status.style.color = '#27ae60'; status.textContent = '🎉 +' + _baCage.prize.toFixed(2); }
+  if (status) {
+    status.style.color = '#27ae60';
+    status.textContent = '🎉 Bingo Mini Complete! Prize: ' + _baCage.prize.toFixed(2);
+  }
   _playBonusPending = false;
   slotRoundOver();
 }

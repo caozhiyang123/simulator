@@ -19,6 +19,22 @@ MachineRegistry.register('BingoSeven', {
 
     // Render BingoMini card in a separate panel to the right
     bingoSevenRenderMiniPanel(resp, config);
+
+    // Reconnection recovery: if round is not yet over and BingoMini data is present,
+    // the player disconnected during the cage phase. Restore the cage UI immediately
+    // so they can continue clicking cages and then collect the round.
+    if (resp.round_is_over === false &&
+        resp.base_ball_numbers_per_cage &&
+        resp.base_ball_numbers_per_cage.length > 0) {
+      playLog('🔄 [BINGO MINI] Reconnect detected — restoring cage state');
+      _playBonusPending = true;
+      var alreadyReleased = resp.bingo_mini_bonus_positions || [];
+      bingoSevenStartCageAnimation(
+        resp.base_ball_numbers_per_cage,
+        resp.bingo_mini_prize || 0,
+        alreadyReleased
+      );
+    }
   },
 
   onSpinResponse: function(resp) {
@@ -49,7 +65,9 @@ var _bsPatCycleTimer = null;
 
 function bingoSevenRenderMiniPanel(resp, config) {
   var cardsNumber = resp.cardsNumber || [];
-  if (cardsNumber.length === 0) return;
+  // Note: cardsNumber may be empty on reconnect (login response after disconnect
+  // during BingoMini). Do NOT return early — the panel must still be created so
+  // bingoSevenStartCageAnimation can find #bsMiniPanel.
 
   // Get BingoMiniFeature config
   var mathModel = (config.math_model && config.math_model[0]) || {};
@@ -176,14 +194,39 @@ var _bsCage = {
 
 /**
  * Start the cage animation. Show cage buttons in bingo panel.
+ *
+ * @param {Array[]} cages             - [[ball,...], ...] one sub-array per cage
+ * @param {number}  prize             - bingo_mini_prize from server
+ * @param {number[]} doneCageIndices  - (optional) cage indices already completed
+ *                                     in a previous session (bingo_mini_bonus_positions).
+ *                                     Those cages are shown as done (green), their balls
+ *                                     are pre-marked on the card, and the animation
+ *                                     resumes from the first cage NOT in this list.
  */
-function bingoSevenStartCageAnimation(cages, prize) {
+function bingoSevenStartCageAnimation(cages, prize, doneCageIndices) {
   _bsCage.cages = cages;
   _bsCage.prize = prize;
-  _bsCage.currentCage = 0;
   _bsCage.allBalls = [];
+  _bsCage.waitingResponse = false;
 
-  playLog('🎱 [BINGO MINI] triggered: ' + cages.length + ' cages, prize: ' + prize);
+  // Build a Set of done cage indices for O(1) lookup
+  var doneSet = new Set(doneCageIndices || []);
+
+  // Collect balls from all completed cages into allBalls (needed for pattern check)
+  // and find the first cage that is NOT done → that is where we resume.
+  var firstPending = 0;
+  for (var i = 0; i < cages.length; i++) {
+    if (doneSet.has(i)) {
+      cages[i].forEach(function(b) { _bsCage.allBalls.push(b); });
+      firstPending = i + 1;
+    } else {
+      break; // stop at first incomplete cage
+    }
+  }
+  _bsCage.currentCage = firstPending;
+
+  playLog('🎱 [BINGO MINI] triggered: ' + cages.length + ' cages, prize: ' + prize +
+    (firstPending > 0 ? ' (resuming from cage ' + (firstPending + 1) + ', ' + _bsCage.allBalls.length + ' balls pre-marked)' : ''));
 
   var panel = document.getElementById('bsMiniPanel');
   if (!panel) return;
@@ -192,7 +235,6 @@ function bingoSevenStartCageAnimation(cages, prize) {
   var oldCage = document.getElementById('bsCageArea');
   if (oldCage) oldCage.remove();
 
-  // Create cage control area at top of panel
   var cageArea = document.createElement('div');
   cageArea.id = 'bsCageArea';
   cageArea.style.cssText = 'background:rgba(245,215,66,0.1);border:1px solid #f5d742;border-radius:6px;padding:8px;';
@@ -200,18 +242,47 @@ function bingoSevenStartCageAnimation(cages, prize) {
   var html = '<div style="color:#f5d742;font-size:11px;font-weight:700;text-align:center;margin-bottom:6px;">🎱 Bingo Mini - ' + cages.length + ' Cages</div>';
   html += '<div id="bsCageButtons" style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin-bottom:6px;">';
   for (var i = 0; i < cages.length; i++) {
-    html += '<div class="bs-cage-btn" data-cage="' + i + '" onclick="bingoSevenClickCage(' + i + ')" style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#f5d742,#c8960c);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:9px;font-weight:700;color:#333;border:2px solid #f5d742;box-shadow:0 2px 6px rgba(0,0,0,0.3);' + (i === 0 ? 'animation:bsCagePulse 1s infinite;' : 'opacity:0.5;pointer-events:none;') + '">' + (i + 1) + '</div>';
+    var isDone = doneSet.has(i);
+    var isNext = i === firstPending;
+    var style = 'width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#333;border:2px solid #f5d742;box-shadow:0 2px 6px rgba(0,0,0,0.3);';
+    if (isDone) {
+      style += 'background:#27ae60;border-color:#27ae60;color:#fff;cursor:default;pointer-events:none;';
+    } else if (isNext) {
+      style += 'background:linear-gradient(135deg,#f5d742,#c8960c);cursor:pointer;animation:bsCagePulse 1s infinite;';
+    } else {
+      style += 'background:linear-gradient(135deg,#f5d742,#c8960c);cursor:pointer;opacity:0.5;pointer-events:none;';
+    }
+    html += '<div class="bs-cage-btn" data-cage="' + i + '" onclick="bingoSevenClickCage(' + i + ')" style="' + style + '">' + (i + 1) + '</div>';
   }
   html += '</div>';
-  html += '<div id="bsCageStatus" style="color:#aaa;font-size:10px;text-align:center;">Click cage 1 to release balls</div>';
-  html += '<div id="bsBallArea" style="display:flex;flex-wrap:wrap;gap:3px;padding:4px;background:rgba(0,0,0,0.3);border-radius:4px;min-height:24px;margin-top:6px;"></div>';
+
+  var statusText = firstPending < cages.length
+    ? 'Click cage ' + (firstPending + 1) + ' to release balls'
+    : 'All cages done';
+  html += '<div id="bsCageStatus" style="color:#aaa;font-size:10px;text-align:center;">' + statusText + '</div>';
+
+  // Ball area — pre-populate with balls from already-done cages (green = restored)
+  html += '<div id="bsBallArea" style="display:flex;flex-wrap:wrap;gap:3px;padding:4px;background:rgba(0,0,0,0.3);border-radius:4px;min-height:24px;margin-top:6px;">';
+  _bsCage.allBalls.forEach(function(b) {
+    html += '<div style="width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#27ae60,#1a8a4a);display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;">' + b + '</div>';
+  });
+  html += '</div>';
 
   cageArea.innerHTML = html;
   panel.insertBefore(cageArea, panel.firstChild);
+
+  // Pre-mark balls from done cages on the bingo card (silent, no animation)
+  _bsCage.allBalls.forEach(function(b) { bingoSevenMarkBall(b); });
+
+  // Edge case: all cages were already done before disconnect
+  if (firstPending >= cages.length) {
+    bingoSevenCageComplete();
+  }
 }
 
 /**
  * Player clicks a cage button — send bonus_spin request to server.
+ * `position` carries the ball numbers that fell from this cage.
  */
 function bingoSevenClickCage(cageIdx) {
   if (cageIdx !== _bsCage.currentCage) return;
@@ -234,7 +305,8 @@ function bingoSevenClickCage(cageIdx) {
   var status = document.getElementById('bsCageStatus');
   if (status) status.textContent = 'Sending cage ' + (cageIdx + 1) + '...';
 
-  // Send bonus_spin command
+  // Send bonus_spin command.
+  // position = cage index the player clicked.
   var st = _slotState;
   var miniFeatureId = bingoSevenGetMiniFeatureId();
   var cmd = {
