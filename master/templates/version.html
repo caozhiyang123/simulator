@@ -1,0 +1,42 @@
+    <!-- VERSION PAGE -->
+    <div class="page-panel" id="pageVersion">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <h2 style="margin:0;">🏷️ Version Management</h2>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-primary btn-sm" onclick="versionScan()">🔄 Scan production_dir</button>
+          </div>
+        </div>
+        <div id="versionProdDir" style="font-size:12px;color:#666;margin-top:6px;"></div>
+      </div>
+
+      <!-- Simulation Version -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <h2 style="margin:0;">📦 Simulation Version</h2>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="text" id="simVersionName" placeholder="e.g. v1.0" style="width:120px;padding:4px 8px;">
+            <button class="btn-success btn-sm" onclick="versionSave('simulation')">💾 Save Version</button>
+          </div>
+        </div>
+        <div style="font-size:12px;color:#888;margin:6px 0;">Computes SHA1 &amp; SHA256 of all <code>B2BGameSimulator.jar</code> files under production_dir.</div>
+        <div id="simVersionScan" style="overflow:auto;"></div>
+        <h3 onclick="versionToggleSaved('simulation')" style="margin:16px 0 6px;font-size:14px;cursor:pointer;user-select:none;"><span id="simVersionSavedCaret">▶</span> Saved Simulation Versions</h3>
+        <div id="simVersionSaved" style="display:none;"></div>
+      </div>
+
+      <!-- Java Version -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <h2 style="margin:0;">☕ Java Version</h2>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="text" id="javaVersionName" placeholder="e.g. v1.0" style="width:120px;padding:4px 8px;">
+            <button class="btn-success btn-sm" onclick="versionSave('java')">💾 Save Version</button>
+          </div>
+        </div>
+        <div style="font-size:12px;color:#888;margin:6px 0;">Computes SHA1 &amp; SHA256 of every <code>*.jar</code> file (recursive) under production_dir.</div>
+        <div id="javaVersionScan" style="overflow:auto;"></div>
+        <h3 onclick="versionToggleSaved('java')" style="margin:16px 0 6px;font-size:14px;cursor:pointer;user-select:none;"><span id="javaVersionSavedCaret">▶</span> Saved Java Versions</h3>
+        <div id="javaVersionSaved" style="display:none;"></div>
+      </div>
+    </div><!-- end pageVersion -->

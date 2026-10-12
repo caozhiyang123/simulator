@@ -3,6 +3,7 @@
     "authority": "administrator_privileges",
     "menus": [
       "Home",
+      "Version",
       "Workers",
       "Config",
       "History",
@@ -21,6 +22,7 @@
     "authority": "worker_privileges",
     "menus": [
       "Home",
+      "Version",
       "Workers",
       "Config",
       "History",

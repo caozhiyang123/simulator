@@ -1,0 +1,443 @@
+/* ===========================================================================
+   iOS.css
+   Dashboard beautification + iOS-style controls + Quick Guide popover.
+   Extracted from main.css. Loaded AFTER main.css in index.html so these
+   presentational overrides take effect. No markup/logic changes required
+   beyond the #appHeader id and the ios-* classes already in the template.
+   =========================================================================== */
+
+/* ===========================================================================
+   Dashboard UI Beautification
+   Presentational polish layered on top of the existing layout. Uses
+   b2.png (horizontal) for the header banner and b3.png (vertical) for the
+   sidebar.
+   =========================================================================== */
+
+/* Page surface: a soft neutral base so cards and the banner stand out. */
+body {
+  background: #eef2f8 url('/static/background_1.PNG') no-repeat center center fixed;
+  background-size: cover;
+}
+#bgMask { background: rgba(238, 242, 248, 0.9); }
+
+/* --- Header banner (uses b2.png) --------------------------------------- */
+#appHeader {
+  max-width: 1260px;
+  margin: 0 auto 20px;
+  padding: 22px 28px;
+  border-radius: 14px;
+  border: none;
+  overflow: hidden;
+  background: #1a2340 url('/static/b2.png') center center / cover no-repeat;
+  box-shadow: 0 10px 30px rgba(26, 35, 64, 0.28);
+}
+/* Dark gradient scrim so the title/controls stay readable over any image. */
+#appHeader::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(15, 22, 45, 0.82) 0%, rgba(15, 22, 45, 0.45) 55%, rgba(15, 22, 45, 0.72) 100%);
+  pointer-events: none;
+}
+#appHeader > * { position: relative; z-index: 1; }
+#appHeader h1 {
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+#appHeader #userInfo { color: #dbe4ff !important; }
+#appHeader #headerSettingsIcon { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4)); }
+#appHeader select {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+#appHeader label { color: #dbe4ff !important; }
+
+/* --- Sidebar (uses b3.png) --------------------------------------------- */
+/* Keep overflow VISIBLE so the Plugin submenu (absolutely positioned to the
+   right of the sidebar) is not clipped. The b3.png image + rounded corners
+   live on the ::before layer, which is clipped by its own border-radius. */
+.sidebar {
+  position: relative;
+  overflow: visible;
+  width: 66px;
+  padding: 10px 0;
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: 0 10px 30px rgba(23, 28, 58, 0.3);
+}
+/* Background image + dark scrim, self-contained and rounded. */
+.sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(18, 22, 48, 0.78), rgba(18, 22, 48, 0.9)),
+    #171c3a url('/static/b3.png') center center / cover no-repeat;
+  pointer-events: none;
+  z-index: 0;
+}
+.sidebar > * { position: relative; z-index: 1; }
+.sidebar-btn {
+  color: #b9c2e6;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.sidebar-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+.sidebar-btn.active {
+  background: linear-gradient(135deg, #4a90d9, #6f6fe0);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(74, 144, 217, 0.55);
+}
+
+/* --- Cards / modules ---------------------------------------------------- */
+.card {
+  background: #ffffff;
+  border: 1px solid #e7ecf3;
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 4px 16px rgba(26, 35, 64, 0.08);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.card:hover {
+  box-shadow: 0 8px 24px rgba(26, 35, 64, 0.14);
+  transform: translateY(-1px);
+}
+.card-muted { background: #f4f6fb; }
+.card h2 {
+  color: #2a3550;
+  font-weight: 700;
+  border-bottom: 2px solid #eef1f7;
+  padding-bottom: 8px;
+}
+
+/* --- Buttons / inputs polish ------------------------------------------- */
+button { border-radius: 6px; transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease; }
+button:not(:disabled):active { transform: translateY(1px); }
+input[type="number"], input[type="text"], select, textarea { border-radius: 6px; }
+
+
+/* ===========================================================================
+   iOS-style Controls
+   Refines individual controls (buttons, inputs, selects, checkboxes, tables)
+   to match Apple's Human Interface aesthetic: rounded/pill shapes, the iOS
+   system palette, soft focus rings, and iOS toggle-style checkboxes.
+   Presentational only; no markup or logic changes.
+   =========================================================================== */
+
+/* --- Buttons: pill shape, iOS system colors, subtle press ---------------- */
+button {
+  border-radius: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  padding: 8px 18px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  transition: filter 0.15s ease, transform 0.06s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+button:not(:disabled):hover { filter: brightness(1.05); }
+button:not(:disabled):active { transform: scale(0.97); }
+button:disabled { opacity: 0.4; }
+
+/* Muted, less-glaring iOS button tones. */
+.btn-primary { background: #4a80c4; }
+.btn-primary:hover { background: #4276b8; }
+.btn-success { background: #4fa96a; }
+.btn-success:hover { background: #47a061; }
+.btn-danger { background: #d9605a; }
+.btn-danger:hover { background: #cf564f; }
+.btn-warning { background: #d99b4a; }
+.btn-warning:hover { background: #cf9141; }
+.btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 8px; }
+
+/* Slightly dim on hover instead of brightening (avoids a harsh flash). */
+button:not(:disabled):hover { filter: brightness(0.96); }
+
+/* --- Text inputs, number inputs, selects, textareas ---------------------- */
+input[type="number"], input[type="text"], input[type="password"],
+input[type="search"], select, textarea {
+  border-radius: 10px;
+  border: 1px solid #d1d1d6;
+  background: #f2f2f7;                 /* iOS grouped field background */
+  padding: 9px 12px;
+  font-size: 14px;
+  color: #1c1c1e;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type="number"]:hover, input[type="text"]:hover,
+input[type="password"]:hover, select:hover, textarea:hover {
+  border-color: #c7c7cc;
+}
+input[type="number"]:focus, input[type="text"]:focus,
+input[type="password"]:focus, input[type="search"]:focus,
+select:focus, textarea:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #007aff;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.18);   /* iOS focus ring */
+}
+input::placeholder, textarea::placeholder { color: #8e8e93; }
+
+/* Custom select chevron (iOS-like) */
+select {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238e8e93' d='M6 8 0 2l1.4-1.4L6 5.2 10.6.6 12 2z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+/* --- iOS-style checkboxes (rounded checkmark box) -----------------------
+   Default look for the many list-selection checkboxes across the app
+   (file lists, node lists, etc.). Compact and clean. */
+input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  width: 20px;
+  height: 20px;
+  /* Guard against inline width:auto on some checkboxes collapsing the box. */
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: 6px;
+  border: 1.5px solid #c7c7cc;
+  background: #fff;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  flex-shrink: 0;
+}
+input[type="checkbox"]:checked {
+  background: #007aff;
+  border-color: #007aff;
+}
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 5px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+input[type="checkbox"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* --- iOS toggle switch (opt-in via .ios-switch on the checkbox) ---------- */
+input[type="checkbox"].ios-switch {
+  width: 42px;
+  height: 26px;
+  border-radius: 13px;
+  border: none;
+  background: #e5e5ea;
+  transition: background 0.2s ease;
+}
+input[type="checkbox"].ios-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transform: none;
+  transition: transform 0.2s ease;
+}
+input[type="checkbox"].ios-switch:checked {
+  background: #34c759;
+  border: none;
+}
+input[type="checkbox"].ios-switch:checked::after {
+  transform: translateX(16px);
+  border: none;
+}
+
+/* --- Radio buttons: iOS filled dot -------------------------------------- */
+input[type="radio"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid #c7c7cc;
+  background: #fff;
+  cursor: pointer;
+  vertical-align: middle;
+  position: relative;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  flex-shrink: 0;
+}
+input[type="radio"]:checked {
+  border-color: #007aff;
+  background: #007aff;
+  box-shadow: inset 0 0 0 4px #ffffff;
+}
+
+/* --- Tables: rounded, cleaner separators -------------------------------- */
+.result-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #e5e5ea;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.result-table th, .result-table td { border: none; border-bottom: 1px solid #ececef; }
+.result-table th {
+  background: #f2f2f7;
+  color: #6d6d72;
+  font-weight: 600;
+  text-transform: none;
+}
+.result-table tr:last-child td { border-bottom: none; }
+.result-table tbody tr:hover td { background: #f7f8fb; }
+
+/* --- Status pills -------------------------------------------------------- */
+.node-card .status, .status { border-radius: 999px; font-weight: 600; }
+.node-card { border-radius: 12px; border-color: #e5e5ea; }
+
+/* --- Segmented-ish page tabs / small controls --------------------------- */
+.btn-sm { font-weight: 600; }
+
+
+/* ===========================================================================
+   Quick Guide — iOS-style floating popover + minimized FAB
+   Behavior is unchanged (JS toggles inline display); this only restyles it.
+   =========================================================================== */
+/* Use an id-qualified selector so this beats the body>* {position:relative}
+   rule (which has id-level specificity via :not(#bgMask)) and keeps the
+   guide truly fixed in the viewport instead of flowing to page bottom. */
+#guideFloat.ios-guide {
+  position: fixed;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 288px;
+  z-index: 100;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.82);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: 0 12px 40px rgba(26, 35, 64, 0.22);
+  animation: iosGuideIn 0.22s ease;
+}
+@keyframes iosGuideIn {
+  from { opacity: 0; transform: translateY(-50%) scale(0.96); }
+  to   { opacity: 1; transform: translateY(-50%) scale(1); }
+}
+
+.ios-guide-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 4px 12px;
+}
+.ios-guide-title {
+  font-weight: 700;
+  font-size: 17px;
+  color: #1c1c1e;
+  letter-spacing: 0.2px;
+}
+.ios-guide-close {
+  background: rgba(120, 120, 128, 0.16);
+  border: none;
+  cursor: pointer;
+  color: #8e8e93;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+}
+.ios-guide-close:hover { background: rgba(120, 120, 128, 0.28); filter: none; }
+
+/* Grouped inset list, like iOS Settings. */
+.ios-guide-list {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.ios-guide-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(60, 60, 67, 0.1);
+  transition: background 0.12s ease;
+}
+.ios-guide-row:last-child { border-bottom: none; }
+.ios-guide-row:hover { background: rgba(74, 128, 196, 0.1); }
+.ios-guide-row:active { background: rgba(74, 128, 196, 0.18); }
+
+.ios-guide-badge {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;                 /* iOS rounded-square app-icon look */
+  background: linear-gradient(135deg, #4a80c4, #6f6fe0);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(74, 128, 196, 0.4);
+}
+.ios-guide-label {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1c1c1e;
+}
+.ios-guide-chevron {
+  color: #c2c2c7;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Minimized floating action button (bottom-left).
+   Id-qualified so body>* {position:relative} does not override the fixed
+   positioning (same reason as #guideFloat above). */
+#guideShowBtn.ios-guide-fab {
+  display: none;                       /* JS toggles to flex when shown */
+  position: fixed;
+  left: 20px;
+  bottom: 60px;
+  z-index: 100;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4a80c4, #6f6fe0);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 18px rgba(74, 128, 196, 0.5);
+  transition: transform 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.ios-guide-fab:hover {
+  filter: brightness(1.03);
+  box-shadow: 0 8px 22px rgba(74, 128, 196, 0.6);
+}
+.ios-guide-fab:active { transform: scale(0.94); }

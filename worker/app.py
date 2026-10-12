@@ -39,6 +39,28 @@ SIMULATOR_DIR = os.environ.get("SIMULATOR_DIR", _config.get("simulator_dir", "")
 PRODUCTION_DIR = os.environ.get("PRODUCTION_DIR", _config.get("production_dir", ""))
 PORT = int(os.environ.get("PORT", _config.get("port", 5001)))
 
+# Invisible Unicode characters injected when copying a path from Windows
+# Explorer ("Copy as path") or pasting from some editors. They make
+# os.path.isfile fail even though the file exists.
+_INVISIBLE_PATH_CHARS = (
+    "\u200b\u200c\u200d\u200e\u200f"  # ZWSP, ZWNJ, ZWJ, LRM, RLM
+    "\u202a\u202b\u202c\u202d\u202e"  # LRE, RLE, PDF, LRO, RLO
+    "\u2066\u2067\u2068\u2069"        # LRI, RLI, FSI, PDI
+    "\ufeff"                          # BOM / ZWNBSP
+)
+_INVISIBLE_TRANSLATE = {ord(c): None for c in _INVISIBLE_PATH_CHARS}
+
+
+def _clean_path(value):
+    """Strip invisible/bidirectional control characters and surrounding
+    whitespace/quotes from a path string."""
+    if not isinstance(value, str):
+        return value
+    cleaned = value.translate(_INVISIBLE_TRANSLATE).strip()
+    if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in ('"', "'"):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
+
 runner = SimulatorRunner(SIMULATOR_DIR, PRODUCTION_DIR)
 
 
@@ -432,7 +454,7 @@ def batch_override_worker():
     source_map = {}
     source_errors = []
     for s in sources:
-        s = s.strip()
+        s = _clean_path(s)
         if not s:
             continue
         s_norm = os.path.normpath(s)
@@ -629,7 +651,7 @@ def batch_up_upload_worker():
     errors = []
 
     for src in src_files:
-        src = src.strip()
+        src = _clean_path(src)
         if not src:
             continue
         src_path = os.path.normpath(src)
@@ -639,7 +661,7 @@ def batch_up_upload_worker():
         filename = os.path.basename(src_path)
 
         for td in target_dirs:
-            td_norm = os.path.normpath(td.strip())
+            td_norm = os.path.normpath(_clean_path(td))
             if not os.path.isdir(td_norm):
                 errors.append(f"Target directory not found: {td}")
                 continue
