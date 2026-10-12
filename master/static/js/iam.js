@@ -595,6 +595,7 @@ var _userAllowedMenus = null;
 
 var _menuNavMap = {
   'Home': 'navHome',
+  'Version': 'navVersion',
   'Workers': 'navWorkers',
   'Config': 'navConfig',
   'History': 'navHistory',
@@ -664,7 +665,7 @@ function applyMenuFiltering() {
     if (el.classList.contains('active')) { activePage = el.id.replace('page', '').toLowerCase(); }
   });
   var pageToMenu = {
-    'home': 'Home', 'workers': 'Workers', 'config': 'Config',
+    'home': 'Home', 'version': 'Version', 'workers': 'Workers', 'config': 'Config',
     'history': 'History', 'md5': 'MD5', 'sha1': 'SHA1',
     'compare': 'Plugin', 'formatjson': 'Plugin', 'batchoverride': 'Plugin',
     'formattime': 'Plugin', 'cardgen': 'Plugin', 'patterncomb': 'Plugin', 'patterncalc': 'Plugin',
@@ -673,7 +674,7 @@ function applyMenuFiltering() {
   var currentMenu = pageToMenu[activePage] || '';
   if (currentMenu && _userAllowedMenus.indexOf(currentMenu) < 0) {
     var firstMenu = _userAllowedMenus[0] || 'Play';
-    var pageMap = { 'Home': 'home', 'Workers': 'workers', 'Config': 'config', 'History': 'history', 'MD5': 'md5', 'SHA1': 'sha1', 'Plugin': 'compare', 'CICD': 'cicd', 'Play': 'play', 'IAM': 'iam', 'Family': 'family', 'Settings': 'cicdsettings' };
+    var pageMap = { 'Home': 'home', 'Version': 'version', 'Workers': 'workers', 'Config': 'config', 'History': 'history', 'MD5': 'md5', 'SHA1': 'sha1', 'Plugin': 'compare', 'CICD': 'cicd', 'Play': 'play', 'IAM': 'iam', 'Family': 'family', 'Settings': 'cicdsettings' };
     switchPage(pageMap[firstMenu] || 'play');
   }
 }
